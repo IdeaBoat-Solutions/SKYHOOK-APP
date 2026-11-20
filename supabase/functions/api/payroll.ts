@@ -324,7 +324,7 @@ function toAdjustment(r: any) {
     id: r.id as string,
     month: r.month as string,
     employeeCode: r.employee_code as string,
-    type: r.type as 'pay' | 'deduction',
+    type: r.kind as 'pay' | 'deduction',
     label: r.label as string,
     amount: Number(r.amount_paise) / 100,
     remarks: r.remarks ?? undefined,
@@ -448,7 +448,7 @@ export const payrollRoutes: Route[] = [
       }
       return json(await withTenantRead(ctx.auth!.tenantId, async (c) => {
         const r = await c.query(
-          `SELECT id, month, employee_code, type, label, amount_paise, remarks, created_at
+          `SELECT id, month, employee_code, kind, label, amount_paise, remarks, created_at
            FROM payroll_adjustments
            WHERE tenant_id = $1
              AND ($2::text IS NULL OR month = $2)
@@ -487,9 +487,9 @@ export const payrollRoutes: Route[] = [
         await assertUnlocked(c, ctx.auth!.tenantId, b.month);
         const r = await c.query(
           `INSERT INTO payroll_adjustments
-             (tenant_id, month, employee_code, type, label, amount_paise, remarks, created_by)
+             (tenant_id, month, employee_code, kind, label, amount_paise, remarks, created_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-           RETURNING id, month, employee_code, type, label, amount_paise, remarks, created_at`,
+           RETURNING id, month, employee_code, kind, label, amount_paise, remarks, created_at`,
           [ctx.auth!.tenantId, b.month, b.employeeCode.trim(), b.type, b.label.trim(),
             amountPaise, b.remarks?.trim() || null, ctx.auth!.userId],
         );
@@ -510,7 +510,7 @@ export const payrollRoutes: Route[] = [
       requirePermission(ctx.auth!, 'payroll:adjust');
       return json(await withTenant(ctx.auth!.tenantId, async (c) => {
         const existing = await c.query(
-          `SELECT month, employee_code, type, label FROM payroll_adjustments
+          `SELECT month, employee_code, kind, label FROM payroll_adjustments
            WHERE tenant_id=$1 AND id=$2`,
           [ctx.auth!.tenantId, ctx.params.id],
         );
@@ -522,7 +522,7 @@ export const payrollRoutes: Route[] = [
           action: 'PAYROLL_ADJUSTMENT_REMOVED',
           entity: 'PayrollAdjustment',
           entityId: ctx.params.id,
-          reason: `Removed ${existing.rows[0].type} '${existing.rows[0].label}'`,
+          reason: `Removed ${existing.rows[0].kind} '${existing.rows[0].label}'`,
           requestId: ctx.requestId,
         });
         return undefined;

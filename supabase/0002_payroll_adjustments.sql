@@ -8,7 +8,7 @@ create table if not exists skyhook.payroll_adjustments (
   tenant_id uuid not null references skyhook.tenants (id) on delete cascade,
   month text not null check (month ~ '^\d{4}-\d{2}$'),
   employee_code text not null,
-  type text not null check (type in ('pay', 'deduction')),
+  kind text not null check (kind in ('pay', 'deduction')),
   label text not null check (length(btrim(label)) between 1 and 120),
   amount_paise bigint not null check (amount_paise > 0),
   remarks text,

@@ -21,16 +21,18 @@ function slugify(input: string): string {
   return `${base}-${hex}`;
 }
 
-async function authenticate(tenantSlug: string, email: string, password: string) {
-  const tenant = await query('SELECT id FROM tenants WHERE slug = $1', [tenantSlug]);
-  const tenantRow = tenant.rows[0];
-  if (!tenantRow) throw Errors.unauthorized('Unknown tenant');
-  const tenantId = tenantRow.id as string;
+/** One generic message for every failure so callers cannot probe which emails exist. */
+const invalidCredentials = () => Errors.unauthorized('Invalid email or password');
 
+/** Password is verified by Supabase Auth; the tenant comes from the signed claims. */
+async function authenticate(tenantSlug: string | undefined, email: string, password: string) {
   const session = await signInWithPassword(email, password);
   const claims = (session.user.app_metadata ?? {}) as Record<string, unknown>;
-  if (claims.tenant_id !== tenantId) {
-    throw Errors.unauthorized('This account does not belong to the requested tenant');
+  const tenantId = typeof claims.tenant_id === 'string' ? claims.tenant_id : null;
+  if (!tenantId) throw invalidCredentials();
+  if (tenantSlug) {
+    const tenant = await query('SELECT id FROM tenants WHERE slug = $1', [tenantSlug]);
+    if (tenant.rows[0]?.id !== tenantId) throw invalidCredentials();
   }
 
   const result = await withTenantRead(tenantId, (c) => c.query(
@@ -38,7 +40,7 @@ async function authenticate(tenantSlug: string, email: string, password: string)
     [session.user.id],
   ));
   const user = result.rows[0];
-  if (!user || !user.is_active) throw Errors.unauthorized('Account is inactive');
+  if (!user || !user.is_active) throw invalidCredentials();
 
   return {
     token: session.access_token,
@@ -51,6 +53,8 @@ async function authenticate(tenantSlug: string, email: string, password: string)
 
 export const identityRoutes: Route[] = [
   {
+    // Public profile list used by the deployed sign-in screen to populate its
+    // account cards. Keep this while that screen is live.
     method: 'GET', path: '/auth/profiles', public: true,
     handler: async () => {
       const tenants = await query('SELECT id, slug FROM tenants ORDER BY created_at');
@@ -58,9 +62,10 @@ export const identityRoutes: Route[] = [
       for (const t of tenants.rows) {
         const users = await withTenantRead(t.id, (c) => c.query(
           `SELECT u.id, u.name, u.email, COALESCE(min(r.name::text),'manager') AS role
-           FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id AND ur.tenant_id=u.tenant_id
-           LEFT JOIN roles r ON r.id=ur.role_id
-           WHERE u.tenant_id=$1 AND u.is_active AND u.deleted_at IS NULL
+           FROM users u
+           LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+           LEFT JOIN roles r ON r.id = ur.role_id
+           WHERE u.tenant_id = $1 AND u.is_active AND u.deleted_at IS NULL
            GROUP BY u.id ORDER BY u.name`,
           [t.id],
         ));
@@ -74,8 +79,8 @@ export const identityRoutes: Route[] = [
     handler: async (_ctx, req) => {
       const b = await readJson(req);
       const result = await authenticate(
-        str(b.tenantSlug, 'tenantSlug'),
-        str(b.email, 'email'),
+        b.tenantSlug == null || b.tenantSlug === '' ? undefined : str(b.tenantSlug, 'tenantSlug'),
+        str(b.email, 'email').toLowerCase(),
         str(b.password, 'password'),
       );
       return json(result);
