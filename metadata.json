@@ -1,0 +1,6 @@
+{
+  "name": "Skyhook – Crane Business Management ERP",
+  "description": "Centralized enterprise ERP for crane operations, workforce, machinery, project-based overtime, attendance, payroll, EMI, and renewal compliance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
