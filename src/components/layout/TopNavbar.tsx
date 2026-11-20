@@ -108,7 +108,7 @@ const NotificationRow: React.FC<NotificationRowProps> = ({
         <AlertCircle className={`h-3.5 w-3.5 shrink-0 ${iconColor}`} />
         {label}
       </span>
-      <span className="flex items-center text-[10px] font-semibold text-brand-600">
+      <span className="flex items-center text-[10px] font-semibold text-accent-700">
         View <ExternalLink className="ml-1 h-3 w-3" />
       </span>
     </span>
@@ -177,7 +177,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface">
+    <header className="topbar-accent sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur-md">
       <div className="flex h-14 items-center justify-between gap-2 px-2">
         {/* Left: page context */}
         <div className="flex min-w-0 items-center gap-2">
@@ -239,7 +239,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             >
               <Bell className="h-4 w-4" />
               {totalUrgent > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-surface bg-brand-600 px-0.5 text-[8px] font-bold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-surface bg-accent-700 px-0.5 text-[8px] font-bold text-white">
                   {totalUrgent}
                 </span>
               )}
@@ -267,7 +267,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                 <div className="max-h-96 space-y-0.5 overflow-y-auto p-2">
                   {!isManager && emiAlerts.length > 0 && (
                     <NotificationRow
-                      iconColor="text-brand-600"
+                      iconColor="text-accent-600"
                       labelColor="text-brand-700"
                       label={`Machine EMI (${emiAlerts.length})`}
                       title={emiAlerts[0]?.title}
@@ -278,7 +278,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   )}
                   {srvAlerts.length > 0 && (
                     <NotificationRow
-                      iconColor="text-brand-600"
+                      iconColor="text-accent-600"
                       labelColor="text-ink-800"
                       label={`Machine Service (${srvAlerts.length})`}
                       title={srvAlerts[0]?.title}
@@ -289,7 +289,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   )}
                   {insAlerts.length > 0 && (
                     <NotificationRow
-                      iconColor="text-brand-600"
+                      iconColor="text-accent-600"
                       labelColor="text-brand-700"
                       label={`Insurance Renewals (${insAlerts.length})`}
                       title={insAlerts[0]?.title}
@@ -300,7 +300,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   )}
                   {pucAlerts.length > 0 && (
                     <NotificationRow
-                      iconColor="text-brand-600"
+                      iconColor="text-accent-600"
                       labelColor="text-ink-800"
                       label={`PUC Renewals (${pucAlerts.length})`}
                       title={pucAlerts[0]?.title}
@@ -311,7 +311,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   )}
                   {fitAlerts.length > 0 && (
                     <NotificationRow
-                      iconColor="text-brand-600"
+                      iconColor="text-accent-600"
                       labelColor="text-ink-800"
                       label={`Fitness Renewals (${fitAlerts.length})`}
                       title={fitAlerts[0]?.title}
@@ -322,7 +322,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   )}
                   {licAlerts.length > 0 && (
                     <NotificationRow
-                      iconColor="text-brand-600"
+                      iconColor="text-accent-600"
                       labelColor="text-brand-700"
                       label={`Operator Licenses (${licAlerts.length})`}
                       title={licAlerts[0]?.title}
@@ -344,7 +344,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   <button
                     type="button"
                     onClick={() => navigate('reminders')}
-                    className="text-xs font-semibold text-brand-600 hover:text-brand-700"
+                    className="text-xs font-semibold text-accent-700 hover:text-accent-800"
                   >
                     Open Compliance &amp; Renewals
                     <ArrowRight

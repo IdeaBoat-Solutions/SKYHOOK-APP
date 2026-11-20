@@ -1,0 +1,474 @@
+/* Skyhook landing showcases — all styles scoped to Stageshow stages.
+   The kit's CSS lives in @layer stageshow, so these unlayered rules win.
+   One ground (the page), one gutter, one window shadow, one accent. */
+
+/* Bridge the site's palette into the kit. Without this the kit falls back to
+   its own blue accent and system font, which would make the shots read as a
+   different product from the page around them. */
+.lp-hero-stage .ss-stage,
+.lp-tile-stage .ss-stage {
+  --ss-font: var(--font-sans);
+  --ss-accent-text: var(--color-accent-text);
+  --ss-success: var(--color-success-500);
+  --ss-success-soft: var(--color-success-50);
+  --ss-success-text: var(--color-success-700);
+  --ss-warning: var(--color-warning-500);
+  --ss-warning-soft: var(--color-warning-50);
+  --ss-warning-text: var(--color-warning-700);
+  --ss-danger: var(--color-danger-500);
+  --ss-danger-soft: var(--color-danger-50);
+  --ss-danger-text: var(--color-danger-700);
+}
+
+/* ---------------------------------------------------------------- *
+ * Hero: payroll window, corner-bleeding off the dark hero.
+ * ---------------------------------------------------------------- */
+
+.lp-hero-stage .ss-stage {
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.lp-hero-stage .hp-window {
+  position: absolute;
+  left: 38px;
+  top: 24px;
+  width: 690px;
+  height: 470px;
+  box-shadow: var(--ss-shadow-hero);
+  border-radius: 12px;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-window {
+  left: 22px;
+  top: 20px;
+  width: 460px;
+  height: 450px;
+}
+
+.hp-nav {
+  display: grid;
+  gap: 3px;
+  padding: 12px 9px;
+}
+
+.hp-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: var(--ss-icon);
+  flex: none;
+}
+
+.hp-nav__item[data-active] {
+  background: var(--ss-accent-soft);
+  color: var(--ss-accent-text);
+  font-weight: 600;
+}
+
+.hp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* The window bleeds past the stage; the body is sized to the visible crop
+     so the lock button and its result stay whole. */
+  flex: none;
+  /* Only the part inside the stage carries content; the window's right edge
+     is empty filler that bleeds away off the hero. */
+  width: 420px;
+  height: 322px;
+  padding: 15px 17px 14px;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-body {
+  width: 238px;
+  height: 306px;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-row > :nth-child(2) {
+  display: none;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-row {
+  grid-template-columns: minmax(0, 1fr) 78px;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-foot {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-label {
+  max-width: none;
+  width: 100%;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-amount {
+  font-size: 20px;
+}
+
+.hp-table {
+  flex: none;
+}
+
+.hp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px 84px;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--ss-line-faint);
+  color: var(--ss-text-strong);
+  font-size: 12px;
+}
+
+.hp-row--head {
+  min-height: 26px;
+  color: var(--ss-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.hp-row[data-real] {
+  font-weight: 600;
+}
+
+.hp-who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.hp-row > :nth-child(n + 2) {
+  justify-self: end;
+}
+
+.hp-rule {
+  margin-top: 10px;
+}
+
+.hp-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.hp-label {
+  max-width: 108px;
+  color: var(--ss-text-faint);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.hp-amount {
+  margin-right: auto;
+  color: var(--ss-text-strong);
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hp-toast {
+  position: absolute;
+  left: 58px;
+  bottom: 50px;
+  z-index: 3;
+}
+
+.lp-hero-stage .ss-stage[data-layout="compact"] .hp-toast {
+  left: 30px;
+  bottom: 38px;
+}
+
+/* ---------------------------------------------------------------- *
+ * Capability tiles
+ * ---------------------------------------------------------------- */
+
+.lp-tile-stage .ss-stage {
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.lp-tile-window {
+  position: absolute;
+  left: 30px;
+  top: 30px;
+  box-shadow: var(--ss-shadow-hero);
+  border-radius: 10px;
+  background: var(--ss-surface);
+}
+
+.lp-tile-window--wide {
+  width: 300px;
+  height: 386px;
+}
+
+.lp-tile-window--hero,
+.lp-tile-window--strip {
+  left: 32px;
+  top: 24px;
+  width: 656px;
+  height: 386px;
+}
+
+.lp-pad {
+  /* Fills the visible crop; the window's remainder bleeds off the stage. */
+  flex: none;
+  height: 250px;
+  padding: 15px 17px;
+  background: var(--ss-surface);
+}
+
+.lp-tile-toast {
+  position: absolute;
+  right: 46px;
+  bottom: 46px;
+  z-index: 3;
+}
+
+/* Tiled screens share one rhythm: a quiet list, one real row, a result. */
+
+.lp-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--ss-accent-soft);
+  color: var(--ss-accent-text);
+  flex: none;
+}
+
+.lp-projects {
+  display: grid;
+  gap: 2px;
+}
+
+.lp-projects .ss-row + .ss-row {
+  border-top: 1px solid var(--ss-line-faint);
+}
+
+.lp-projects__foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px 2px;
+  color: var(--ss-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lp-projects__foot strong {
+  color: var(--ss-text-strong);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+}
+
+.lp-projects__foot .ss-meter {
+  width: 96px;
+  flex: none;
+}
+
+.lp-record,
+.lp-machine,
+.lp-slip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lp-record__who,
+.lp-machine__head,
+.lp-slip__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lp-record__who > span:last-child,
+.lp-machine__head > span:last-child {
+  display: grid;
+  gap: 5px;
+}
+
+.lp-record__row,
+.lp-machine__row,
+.lp-slip__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+  color: var(--ss-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lp-record__checks {
+  display: flex;
+  gap: 5px;
+  color: var(--ss-success-text);
+}
+
+.lp-record .ss-button,
+.lp-machine .ss-button,
+.lp-slip .ss-button {
+  align-self: flex-start;
+}
+
+.lp-machine__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--ss-accent-soft);
+  color: var(--ss-accent-text);
+  flex: none;
+}
+
+.lp-slip__row > span:last-child {
+  color: var(--ss-text-strong);
+  opacity: 0.7;
+}
+
+.lp-slip__net {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ss-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lp-slip__net strong {
+  color: var(--ss-text-strong);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+
+.lp-timesheet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lp-ts-head,
+.lp-ts-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px 60px 108px;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--ss-line-faint);
+  font-size: 12px;
+  color: var(--ss-text-strong);
+}
+
+.lp-ts-head {
+  min-height: 26px;
+  color: var(--ss-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.lp-ts-row--real {
+  font-weight: 600;
+}
+
+.lp-ts-who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.lp-ts-row > :nth-child(n + 2) {
+  justify-self: end;
+}
+
+.lp-ts-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 6px 0;
+  color: var(--ss-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lp-ts-foot strong {
+  color: var(--ss-text-strong);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+  text-transform: none;
+}
+
+.lp-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lp-alert {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 140px 84px;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--ss-line-faint);
+  color: var(--ss-text-strong);
+  font-size: 12px;
+}
+
+.lp-alert--real {
+  font-weight: 600;
+}
+
+.lp-alert > :nth-child(n + 3) {
+  justify-self: end;
+}
+
+.lp-alert__icon {
+  display: grid;
+  place-items: center;
+  color: var(--ss-danger-text);
+}
+
+.lp-alerts .ss-button {
+  align-self: flex-end;
+  margin-top: 14px;
+}

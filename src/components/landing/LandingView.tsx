@@ -1,47 +1,6 @@
 import React, { useState } from 'react';
-import {
-  FolderKanban,
-  Users,
-  CalendarCheck,
-  Calculator,
-  Truck,
-  BellRing,
-  ArrowRight,
-  Check,
-} from 'lucide-react';
-
-const capabilities = [
-  {
-    icon: FolderKanban,
-    title: 'Projects & sites',
-    body: 'Client sites, contract values and the overtime rate that applies on each one.',
-  },
-  {
-    icon: Users,
-    title: 'Workforce master',
-    body: 'Operators and staff with their pay rates, licence dates and documents in one record.',
-  },
-  {
-    icon: CalendarCheck,
-    title: 'Attendance & overtime',
-    body: 'Daily presence, hours and day-wise overtime captured at the site, then approved.',
-  },
-  {
-    icon: Calculator,
-    title: 'Automated payroll',
-    body: 'Monthly runs built from approved attendance, with advances recovered and slips ready.',
-  },
-  {
-    icon: Truck,
-    title: 'Crane compliance',
-    body: 'Service, insurance, PUC and fitness dates tracked per machine before they lapse.',
-  },
-  {
-    icon: BellRing,
-    title: 'Red alerts & reports',
-    body: 'Overdue and due-today obligations surfaced first; Excel reports ready to download.',
-  },
-];
+import { ArrowRight, Check, Moon, Sun } from 'lucide-react';
+import { CapabilityShowcases, HeroShowcase } from './showcases';
 
 const questions = [
   {
@@ -70,61 +29,6 @@ const questions = [
   },
 ];
 
-const rupees = (value: number) =>
-  '\u20B9' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(value);
-
-/** A working calculation using the same rules as the payroll module. */
-const PayrollArtifact: React.FC = () => {
-  const [days, setDays] = useState(24);
-  const [rate, setRate] = useState(900);
-  const [otHours, setOtHours] = useState(4);
-  const [otRate, setOtRate] = useState(150);
-  const [advance, setAdvance] = useState(2500);
-
-  const gross = days * rate + otHours * otRate;
-  const net = gross - advance;
-
-  const fields = [
-    { label: 'Payable days', value: days, set: setDays, max: 31 },
-    { label: 'Day rate', value: rate, set: setRate, max: 100000 },
-    { label: 'OT hours', value: otHours, set: setOtHours, max: 200 },
-    { label: 'OT rate / hr', value: otRate, set: setOtRate, max: 10000 },
-    { label: 'Advance', value: advance, set: setAdvance, max: 1000000 },
-  ];
-
-  return (
-    <div className="lp-calc" aria-label="Live payroll calculation">
-      <div className="lp-calc__head">
-        <span>Live calculation</span>
-        <span>October 2026</span>
-      </div>
-      <div className="lp-calc__fields">
-        {fields.map((field) => (
-          <label className="lp-field" key={field.label}>
-            <span>{field.label}</span>
-            <input
-              type="number"
-              min={0}
-              max={field.max}
-              value={field.value}
-              onChange={(event) =>
-                field.set(Math.min(field.max, Math.max(0, Number(event.target.value) || 0)))
-              }
-            />
-          </label>
-        ))}
-      </div>
-      <div className="lp-calc__result">
-        <span>Net payable</span>
-        <strong>{rupees(net)}</strong>
-        <p>
-          {days} days at {rupees(rate)} plus {otHours} hours at {rupees(otRate)}, less {rupees(advance)} advance
-        </p>
-      </div>
-    </div>
-  );
-};
-
 interface LandingViewProps {
   onEnter: () => void;
   onRegister?: () => void;
@@ -132,24 +36,49 @@ interface LandingViewProps {
 
 /** Public landing page — static, token-matched, no motion. Product explained in one screen. */
 export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister }) => {
+  const [dark, setDark] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('skyhook-landing-theme') === 'dark';
+  });
+
+  const toggleTheme = () => {
+    setDark((was) => {
+      window.localStorage.setItem('skyhook-landing-theme', was ? 'light' : 'dark');
+      return !was;
+    });
+  };
+
   return (
-    <div className="landing">
+    <div className={`landing${dark ? ' landing--dark' : ''}`}>
       <a className="landing-skip visually-hidden" href="#landing-main">
         Skip to main content
       </a>
 
       <header className="landing-header">
         <nav className="landing-nav" aria-label="Primary">
-          <div className="landing-brand">
-            <span className="landing-brand__name">SKYHOOK</span>
+          <a className="landing-brand" href="#landing-main">
+            <span className="landing-brand__mark" aria-hidden="true">S</span>
+            <span className="landing-brand__name">Skyhook</span>
             <span className="landing-brand__tag">ERP</span>
-            <span className="landing-brand__divider" aria-hidden="true" />
-            <span className="landing-brand__tagline">Elevating Crane Operations.</span>
-          </div>
+          </a>
+          <nav className="landing-nav__links" aria-label="Sections">
+            <a href="#capabilities">What it does</a>
+            <a href="#flow">The flow</a>
+            <a href="#roles">Roles</a>
+            <a href="#faq">FAQ</a>
+          </nav>
           <div className="landing-nav__actions">
-            <a className="landing-link" href="#capabilities">What it does</a>
-            <button type="button" className="landing-btn landing-btn--light" onClick={onEnter}>
-              Sign in
+            <button
+              type="button"
+              className="landing-theme-toggle"
+              onClick={toggleTheme}
+              aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={dark ? 'Light theme' : 'Dark theme'}
+            >
+              {dark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+            </button>
+            <button type="button" className="landing-btn landing-btn--accent" onClick={onEnter}>
+              Open the ERP
             </button>
           </div>
         </nav>
@@ -182,8 +111,8 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister })
                 )}
               </div>
             </div>
-            <div className="landing-hero__artifact">
-              <PayrollArtifact />
+            <div className="landing-hero__artifact" aria-hidden="true">
+              <HeroShowcase />
             </div>
           </div>
         </section>
@@ -193,18 +122,12 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister })
             <h2 id="capabilities-title" className="landing-section__title">Six jobs, one place to do them.</h2>
             <p className="landing-section__sub">Thirteen connected modules. Two roles. One source of truth.</p>
           </div>
-          <ul className="landing-feature-grid">
-            {capabilities.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="landing-feature">
-                <Icon className="landing-feature__icon" aria-hidden="true" />
-                <h3 className="landing-feature__title">{title}</h3>
-                <p className="landing-feature__body">{body}</p>
-              </li>
-            ))}
-          </ul>
+          <div className="landing-show-grid">
+            <CapabilityShowcases />
+          </div>
         </section>
 
-        <section className="landing-section landing-section--muted" aria-labelledby="flow-title">
+        <section id="flow" className="landing-section landing-section--muted" aria-labelledby="flow-title">
           <div className="landing-section__head">
             <h2 id="flow-title" className="landing-section__title">The same close, every month.</h2>
             <p className="landing-section__sub">The same flow every month, without the spreadsheets.</p>
@@ -234,7 +157,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister })
           </ol>
         </section>
 
-        <section className="landing-section landing-section--muted" aria-labelledby="roles-title">
+        <section id="roles" className="landing-section landing-section--muted" aria-labelledby="roles-title">
           <div className="landing-section__head">
             <h2 id="roles-title" className="landing-section__title">Built around who signs off.</h2>
             <p className="landing-section__sub">Two roles, clearly scoped. Everyone sees what they need and nothing they do not.</p>
@@ -263,7 +186,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister })
           </div>
         </section>
 
-        <section className="landing-section" aria-labelledby="faq-title">
+        <section id="faq" className="landing-section" aria-labelledby="faq-title">
           <div className="landing-section__head">
             <h2 id="faq-title" className="landing-section__title">The questions that come up first.</h2>
           </div>
@@ -287,11 +210,6 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister })
           </button>
         </section>
       </main>
-
-      <footer className="landing-footer">
-        <span>SKYHOOK ERP · Crane Business Management System</span>
-        <span>Internal enterprise system · Asia/Kolkata</span>
-      </footer>
     </div>
   );
 };

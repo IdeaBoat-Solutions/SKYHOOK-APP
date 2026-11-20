@@ -25,17 +25,39 @@
   --color-ink-300: #d4d4d8;
   --color-ink-200: #e4e4e7;
 
-  /* Primary: neutral (shadcn default). Red is reserved for destructive/critical only. */
-  --color-brand-50: #f4f4f5;
-  --color-brand-100: #e4e4e7;
-  --color-brand-200: #d4d4d8;
-  --color-brand-300: #a1a1aa;
-  --color-brand-400: #71717a;
-  --color-brand-500: #52525b;
-  --color-brand-600: #27272a;
-  --color-brand-700: #18181b;
-  --color-brand-800: #09090b;
-  --color-brand-900: #09090b;
+  /* The one accent: signal amber, drawn from crane/hazard markings.
+     Neutrals do the structure; amber is spent only on the action, the active
+     state and the brand moment. Every surface in the product reads from this
+     ramp — no second hue. */
+  --color-accent-50: #fffbf2;
+  --color-accent-100: #fdf1d9;
+  --color-accent-200: #fae0ac;
+  --color-accent-300: #f2c471;
+  --color-accent-400: #e3a23c;
+  --color-accent-500: #cf8a25;
+  --color-accent-600: #b47a1e;
+  --color-accent-700: #955f17;
+  --color-accent-800: #724713;
+  --color-accent-900: #4f320e;
+
+  /* Semantic aliases — use these, not the raw step, in components. */
+  --color-accent: var(--color-accent-600);
+  --color-accent-soft: var(--color-accent-100);
+  --color-accent-text: var(--color-accent-700);
+
+  /* Legacy brand ramp: the ERP's near-monochrome primary. Kept as aliases to
+     the ink scale so every existing utility keeps its exact former colour;
+     amber is reserved for the single accent, never a second primary. */
+  --color-brand-50: var(--color-surface-muted);
+  --color-brand-100: var(--color-ink-200);
+  --color-brand-200: var(--color-ink-300);
+  --color-brand-300: var(--color-ink-400);
+  --color-brand-400: var(--color-ink-500);
+  --color-brand-500: var(--color-ink-600);
+  --color-brand-600: var(--color-ink-800);
+  --color-brand-700: var(--color-ink-900);
+  --color-brand-800: var(--color-ink-950);
+  --color-brand-900: var(--color-ink-950);
   --color-brand-950: #000000;
 
   /* Status colors (used sparingly) */
@@ -105,8 +127,8 @@
   }
 
   ::selection {
-    background: var(--color-ink-200, #e4e4e7);
-    color: var(--color-ink-900);
+    background: var(--color-accent-200);
+    color: var(--color-ink-950);
   }
 }
 
@@ -1053,4 +1075,19 @@
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
   background: rgb(255 255 255 / 0.24);
   background-clip: content-box;
+}
+
+/* Top bar: a short accent tick anchors the neutral header to the brand. */
+.topbar-accent {
+  position: relative;
+}
+
+.topbar-accent::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 4rem;
+  height: 2px;
+  background: var(--color-accent);
 }

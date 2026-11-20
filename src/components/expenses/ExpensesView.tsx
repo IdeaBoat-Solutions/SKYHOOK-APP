@@ -116,7 +116,7 @@ export const ExpensesView: React.FC = () => {
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-[#419bc9] hover:bg-[#3488b3] text-white font-bold text-xs transition-colors shadow-sm flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-700 text-white font-bold text-xs transition-colors shadow-sm flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>Add Expense Voucher</span>

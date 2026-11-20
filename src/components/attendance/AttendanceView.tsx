@@ -245,7 +245,7 @@ export const AttendanceView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#419bc9] bg-[#419bc9]/10 px-2 py-0.5 rounded border border-[#419bc9]/20">
+            <span className="text-xs font-bold uppercase tracking-wider text-accent bg-accent/10 px-2 py-0.5 rounded border border-accent/20">
               Workforce Operations
             </span>
             <span className="text-xs text-zinc-500 font-medium">Standard 10h Daily Shift</span>
@@ -262,9 +262,9 @@ export const AttendanceView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => handleOpenOtModal()}
-            className="px-4 py-2.5 rounded-xl bg-black hover:bg-zinc-800 text-[#419bc9] font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-black hover:bg-zinc-800 text-accent font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
           >
-            <Clock className="w-4 h-4 text-[#419bc9]" />
+            <Clock className="w-4 h-4 text-accent" />
             <span>+ Add Day-Wise Overtime</span>
           </button>
 
@@ -290,7 +290,7 @@ export const AttendanceView: React.FC = () => {
       {quickFeedback && (
         <div className="p-3 rounded-xl bg-black text-white text-xs font-bold flex items-center justify-between shadow-lg border border-zinc-800 animate-fadeIn">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-[#419bc9]" />
+            <CheckCircle2 className="w-4 h-4 text-accent" />
             <span>{quickFeedback}</span>
           </div>
           <button onClick={() => setQuickFeedback(null)} className="text-zinc-400 hover:text-white">
@@ -306,7 +306,7 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setActiveTab('daily')}
             className={`py-3.5 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'daily'
-                ? 'border-[#419bc9] text-black'
+                ? 'border-accent text-black'
                 : 'border-transparent text-zinc-500 hover:text-black'
             }`}
           >
@@ -318,7 +318,7 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setActiveTab('monthly')}
             className={`py-3.5 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'monthly'
-                ? 'border-[#419bc9] text-black'
+                ? 'border-accent text-black'
                 : 'border-transparent text-zinc-500 hover:text-black'
             }`}
           >
@@ -330,13 +330,13 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setActiveTab('pending')}
             className={`py-3.5 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'pending'
-                ? 'border-[#419bc9] text-black'
+                ? 'border-accent text-black'
                 : 'border-transparent text-zinc-500 hover:text-black'
             }`}
           >
             <span>Pending Approvals</span>
             {pendingList.length > 0 && (
-              <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-[#419bc9] text-white">
+              <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-accent text-white">
                 {pendingList.length}
               </span>
             )}
@@ -361,7 +361,7 @@ export const AttendanceView: React.FC = () => {
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-black font-mono">
-                  <Calendar className="w-3.5 h-3.5 text-[#419bc9]" />
+                  <Calendar className="w-3.5 h-3.5 text-accent" />
                   <input
                     type="date"
                     value={selectedDate}
@@ -387,7 +387,7 @@ export const AttendanceView: React.FC = () => {
                 onClick={handleSetToday}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border ${
                   selectedDate === currentDate
-                    ? 'bg-black text-[#419bc9] border-zinc-800'
+                    ? 'bg-black text-accent border-zinc-800'
                     : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border-zinc-200'
                 }`}
               >
@@ -400,7 +400,7 @@ export const AttendanceView: React.FC = () => {
                 <select
                   value={selectedProject}
                   onChange={(e) => setSelectedProject(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl font-medium focus:ring-2 focus:ring-[#419bc9]"
+                  className="px-2.5 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl font-medium focus:ring-2 focus:ring-accent"
                 >
                   <option value="all">All Projects</option>
                   {projects.map((p) => (
@@ -420,7 +420,7 @@ export const AttendanceView: React.FC = () => {
                 placeholder="Search operator..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#419bc9]"
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
@@ -459,12 +459,12 @@ export const AttendanceView: React.FC = () => {
 
             <div className="bg-white p-3.5 rounded-xl border border-zinc-200 shadow-xs flex items-center justify-between">
               <div>
-                <span className="text-[11px] font-bold text-[#419bc9] uppercase">Today's OT Hours</span>
+                <span className="text-[11px] font-bold text-accent uppercase">Today's OT Hours</span>
                 <p className="text-lg font-black text-black font-mono">
                   {totalDayOtHours}h <span className="text-xs text-zinc-400 font-normal">({formatINR(totalDayOtPay)})</span>
                 </p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-[#419bc9]/15 text-[#419bc9] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center">
                 <Clock className="w-4 h-4" />
               </div>
             </div>
@@ -477,7 +477,7 @@ export const AttendanceView: React.FC = () => {
                 <h3 className="font-extrabold text-sm text-black">
                   Daily Operator Attendance & Day-Wise Overtime Entry
                 </h3>
-                <span className="text-xs font-bold text-[#419bc9] bg-white px-2.5 py-0.5 rounded-full border border-zinc-200">
+                <span className="text-xs font-bold text-accent bg-white px-2.5 py-0.5 rounded-full border border-zinc-200">
                   {formatDateDDMMYYYY(selectedDate)}
                 </span>
               </div>
@@ -516,7 +516,7 @@ export const AttendanceView: React.FC = () => {
                         {/* Operator Info */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-zinc-800 text-[#419bc9] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs border border-zinc-700">
+                            <div className="w-9 h-9 rounded-full bg-zinc-800 text-accent flex items-center justify-center font-bold text-xs shrink-0 shadow-xs border border-zinc-700">
                               {op.fullName.charAt(0)}
                             </div>
                             <div>
@@ -541,7 +541,7 @@ export const AttendanceView: React.FC = () => {
                           <div className="text-[11px] text-zinc-500 font-mono">
                             Crane: <strong className="text-zinc-700">{op.currentMachineId || 'CR-001'}</strong>
                           </div>
-                          <div className="text-[10px] text-[#419bc9] font-bold">
+                          <div className="text-[10px] text-accent font-bold">
                             OT Rate: ₹{appliedRate}/hr
                           </div>
                         </td>
@@ -629,7 +629,7 @@ export const AttendanceView: React.FC = () => {
                                   step="0.5"
                                   value={otHoursCurrent}
                                   onChange={(e) => handleInlineOtChange(op.id, parseFloat(e.target.value) || 0)}
-                                  className="w-16 px-2 py-1 text-center text-xs font-mono font-bold bg-zinc-50 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#419bc9]"
+                                  className="w-16 px-2 py-1 text-center text-xs font-mono font-bold bg-zinc-50 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                                 />
                                 <span className="absolute right-1.5 top-1 text-[10px] text-zinc-400 font-mono pointer-events-none">
                                   h
@@ -655,7 +655,7 @@ export const AttendanceView: React.FC = () => {
                                   onClick={() => handleInlineOtChange(op.id, h)}
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono transition-colors ${
                                     otHoursCurrent === h
-                                      ? 'bg-black text-[#419bc9]'
+                                      ? 'bg-black text-accent'
                                       : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                                   }`}
                                 >
@@ -707,7 +707,7 @@ export const AttendanceView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenOtModal(op.id)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-black hover:text-[#419bc9] transition-colors border border-zinc-200 inline-flex items-center gap-1"
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-black hover:text-accent transition-colors border border-zinc-200 inline-flex items-center gap-1"
                           >
                             <Clock className="w-3.5 h-3.5" />
                             <span>Add OT</span>
@@ -807,7 +807,7 @@ export const AttendanceView: React.FC = () => {
                             ) : (
                               <button
                                 onClick={() => approveAttendanceRecord(rec.id)}
-                                className="px-2 py-1 bg-black text-[#419bc9] rounded font-bold text-[10px]"
+                                className="px-2 py-1 bg-black text-accent rounded font-bold text-[10px]"
                               >
                                 Approve
                               </button>
@@ -871,8 +871,8 @@ export const AttendanceView: React.FC = () => {
                       {d.slice(-2)}
                     </th>
                   ))}
-                  <th className="px-3 py-2.5 bg-zinc-900 text-[#419bc9]">Payable</th>
-                  <th className="px-3 py-2.5 bg-zinc-900 text-[#419bc9]">OT (Hrs)</th>
+                  <th className="px-3 py-2.5 bg-zinc-900 text-accent">Payable</th>
+                  <th className="px-3 py-2.5 bg-zinc-900 text-accent">OT (Hrs)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -956,7 +956,7 @@ export const AttendanceView: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <strong className="text-black text-sm">{op?.fullName}</strong>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#419bc9]/15 text-[#419bc9]">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/15 text-accent">
                           {rec.date}
                         </span>
                       </div>
@@ -984,7 +984,7 @@ export const AttendanceView: React.FC = () => {
                           generatePayrollForMonth(rec.date.slice(0, 7));
                           notifyFeedback(`Approved attendance log for ${op?.fullName}.`);
                         }}
-                        className="px-4 py-1.5 rounded-xl bg-black hover:bg-zinc-800 text-[#419bc9] text-xs font-bold transition-colors shadow-xs"
+                        className="px-4 py-1.5 rounded-xl bg-black hover:bg-zinc-800 text-accent text-xs font-bold transition-colors shadow-xs"
                       >
                         Approve Shift
                       </button>
@@ -1009,7 +1009,7 @@ export const AttendanceView: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl border border-zinc-300 w-full max-w-lg overflow-hidden animate-scaleIn">
             <div className="flex items-center justify-between px-6 py-4 bg-black text-white">
               <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-[#419bc9]" />
+                <Clock className="w-5 h-5 text-accent" />
                 <div>
                   <h3 className="font-extrabold text-sm tracking-tight">Add Operator Day-Wise Overtime</h3>
                   <p className="text-[11px] text-zinc-400">Recorded hours immediately reflect in accurate monthly payslips</p>
@@ -1041,7 +1041,7 @@ export const AttendanceView: React.FC = () => {
                     }
                   }}
                   required
-                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-[#419bc9] focus:outline-none"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-accent focus:outline-none"
                 >
                   {activeOperators.map((op) => (
                     <option key={op.id} value={op.id}>
@@ -1060,7 +1060,7 @@ export const AttendanceView: React.FC = () => {
                     value={otDate}
                     onChange={(e) => setOtDate(e.target.value)}
                     required
-                    className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-[#419bc9]"
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-accent"
                   />
                 </div>
 
@@ -1076,7 +1076,7 @@ export const AttendanceView: React.FC = () => {
                       onChange={(e) => setOtHours(parseFloat(e.target.value) || 0)}
                       required
                       placeholder="e.g. 2.5"
-                      className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-mono font-bold focus:ring-2 focus:ring-[#419bc9]"
+                      className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-mono font-bold focus:ring-2 focus:ring-accent"
                     />
                     <span className="absolute right-3 top-2 font-mono text-zinc-400">Hrs</span>
                   </div>
@@ -1093,7 +1093,7 @@ export const AttendanceView: React.FC = () => {
                     onClick={() => setOtHours(h)}
                     className={`px-2 py-0.5 rounded-lg text-xs font-bold font-mono transition-colors ${
                       otHours === h
-                        ? 'bg-black text-[#419bc9]'
+                        ? 'bg-black text-accent'
                         : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                     }`}
                   >
@@ -1115,7 +1115,7 @@ export const AttendanceView: React.FC = () => {
                       if (prj) setOtRate(prj.overtimeRate);
                     }}
                     required
-                    className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-[#419bc9]"
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-accent"
                   >
                     {projects.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1136,7 +1136,7 @@ export const AttendanceView: React.FC = () => {
                       value={otRate}
                       onChange={(e) => setOtRate(parseInt(e.target.value, 10) || 0)}
                       required
-                      className="w-full pl-7 pr-3 py-2 border border-zinc-300 rounded-xl font-mono font-bold focus:ring-2 focus:ring-[#419bc9]"
+                      className="w-full pl-7 pr-3 py-2 border border-zinc-300 rounded-xl font-mono font-bold focus:ring-2 focus:ring-accent"
                     />
                   </div>
                 </div>
@@ -1166,7 +1166,7 @@ export const AttendanceView: React.FC = () => {
                   placeholder="e.g. Night girder erection overtime, extended beam placement"
                   value={otRemarks}
                   onChange={(e) => setOtRemarks(e.target.value)}
-                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-medium focus:ring-2 focus:ring-[#419bc9]"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-medium focus:ring-2 focus:ring-accent"
                 />
               </div>
 
@@ -1183,7 +1183,7 @@ export const AttendanceView: React.FC = () => {
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-black hover:bg-zinc-800 text-white font-bold transition-colors shadow-xs flex items-center gap-1.5"
                 >
-                  <Clock className="w-4 h-4 text-[#419bc9]" />
+                  <Clock className="w-4 h-4 text-accent" />
                   <span>Save Overtime & Update Payslip</span>
                 </button>
               </div>
@@ -1198,7 +1198,7 @@ export const AttendanceView: React.FC = () => {
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 bg-black text-white">
               <div className="flex items-center gap-2">
-                <CalendarCheck className="w-5 h-5 text-[#419bc9]" />
+                <CalendarCheck className="w-5 h-5 text-accent" />
                 <h3 className="font-extrabold text-sm">Detailed Daily Shift Log</h3>
               </div>
               <button
@@ -1308,7 +1308,7 @@ export const AttendanceView: React.FC = () => {
               </div>
 
               {/* Real-time Calculation Breakdown Box */}
-              <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-sky-950 space-y-1 font-mono">
+              <div className="p-3 rounded-lg bg-accent-50 border border-accent-200 text-ink-950 space-y-1 font-mono">
                 <div className="flex justify-between">
                   <span>Net Working Duration:</span>
                   <strong>{durationPreview.netWorkingHours} Hours</strong>
@@ -1317,11 +1317,11 @@ export const AttendanceView: React.FC = () => {
                   <span>Standard Shift Allowance:</span>
                   <span>10 Hours</span>
                 </div>
-                <div className="flex justify-between text-blue-700 font-bold">
+                <div className="flex justify-between text-accent-700 font-bold">
                   <span>Calculated Overtime:</span>
                   <span>{durationPreview.potentialOtHours} Hours</span>
                 </div>
-                <div className="flex justify-between text-emerald-800 font-bold border-t border-sky-200 pt-1">
+                <div className="flex justify-between text-success-700 font-bold border-t border-accent-200 pt-1">
                   <span>OT Earnings (@ ₹{detailedOtRate}/hr):</span>
                   <span>{formatINR(otEarnings)}</span>
                 </div>
