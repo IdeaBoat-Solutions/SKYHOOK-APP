@@ -17,4 +17,5 @@ graphify-out/
 .agents/tools/tools.json
 .playwright-mcp/
 docs/
-stageshow/
+/stageshow/
+.vercel
