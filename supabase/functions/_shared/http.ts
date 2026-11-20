@@ -9,7 +9,7 @@ export function corsHeaders(): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, content-type, x-request-id',
+    'Access-Control-Allow-Headers': 'authorization, content-type, x-request-id, idempotency-key',
     'Access-Control-Max-Age': '86400',
   };
 }
