@@ -43,13 +43,9 @@ function bool(v: unknown, field: string): boolean {
   return v;
 }
 
-const ID_PARAM = (ctx: RouteCtx): string => {
-  const p = ctx.url.pathname;
-  const marker = '/functions/v1/api';
-  const i = p.indexOf(marker);
-  const rel = (i >= 0 ? p.slice(i + marker.length) : p).replace(/\/+$/, '');
-  return rel.split('/').filter(Boolean)[1] ?? '';
-};
+/** Use the params the router already parsed from `:name` segments. This is
+ * independent of how the Supabase gateway prefixes the function path. */
+const ID_PARAM = (ctx: RouteCtx): string => ctx.params.id ?? ctx.params.role ?? '';
 
 function permissionsForRole(role: 'owner' | 'manager'): string[] {
   return role === 'owner' ? [...ALL_PERMISSIONS] : [...MANAGER_PERMISSIONS];
@@ -174,7 +170,17 @@ export const usersRoutes: Route[] = [
       requirePermission(auth, 'user:read');
       return withTenantRead(auth.tenantId, async (c) => {
         const r = await c.query('SELECT id, name, label FROM roles WHERE tenant_id=$1 ORDER BY name', [auth.tenantId]);
-        return json({ items: r.rows });
+        const items: any[] = [];
+        for (const role of r.rows) {
+          const p = await c.query(
+            `SELECT p.code FROM permissions p
+             JOIN role_permissions rp ON rp.permission_id = p.id
+             WHERE rp.role_id = $1 ORDER BY p.code`,
+            [role.id],
+          );
+          items.push({ ...role, permissions: p.rows.map((row: any) => row.code) });
+        }
+        return json({ items });
       });
     },
   },
@@ -186,6 +192,77 @@ export const usersRoutes: Route[] = [
       return withTenantRead(auth.tenantId, async (c) => {
         const r = await c.query('SELECT id, code, description FROM permissions ORDER BY code');
         return json({ items: r.rows });
+      });
+    },
+  },
+  {
+    /**
+     * Owner-only permission bifurcation. The permission sets are stored in
+     * `role_permissions`, so the DB is the single source of truth; after a
+     * change every affected user's Supabase Auth claims are refreshed so the
+     * next access token carries the new permissions.
+     *
+     * The owner role is deliberately not editable — there must always be an
+     * account able to grant access back. Managers can never be given the
+     * permissions that let them create users or assign roles.
+     */
+    method: 'PUT', path: '/roles/:role/permissions',
+    handler: async (ctx: RouteCtx, req: Request) => {
+      const auth = ctx.auth!;
+      requirePermission(auth, 'role:write');
+      const roleName = ID_PARAM(ctx);
+      if (roleName !== 'manager') throw Errors.badRequest('Only the manager role can be edited');
+
+      const b = await readJson(req);
+      if (!Array.isArray(b.permissions) || !b.permissions.every((p: unknown) => typeof p === 'string')) {
+        throw Errors.validation([{ field: 'permissions', message: 'Must be an array of permission codes' }]);
+      }
+      const requested = [...new Set(b.permissions as string[])];
+      const unknown = requested.filter((p) => !(ALL_PERMISSIONS as readonly string[]).includes(p));
+      if (unknown.length) throw Errors.validation([{ field: 'permissions', message: `Unknown permissions: ${unknown.join(', ')}` }]);
+      const RESERVED = ['role:write', 'user:write'];
+      const blocked = requested.filter((p) => RESERVED.includes(p));
+      if (blocked.length) throw Errors.forbidden(`Cannot grant access-management permissions: ${blocked.join(', ')}`);
+
+      return withTenant(auth.tenantId, async (c) => {
+        const role = await c.query('SELECT id FROM roles WHERE tenant_id=$1 AND name=$2', [auth.tenantId, roleName]);
+        if (!role.rows[0]) throw Errors.notFound('Role');
+        const roleId = role.rows[0].id as string;
+
+        await c.query('DELETE FROM role_permissions WHERE role_id=$1', [roleId]);
+        for (const code of requested) {
+          await c.query(
+            `INSERT INTO role_permissions (role_id, permission_id)
+             SELECT $1, id FROM permissions WHERE code=$2
+             ON CONFLICT DO NOTHING`,
+            [roleId, code],
+          );
+        }
+
+        const affected = await c.query(
+          `SELECT u.id, u.name, u.email, u.auth_user_id
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id AND ur.tenant_id = u.tenant_id
+           WHERE u.tenant_id = $1 AND ur.role_id = $2 AND u.deleted_at IS NULL`,
+          [auth.tenantId, roleId],
+        );
+        for (const u of affected.rows) {
+          if (u.auth_user_id) {
+            await updateAuthUserClaims(
+              u.auth_user_id as string,
+              await loadClaims(c, auth.tenantId, u.id, u.name, u.email),
+            );
+          }
+        }
+
+        await writeAudit(c, auth, {
+          action: 'ROLE_PERMISSIONS_UPDATED',
+          entity: 'Role',
+          entityId: roleId,
+          updatedValue: requested,
+          requestId: ctx.requestId,
+        });
+        return json({ role: roleName, permissions: requested });
       });
     },
   },

@@ -206,6 +206,15 @@ export interface ProjectOtBreakdown {
   amount: number;
 }
 
+/** A user-entered pay or deduction line applied to one payroll entry. */
+export interface PayrollAdjustment {
+  id: string;
+  label: string;
+  amount: number;
+  remarks?: string;
+  createdAt: string;
+}
+
 export interface PayrollEntry {
   id: string;
   payrollRunId: string;
@@ -238,6 +247,10 @@ export interface PayrollEntry {
   otherDeductions: number;
   totalDeductions: number;
   netSalary: number;
+
+  /** Custom, user-entered pay and deduction lines (persisted locally). */
+  customPay?: PayrollAdjustment[];
+  customDeductions?: PayrollAdjustment[];
 
   paymentStatus: 'unpaid' | 'paid';
   paymentDate?: string;
@@ -329,10 +342,14 @@ export interface MachineAsset {
 
   // Servicing Details
   lastServiceDate: string;
-  serviceFrequencyValue: number; // e.g. 60
-  serviceFrequencyUnit: 'days' | 'months';
+  serviceFrequencyValue: number; // e.g. 60 days, 2 months or 500 hours
+  serviceFrequencyUnit: 'days' | 'months' | 'hours';
   nextServiceDueDate: string;
   serviceReminderLeadDays: number; // default 7 or 15
+  /** Cumulative operating hours recorded at the last service (hours-based servicing). */
+  lastServiceHours?: number;
+  /** How many operating hours before the service reminder fires. */
+  serviceReminderLeadHours?: number;
 
   // Insurance Details
   insuranceProvider: string;
@@ -448,6 +465,9 @@ export interface ReminderAlertItem {
   status: 'overdue' | 'due_today' | 'upcoming';
   urgencyLabel: string;
   actionLabel: string;
+  /** When a due point is measured in operating hours rather than calendar days. */
+  metricUnit?: 'days' | 'hours';
+  hoursRemaining?: number;
 }
 
 export interface InAppNotification {
@@ -459,5 +479,29 @@ export interface InAppNotification {
   dueDate: string;
   priority: 'critical' | 'high' | 'medium' | 'low';
   read: boolean;
+  createdAt: string;
+}
+
+/** The five private, owner-only record categories in the Personal vault. */
+export type PersonalRecordKind =
+  | 'home_loan'
+  | 'family_insurance'
+  | 'term_plan'
+  | 'auto_loan'
+  | 'auto_insurance';
+
+export interface PersonalRecord {
+  id: string;
+  kind: PersonalRecordKind;
+  title: string;
+  provider: string;
+  referenceNumber: string;
+  /** Outstanding loan amount or sum assured, in rupees. */
+  amount: number;
+  /** Monthly EMI or premium, in rupees. */
+  periodicAmount: number;
+  startDate: string;
+  dueDate: string;
+  notes?: string;
   createdAt: string;
 }

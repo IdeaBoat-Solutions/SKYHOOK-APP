@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   Users,
+  ContactRound,
   CalendarCheck,
   Cpu,
   Calculator,
@@ -11,6 +12,7 @@ import {
   BellRing,
   FileSpreadsheet,
   Settings,
+  LockKeyhole,
   AlertTriangle,
   FileText,
   LogOut,
@@ -24,6 +26,7 @@ export type NavTab =
   | 'dashboard'
   | 'projects'
   | 'employees'
+  | 'operator_directory'
   | 'attendance'
   | 'machine_working'
   | 'payroll'
@@ -33,7 +36,8 @@ export type NavTab =
   | 'emi'
   | 'reminders'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'personal';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -75,6 +79,7 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
     label: 'Workforce',
     items: [
       { id: 'employees', label: 'Employee & Operators', icon: Users, badge: 'license' },
+      { id: 'operator_directory', label: 'Operator Directory', icon: ContactRound },
       { id: 'attendance', label: 'Operator Attendance', icon: CalendarCheck, badge: 'attendance' },
       { id: 'payroll', label: 'Automated Payroll', icon: Calculator },
       { id: 'advances', label: 'Salary Advances', icon: ReceiptIndianRupee },
@@ -104,7 +109,10 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
   },
   {
     label: 'System',
-    items: [{ id: 'settings', label: 'Company Settings', icon: Settings }],
+    items: [
+      { id: 'settings', label: 'Company Settings', icon: Settings },
+      { id: 'personal', label: 'Personal Vault', icon: LockKeyhole, ownerOnly: true },
+    ],
   },
 ];
 

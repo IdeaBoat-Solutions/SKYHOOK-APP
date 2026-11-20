@@ -306,8 +306,11 @@ export function evaluateReminderStatus(
 export function calculateNextServiceDate(
   lastServiceDateStr: string,
   frequencyValue: number,
-  frequencyUnit: 'days' | 'months'
+  frequencyUnit: 'days' | 'months' | 'hours'
 ): string {
+  // Hours-based servicing has no calendar due date — the due point is an
+  // operating-hour reading, handled by evaluateServiceHours() below.
+  if (frequencyUnit === 'hours') return '';
   const d = new Date(lastServiceDateStr);
   if (isNaN(d.getTime())) return lastServiceDateStr;
 
@@ -318,6 +321,100 @@ export function calculateNextServiceDate(
   }
 
   return d.toISOString().split('T')[0];
+}
+
+/**
+ * Service sections show intervals in months instead of raw day counts.
+ * 365 days -> "12 months", 180 -> "6 months", 60 -> "2 months".
+ * Sub-month intervals stay in days so the label never reads "0 months".
+ */
+export function daysToMonthsLabel(days: number): string {
+  const value = Number(days) || 0;
+  const months = Math.round(value / 30);
+  if (months >= 1) return `${months} month${months === 1 ? '' : 's'}`;
+  return `${value} day${value === 1 ? '' : 's'}`;
+}
+
+/** Consistent interval label for every service surface (assets + reminders). */
+export function formatServiceInterval(
+  value: number,
+  unit: 'days' | 'months' | 'hours',
+): string {
+  if (unit === 'hours') return `${value} operating hours`;
+  if (unit === 'days') return daysToMonthsLabel(value);
+  return `${value} month${value === 1 ? '' : 's'}`;
+}
+
+export interface ServiceHoursStatus {
+  hoursSinceService: number;
+  dueAfterHours: number;
+  hoursRemaining: number;
+  status: 'overdue' | 'due_today' | 'upcoming' | 'none';
+  label: string;
+}
+
+/** Evaluate a service due point measured in crane operating hours. */
+export function evaluateServiceHours(
+  loggedHoursSinceService: number,
+  frequencyHours: number,
+  leadHours: number,
+): ServiceHoursStatus {
+  const used = Math.max(0, Number(loggedHoursSinceService) || 0);
+  const dueAfter = Math.max(0, Number(frequencyHours) || 0);
+  const remaining = dueAfter - used;
+  const lead = Math.max(0, Number(leadHours) || 0);
+
+  if (remaining < 0) {
+    const overdue = Math.abs(Math.round(remaining));
+    return {
+      hoursSinceService: used,
+      dueAfterHours: dueAfter,
+      hoursRemaining: remaining,
+      status: 'overdue',
+      label: `Overdue by ${overdue} h`,
+    };
+  }
+  if (remaining === 0) {
+    return {
+      hoursSinceService: used,
+      dueAfterHours: dueAfter,
+      hoursRemaining: 0,
+      status: 'due_today',
+      label: 'Service due now',
+    };
+  }
+  if (remaining <= lead) {
+    return {
+      hoursSinceService: used,
+      dueAfterHours: dueAfter,
+      hoursRemaining: remaining,
+      status: 'upcoming',
+      label: `Due in ${Math.round(remaining)} h`,
+    };
+  }
+  return {
+    hoursSinceService: used,
+    dueAfterHours: dueAfter,
+    hoursRemaining: remaining,
+    status: 'none',
+    label: `${Math.round(remaining)} h remaining`,
+  };
+}
+
+/** Sum approved operating hours logged for a machine after its last service. */
+export function sumOperatingHours(
+  logs: Array<{ machineId: string; date: string; workingHours: number; approvalStatus?: string }>,
+  machineId: string,
+  sinceDate?: string,
+): number {
+  return logs
+    .filter(
+      (log) =>
+        log.machineId === machineId &&
+        (!sinceDate || log.date > sinceDate) &&
+        log.approvalStatus !== 'rejected',
+    )
+    .reduce((total, log) => total + (Number(log.workingHours) || 0), 0);
 }
 
 /**

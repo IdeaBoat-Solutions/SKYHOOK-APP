@@ -55,11 +55,7 @@ const SALARY_TYPES = ['daily', 'monthly'] as const;
 const STATUSES = ['active', 'inactive', 'on_leave', 'terminated'] as const;
 
 function idParam(ctx: RouteCtx): string {
-  const p = ctx.url.pathname;
-  const marker = '/functions/v1/api';
-  const i = p.indexOf(marker);
-  const rel = (i >= 0 ? p.slice(i + marker.length) : p).replace(/\/+$/, '');
-  return rel.split('/').filter(Boolean)[1] ?? '';
+  return ctx.params.id ?? '';
 }
 
 function addDays(dateStr: string, days: number): string {

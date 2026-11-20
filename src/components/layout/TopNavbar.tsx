@@ -37,6 +37,10 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
     title: 'Employee & Operator Master',
     subtitle: 'Centralized workforce records, operator licenses, emergency contacts and document uploads.',
   },
+  operator_directory: {
+    title: 'Operator Directory',
+    subtitle: 'Searchable contact book for crane operators, licences, deployment and pay details.',
+  },
   attendance: {
     title: 'Operator Attendance & Overtime',
     subtitle: 'Standard 10-hour daily shift tracking, multi-project overtime allocation and approvals.',
@@ -76,6 +80,10 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
   settings: {
     title: 'Company & System Settings',
     subtitle: 'Configure company profile, official logo, payroll cutoff rules and reminder lead times.',
+  },
+  personal: {
+    title: 'Owner Personal Vault',
+    subtitle: 'Private home loan, insurance and term plan records, protected by a 4-digit PIN.',
   },
 };
 

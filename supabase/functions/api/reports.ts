@@ -19,18 +19,8 @@ function formatDateDDMMYYYY(value: string | null | undefined): string {
 }
 
 /** Extract the dynamic tail of a path (e.g. the `:id` in /jobs/:id). */
-function pathAfter(ctx: RouteCtx, prefix: string): string {
-  const raw = ctx.url.pathname;
-  const marker = '/functions/v1/api';
-  const i = raw.indexOf(marker);
-  let p = i >= 0 ? raw.slice(i + marker.length) : raw;
-  p = p.replace(/\/+$/, '');
-  const needle = `${prefix.replace(/\/+$/, '')}/`;
-  const at = p.indexOf(needle);
-  if (at < 0) return '';
-  let tail = p.slice(at + needle.length);
-  try { tail = decodeURIComponent(tail); } catch { /* keep raw value */ }
-  return tail;
+function pathAfter(ctx: RouteCtx, _prefix: string): string {
+  return ctx.params['*'] ?? ctx.params.id ?? '';
 }
 
 /**

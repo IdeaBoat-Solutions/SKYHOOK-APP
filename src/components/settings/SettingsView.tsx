@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../../api/client';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
   Building2,
@@ -63,6 +64,64 @@ export const SettingsView: React.FC = () => {
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('manager');
   const [userActionSuccess, setUserActionSuccess] = useState<string | null>(null);
+
+  // Backend-owned permission bifurcation. The matrix is read from the API so
+  // the UI can never drift from what the Edge Functions actually enforce.
+  type RoleInfo = { id: string; name: string; label: string; permissions: string[] };
+  type PermissionInfo = { id: string; code: string; description: string | null };
+  const [roles, setRoles] = useState<RoleInfo[]>([]);
+  const [permissionCatalog, setPermissionCatalog] = useState<PermissionInfo[]>([]);
+  const [managerPermissions, setManagerPermissions] = useState<string[]>([]);
+  const [permissionsDirty, setPermissionsDirty] = useState(false);
+  const [permissionsSaving, setPermissionsSaving] = useState(false);
+  const isOwner = currentUser.role === 'owner';
+
+  const loadPermissions = async () => {
+    try {
+      const [roleRes, permRes] = await Promise.all([
+        api.get<{ items: RoleInfo[] }>('/roles'),
+        api.get<{ items: PermissionInfo[] }>('/permissions'),
+      ]);
+      setRoles(roleRes.items);
+      setPermissionCatalog(permRes.items);
+      const manager = roleRes.items.find((r) => r.name === 'manager');
+      if (manager) setManagerPermissions(manager.permissions);
+      setPermissionsDirty(false);
+    } catch {
+      // The rest of Settings stays usable if the user lacks user:read.
+    }
+  };
+
+  useEffect(() => {
+    if (isOwner) void loadPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner]);
+
+  const toggleManagerPermission = (code: string) => {
+    setManagerPermissions((prev) =>
+      prev.includes(code) ? prev.filter((p) => p !== code) : [...prev, code],
+    );
+    setPermissionsDirty(true);
+  };
+
+  const saveManagerPermissions = async () => {
+    setPermissionsSaving(true);
+    try {
+      await api.put('/roles/manager/permissions', { permissions: managerPermissions });
+      await loadPermissions();
+      setUserActionSuccess('Manager permissions saved. Managers must sign in again to receive the updated access token.');
+    } catch (err) {
+      setUserActionSuccess(err instanceof Error ? `Could not save permissions: ${err.message}` : 'Could not save permissions.');
+    } finally {
+      setPermissionsSaving(false);
+    }
+  };
+
+  const permissionGroups = permissionCatalog.reduce<Record<string, PermissionInfo[]>>((acc, p) => {
+    const domain = p.code.split(':')[0] || 'other';
+    (acc[domain] ||= []).push(p);
+    return acc;
+  }, {});
 
   // Shared field styles — aligned with the Business Overview controls.
   const inputClass = 'form-input';
@@ -502,26 +561,64 @@ export const SettingsView: React.FC = () => {
             </div>
           )}
 
-          {/* Access Matrix Guide */}
-          <div className="mb-4 grid grid-cols-1 gap-4 rounded-lg border border-line bg-surface-muted p-3.5 sm:grid-cols-2">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold text-ink-900">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-ink-900 ring-1 ring-brand-600" />
-                Owner / Admin Scope
+          {/* Access matrix — read from and written back to the backend. */}
+          <div className="mb-4 rounded-lg border border-line bg-surface-muted p-3.5">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-ink-900">Permission bifurcation</p>
+                <p className="mt-0.5 max-w-2xl text-[11px] leading-relaxed text-ink-500">
+                  Owner / Admin always keeps full access. Tick exactly what managers may do; the backend stores this on the manager role and refreshes manager access tokens. Access-management permissions can never be granted to a manager.
+                </p>
               </div>
-              <p className="text-[11px] leading-relaxed text-ink-600">
-                Full company finance, Machine EMI loans, interest schedules, user access assignment, legal entity settings, and payroll approval lock.
-              </p>
+              {isOwner && permissionsDirty && (
+                <button
+                  type="button"
+                  onClick={saveManagerPermissions}
+                  disabled={permissionsSaving}
+                  className="btn btn-primary btn-sm"
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  {permissionsSaving ? 'Saving…' : 'Save permissions'}
+                </button>
+              )}
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold text-ink-900">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-brand-600" />
-                Manager Scope
+            {permissionCatalog.length === 0 ? (
+              <p className="text-[11px] text-ink-500">Loading access matrix from the server…</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(permissionGroups).map(([domain, items]) => (
+                  <div key={domain} className="rounded-md border border-line bg-surface p-2.5">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">{domain}</p>
+                    {items.map((p) => {
+                      const managerHas = managerPermissions.includes(p.code);
+                      return (
+                        <label key={p.id} className="flex items-center justify-between gap-2 py-1 text-[11px]">
+                          <span className="min-w-0 truncate text-ink-700" title={p.code}>
+                            {p.description || p.code}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <span className="badge badge-neutral text-[9px] text-ink-900">Owner</span>
+                            {isOwner ? (
+                              <input
+                                type="checkbox"
+                                checked={managerHas}
+                                onChange={() => toggleManagerPermission(p.code)}
+                                aria-label={`Manager: ${p.code}`}
+                                className="h-3.5 w-3.5 accent-ink-900"
+                              />
+                            ) : (
+                              <span className={`text-[10px] font-semibold ${managerHas ? 'text-success-700' : 'text-ink-400'}`}>
+                                {managerHas ? 'Allowed' : '—'}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-              <p className="text-[11px] leading-relaxed text-ink-600">
-                Site operations, operator attendance &amp; day-wise overtime entry, crane running logs, and project expense vouchers. EMI loans &amp; access assignment are hidden.
-              </p>
-            </div>
+            )}
           </div>
 
           {/* Users List with Access Assignment Selectors */}

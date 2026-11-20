@@ -30,6 +30,8 @@ import {
   formatINR,
   formatDateDDMMYYYY,
   calculateExpiryFromInterval,
+  formatServiceInterval,
+  sumOperatingHours,
 } from "../../utils/calculations";
 import {
   MachineAsset,
@@ -98,6 +100,7 @@ export const AssetsView: React.FC = () => {
     machines,
     projects,
     employees,
+    machineWorkingLogs,
     addMachine,
     updateMachine,
     recordServiceCompleted,
@@ -134,9 +137,11 @@ export const AssetsView: React.FC = () => {
   const [status, setStatus] = useState<AssetStatus>("assigned");
   const [currentProject, setCurrentProject] = useState("PRJ-001");
 
-  // Service details
+  // Service details — intervals may be calendar months or crane operating hours
   const [lastServiceDate, setLastServiceDate] = useState("2026-08-20");
   const [serviceFreqValue, setServiceFreqValue] = useState(60);
+  const [serviceFreqUnit, setServiceFreqUnit] = useState<"days" | "months" | "hours">("days");
+  const [lastServiceHours, setLastServiceHours] = useState(0);
   const [nextServiceDueDate, setNextServiceDueDate] = useState("2026-10-20");
 
   // Compliance & Interval Settings (Insurance, PUC, Fitness)
@@ -171,6 +176,7 @@ export const AssetsView: React.FC = () => {
   const [completedServiceNotes, setCompletedServiceNotes] = useState(
     "Full hydraulic fluid flush & filter change",
   );
+  const [completedServiceHours, setCompletedServiceHours] = useState("");
 
   // Quick Statutory Renew Modal in Fleet View
   const [renewModalMachine, setRenewModalMachine] =
@@ -232,6 +238,8 @@ export const AssetsView: React.FC = () => {
     setCurrentProject("");
     setLastServiceDate("2026-09-01");
     setServiceFreqValue(60);
+    setServiceFreqUnit("months");
+    setLastServiceHours(0);
     setNextServiceDueDate("2026-10-31");
 
     // Auto-calculate statutory renewal dates from intervals
@@ -274,6 +282,8 @@ export const AssetsView: React.FC = () => {
     setCurrentProject(m.currentProjectId || "");
     setLastServiceDate(m.lastServiceDate);
     setServiceFreqValue(m.serviceFrequencyValue);
+    setServiceFreqUnit(m.serviceFrequencyUnit ?? "days");
+    setLastServiceHours(m.lastServiceHours ?? 0);
     setNextServiceDueDate(m.nextServiceDueDate);
 
     // Populate statutory dates and configured interval days
@@ -311,6 +321,8 @@ export const AssetsView: React.FC = () => {
         currentProjectId: currentProject || undefined,
         lastServiceDate,
         serviceFrequencyValue: serviceFreqValue,
+        serviceFrequencyUnit: serviceFreqUnit,
+        lastServiceHours: Number(lastServiceHours) || 0,
         nextServiceDueDate,
         insuranceProvider,
         insurancePolicyNumber,
@@ -341,7 +353,8 @@ export const AssetsView: React.FC = () => {
         currentProjectId: currentProject || undefined,
         lastServiceDate,
         serviceFrequencyValue: serviceFreqValue,
-        serviceFrequencyUnit: "days",
+        serviceFrequencyUnit: serviceFreqUnit,
+        lastServiceHours: Number(lastServiceHours) || 0,
         nextServiceDueDate,
         serviceReminderLeadDays: 15,
         insuranceProvider,
@@ -453,13 +466,26 @@ export const AssetsView: React.FC = () => {
   const handleRecordServiceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceModalMachine) return;
+    const reading =
+      completedServiceHours !== ""
+        ? parseFloat(completedServiceHours)
+        : serviceModalMachine.serviceFrequencyUnit === "hours"
+          ? (serviceModalMachine.lastServiceHours || 0) +
+            sumOperatingHours(
+              machineWorkingLogs,
+              serviceModalMachine.id,
+              serviceModalMachine.lastServiceDate,
+            )
+          : undefined;
     recordServiceCompleted(
       serviceModalMachine.id,
       currentDate,
       parseFloat(completedServiceCost) || 0,
       completedServiceNotes,
       completedServiceProvider,
+      reading,
     );
+    setCompletedServiceHours("");
     setServiceModalMachine(null);
   };
 
@@ -766,8 +792,10 @@ export const AssetsView: React.FC = () => {
                       <div className="grid grid-cols-2 gap-2">
                         {renderComplianceCell(
                           "Service due",
-                          m.nextServiceDueDate,
-                          `Every ${m.serviceFrequencyValue || 60}d`,
+                          m.serviceFrequencyUnit === "hours"
+                            ? formatDateDDMMYYYY(m.lastServiceDate)
+                            : m.nextServiceDueDate,
+                          `Every ${formatServiceInterval(m.serviceFrequencyValue || 60, m.serviceFrequencyUnit ?? "days")}`,
                           serviceAlert,
                         )}
                         {renderComplianceCell(
@@ -789,6 +817,15 @@ export const AssetsView: React.FC = () => {
                           fitnessAlert,
                         )}
                       </div>
+                      {m.serviceFrequencyUnit === "hours" && (
+                        <div className="mt-2 rounded-lg border border-brand-200 bg-brand-50/60 p-2.5 text-[11px] text-brand-900">
+                          <span className="font-bold">Operating-hour service:</span>{" "}
+                          {Math.round(
+                            sumOperatingHours(machineWorkingLogs, m.id, m.lastServiceDate),
+                          )}{" "}
+                          h logged since service · due every {m.serviceFrequencyValue} h
+                        </div>
+                      )}
                     </div>
 
                     {/* Specifications & ownership */}
@@ -907,8 +944,23 @@ export const AssetsView: React.FC = () => {
                   </div>
                   <p className="mt-0.5 text-xs text-ink-500">
                     Service interval: Every{" "}
-                    {serviceModalMachine.serviceFrequencyValue}{" "}
-                    {serviceModalMachine.serviceFrequencyUnit}
+                    {formatServiceInterval(
+                      serviceModalMachine.serviceFrequencyValue,
+                      serviceModalMachine.serviceFrequencyUnit ?? "days",
+                    )}
+                    {serviceModalMachine.serviceFrequencyUnit === "hours" && (
+                      <>
+                        {" · "}
+                        {Math.round(
+                          sumOperatingHours(
+                            machineWorkingLogs,
+                            serviceModalMachine.id,
+                            serviceModalMachine.lastServiceDate,
+                          ),
+                        )}{" "}
+                        h logged so far
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -949,6 +1001,25 @@ export const AssetsView: React.FC = () => {
                     className="form-input"
                   />
                 </div>
+
+                {serviceModalMachine.serviceFrequencyUnit === "hours" && (
+                  <div>
+                    <label className="form-label">
+                      Operating hours reading at this service
+                    </label>
+                    <input
+                      type="number"
+                      value={completedServiceHours}
+                      onChange={(e) => setCompletedServiceHours(e.target.value)}
+                      placeholder={`${Math.round((serviceModalMachine.lastServiceHours || 0) + sumOperatingHours(machineWorkingLogs, serviceModalMachine.id, serviceModalMachine.lastServiceDate))} h`}
+                      className="form-input"
+                    />
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      The next service will be due after another{" "}
+                      {serviceModalMachine.serviceFrequencyValue} operating hours.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="modal-footer">
@@ -1130,7 +1201,7 @@ export const AssetsView: React.FC = () => {
                     title="Preventive servicing schedule"
                     icon={Wrench}
                   />
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <label className="form-label">Last service date</label>
                       <input
@@ -1141,29 +1212,75 @@ export const AssetsView: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="form-label">
-                        Service interval (days)
-                      </label>
-                      <input
-                        type="number"
-                        value={serviceFreqValue}
-                        onChange={(e) =>
-                          setServiceFreqValue(
-                            parseInt(e.target.value, 10) || 60,
-                          )
-                        }
-                        className="form-input"
-                      />
+                      <label className="form-label">Service interval</label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="number"
+                          value={serviceFreqValue}
+                          onChange={(e) =>
+                            setServiceFreqValue(
+                              parseInt(e.target.value, 10) || 60,
+                            )
+                          }
+                          className="form-input min-w-0 flex-1"
+                        />
+                        <Select
+                          value={serviceFreqUnit}
+                          onValueChange={(v) =>
+                            setServiceFreqUnit(v as "days" | "months" | "hours")
+                          }
+                        >
+                          <SelectTrigger className="form-input w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="months">Months</SelectItem>
+                            <SelectItem value="days">Days</SelectItem>
+                            <SelectItem value="hours">Hours</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        Shown as {formatServiceInterval(serviceFreqValue, serviceFreqUnit)}
+                      </p>
                     </div>
                     <div>
-                      <label className="form-label">Next service due</label>
-                      <input
-                        type="date"
-                        value={nextServiceDueDate}
-                        onChange={(e) => setNextServiceDueDate(e.target.value)}
-                        className="form-input font-semibold"
-                      />
+                      <label className="form-label">
+                        {serviceFreqUnit === "hours"
+                          ? "Last service hour reading"
+                          : "Next service due"}
+                      </label>
+                      {serviceFreqUnit === "hours" ? (
+                        <input
+                          type="number"
+                          value={lastServiceHours}
+                          onChange={(e) =>
+                            setLastServiceHours(parseFloat(e.target.value) || 0)
+                          }
+                          className="form-input"
+                        />
+                      ) : (
+                        <input
+                          type="date"
+                          value={nextServiceDueDate}
+                          onChange={(e) => setNextServiceDueDate(e.target.value)}
+                          className="form-input font-semibold"
+                        />
+                      )}
                     </div>
+                    {serviceFreqUnit === "hours" && (
+                      <div className="notice notice--warning flex flex-col justify-center">
+                        <span className="stat-label text-warning-800">
+                          Hours-based due
+                        </span>
+                        <span className="mt-1 text-xs font-semibold text-warning-900">
+                          Due after {serviceFreqValue} operating hours
+                        </span>
+                        <span className="text-[11px] text-warning-700">
+                          Tracked from crane working logs
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -1617,9 +1734,11 @@ export const AssetsView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
                   <DetailItem
                     label="Service due"
-                    value={formatDateDDMMYYYY(
-                      selectedMachine.nextServiceDueDate,
-                    )}
+                    value={
+                      selectedMachine.serviceFrequencyUnit === "hours"
+                        ? `After ${selectedMachine.serviceFrequencyValue} h · ${formatServiceInterval(selectedMachine.serviceFrequencyValue, "hours")}`
+                        : formatDateDDMMYYYY(selectedMachine.nextServiceDueDate)
+                    }
                     icon={Wrench}
                   />
                   <DetailItem
@@ -1670,6 +1789,8 @@ export const AssetsView: React.FC = () => {
                         <p className="mt-1.5 text-[11px] text-ink-500">
                           Completed on {formatDateDDMMYYYY(s.serviceDate)} by{" "}
                           {s.serviceProvider}
+                          {s.odometerOrHours != null &&
+                            ` · ${s.odometerOrHours} h reading`}
                         </p>
                       </div>
                     ))}

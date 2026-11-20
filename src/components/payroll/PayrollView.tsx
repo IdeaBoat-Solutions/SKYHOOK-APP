@@ -22,13 +22,16 @@ import {
   Wallet,
   TrendingDown,
   Landmark,
+  BadgeIndianRupee,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import { formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
 import { exportPayrollSummary } from '../../utils/excelAndPdf';
 import { PayrollEntry, PayrollRun } from '../../types';
 import { SalarySlipModal } from './SalarySlipModal';
+import { CustomPayDeductionModal } from './CustomPayDeductionModal';
 import { Currency } from '../common/Currency';
+import { withPayrollAdjustments } from '../../data/localExtras';
 
 export const PayrollView: React.FC = () => {
   const {
@@ -43,6 +46,7 @@ export const PayrollView: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState('2026-10');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEntryForSlip, setSelectedEntryForSlip] = useState<PayrollEntry | null>(null);
+  const [adjustmentEntryCode, setAdjustmentEntryCode] = useState<string | null>(null);
 
   // Payment Recording Modal State
   const [paymentModalEntry, setPaymentModalEntry] = useState<PayrollEntry | null>(null);
@@ -52,6 +56,15 @@ export const PayrollView: React.FC = () => {
   const currentRun =
     payrollRuns.find((r) => r.month === selectedMonth) ||
     payrollRuns[0];
+  // Server totals stay authoritative; custom lines are layered on for display,
+  // salary slips, KPIs and exports.
+  const adjustedRun = currentRun ? withPayrollAdjustments(currentRun) : undefined;
+  const rawAdjustmentEntry = currentRun?.entries.find(
+    (e) => e.employeeCode === adjustmentEntryCode,
+  );
+  const adjustedAdjustmentEntry = adjustedRun?.entries.find(
+    (e) => e.employeeCode === adjustmentEntryCode,
+  );
 
   const handleGenerate = () => {
     generatePayrollForMonth(selectedMonth);
@@ -151,7 +164,7 @@ export const PayrollView: React.FC = () => {
     );
   };
 
-  const filteredEntries = (currentRun?.entries || []).filter((entry) => {
+  const filteredEntries = (adjustedRun?.entries || []).filter((entry) => {
     const matchSearch =
       entry.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       entry.employeeCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -211,7 +224,7 @@ export const PayrollView: React.FC = () => {
 
           {currentRun && (
             <button
-              onClick={() => exportPayrollSummary(currentRun)}
+              onClick={() => exportPayrollSummary(adjustedRun ?? currentRun)}
               className="btn btn-secondary"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -286,8 +299,8 @@ export const PayrollView: React.FC = () => {
 
           <PayrollStatCard
             label="Gross Payroll"
-            value={<Currency value={currentRun.totalGrossSalary} size="lg" />}
-            hint="Base + OT + Allowances"
+            value={<Currency value={adjustedRun?.totalGrossSalary ?? currentRun.totalGrossSalary} size="lg" />}
+            hint="Base + OT + custom pay"
             icon={Wallet}
             accent="brand"
           />

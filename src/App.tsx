@@ -10,6 +10,7 @@ import { TopNavbar } from './components/layout/TopNavbar';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { ProjectsView } from './components/projects/ProjectsView';
 import { EmployeesView } from './components/employees/EmployeesView';
+import { OperatorDirectoryView } from './components/employees/OperatorDirectoryView';
 import { AttendanceView } from './components/attendance/AttendanceView';
 import { MachineWorkingView } from './components/machine_working/MachineWorkingView';
 import { PayrollView } from './components/payroll/PayrollView';
@@ -20,6 +21,7 @@ import { EmiView } from './components/emi/EmiView';
 import { RemindersView } from './components/reminders/RemindersView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
+import { PersonalView } from './components/personal/PersonalView';
 import { ReminderAlertItem } from './types';
 
 function MainAppShell() {
@@ -39,8 +41,8 @@ function MainAppShell() {
   const isManager = currentUser.role === 'manager';
 
   const handleNavigateTab = (tab: NavTab) => {
-    // Restrict manager from accessing emi tab directly
-    if (isManager && tab === 'emi') {
+    // Restrict manager from owner-only tabs (EMI + Personal vault).
+    if (isManager && (tab === 'emi' || tab === 'personal')) {
       setCurrentTab('dashboard');
       return;
     }
@@ -98,6 +100,8 @@ function MainAppShell() {
 
           {currentTab === 'employees' && <EmployeesView />}
 
+          {currentTab === 'operator_directory' && <OperatorDirectoryView />}
+
           {currentTab === 'attendance' && <AttendanceView />}
 
           {currentTab === 'machine_working' && <MachineWorkingView />}
@@ -117,6 +121,8 @@ function MainAppShell() {
           {currentTab === 'reports' && <ReportsView />}
 
           {currentTab === 'settings' && <SettingsView />}
+
+          {currentTab === 'personal' && <PersonalView />}
         </main>
       </div>
     </div>

@@ -6,14 +6,28 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type {
   CompanySettings, User, UserRole, Employee, Project, AttendanceRecord, AttendanceStatus,
   SalaryAdvance, PayrollRun, ProjectExpense, MachineAsset, MachineEmiLoan, MachineWorkingLog,
-  AuditLog, ReminderAlertItem, InAppNotification,
+  AuditLog, ReminderAlertItem, InAppNotification, PayrollAdjustment, PersonalRecord,
 } from '../types';
 import { api, getToken, setToken, ApiFailure } from '../api/client';
 import {
   mapUser, mapCompany, mapProject, mapEmployee, mapMachine, mapAttendance, mapAdvance,
   mapPayrollRun, mapExpense, mapEmiLoan, mapWorkingLog, mapAudit, mapNotification, rupeesToPaise,
 } from '../api/mappers';
-import { evaluateReminderStatus } from '../utils/calculations';
+import { evaluateReminderStatus, evaluateServiceHours, sumOperatingHours, formatServiceInterval } from '../utils/calculations';
+import {
+  applyMachineServiceConfig,
+  getMachineServiceConfig,
+  saveMachineServiceConfig,
+  getPayrollAdjustments,
+  savePayrollAdjustment,
+  removePayrollAdjustment as removeStoredAdjustment,
+  payrollAdjustmentKey,
+  getPinHash,
+  setPinHash,
+  verifyPin,
+  getPersonalRecords,
+  savePersonalRecords,
+} from './localExtras';
 
 export interface RegisterInput {
   companyName: string;
@@ -48,7 +62,13 @@ interface SkyhookStoreContextType {
   machines: MachineAsset[];
   addMachine: (m: Omit<MachineAsset, 'id'>) => Promise<MachineAsset>;
   updateMachine: (id: string, m: Partial<MachineAsset>) => Promise<void>;
-  recordServiceCompleted: (machineId: string, serviceDate: string, cost: number, notes?: string, provider?: string) => Promise<void>;
+  recordServiceCompleted: (machineId: string, serviceDate: string, cost: number, notes?: string, provider?: string, operatingHours?: number) => Promise<void>;
+  updateMachineServiceConfig: (machineId: string, patch: {
+    serviceFrequencyUnit?: 'days' | 'months' | 'hours';
+    serviceFrequencyValue?: number;
+    lastServiceHours?: number;
+    serviceReminderLeadHours?: number;
+  }) => Promise<void>;
   renewMachineInsurance: (machineId: string, newExpiry: string, provider?: string, policyNo?: string, renewalDate?: string) => Promise<void>;
   renewMachinePuc: (machineId: string, newExpiry: string, pucNo?: string, renewalDate?: string) => Promise<void>;
   renewMachineFitness: (machineId: string, newExpiry: string, fitNo?: string, testPassedDate?: string) => Promise<void>;
@@ -85,6 +105,21 @@ interface SkyhookStoreContextType {
   getPucAlerts: () => ReminderAlertItem[];
   getFitnessAlerts: () => ReminderAlertItem[];
   getLicenseAlerts: () => ReminderAlertItem[];
+
+  /** Custom payroll lines, keyed by `${month}:${employeeCode}`. */
+  payrollAdjustments: Record<string, { pay: PayrollAdjustment[]; deductions: PayrollAdjustment[] }>;
+  addPayrollAdjustment: (month: string, employeeCode: string, type: 'pay' | 'deduction', label: string, amount: number, remarks?: string) => Promise<void>;
+  removePayrollAdjustment: (month: string, employeeCode: string, type: 'pay' | 'deduction', id: string) => Promise<void>;
+
+  /** Owner-only Personal vault (PIN + private records). */
+  personalPinSet: boolean;
+  setPersonalPin: (pin: string) => Promise<void>;
+  verifyPersonalPin: (pin: string) => boolean;
+  personalRecords: PersonalRecord[];
+  addPersonalRecord: (record: Omit<PersonalRecord, 'id' | 'createdAt'>) => Promise<PersonalRecord>;
+  updatePersonalRecord: (id: string, patch: Partial<PersonalRecord>) => Promise<void>;
+  deletePersonalRecord: (id: string) => Promise<void>;
+
   currentDate: string;
   resetToDemoData: () => Promise<void>;
 }
@@ -133,6 +168,9 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [machineWorkingLogs, setMachineWorkingLogs] = useState<MachineWorkingLog[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const [payrollAdjustments, setPayrollAdjustments] = useState(() => getPayrollAdjustments());
+  const [personalRecords, setPersonalRecords] = useState(() => getPersonalRecords());
+  const [personalPinSet, setPersonalPinSet] = useState(() => Boolean(getPinHash()));
 
   const loadAll = useCallback(async () => {
     const [company, users, prj, emp, mach, loans, att, adv, runs, exp, logs, aud, notif] = await Promise.all([
@@ -158,7 +196,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setProjects(prj.items.map(mapProject));
     setEmployees(emp.items.map(mapEmployee));
-    setMachines(mach.items.map(mapMachine));
+    setMachines(mach.items.map((m) => applyMachineServiceConfig(mapMachine(m))));
     setEmiLoans(loans.items.map(mapEmiLoan));
     setAttendance(att.items.map(mapAttendance));
     setAdvances(adv.items.map(mapAdvance));
@@ -185,6 +223,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     currentUser, isAuthenticated, availableUsers, companySettings,
     projects, employees, machines, emiLoans, attendance, advances, payrollRuns,
     expenses, machineWorkingLogs, auditLogs, notifications,
+    payrollAdjustments, personalRecords, personalPinSet,
     currentDate: DEMO_DATE,
 
     login: async (user, password) => {
@@ -292,12 +331,16 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
 
     addMachine: async (m) => {
+      // The API's frequency enum does not have "hours" yet. Persist hours-based
+      // servicing locally and send a harmless day-based value to the server.
+      const hoursBased = m.serviceFrequencyUnit === 'hours';
       const r = await api.post<any>('/machines', {
         assetCode: m.assetId, machineType: m.machineType, make: m.make, model: m.model,
         registrationNumber: m.registrationNumber, serialNumber: m.serialNumber,
         tonnageCapacity: m.tonnageCapacity, purchaseDate: m.purchaseDate,
         purchaseCostPaise: rupeesToPaise(m.purchaseCost),
-        serviceFrequencyValue: m.serviceFrequencyValue, serviceFrequencyUnit: m.serviceFrequencyUnit,
+        serviceFrequencyValue: hoursBased ? 60 : m.serviceFrequencyValue,
+        serviceFrequencyUnit: hoursBased ? 'days' : m.serviceFrequencyUnit,
         lastServiceDate: m.lastServiceDate, insuranceProvider: m.insuranceProvider,
         insurancePolicyNumber: m.insurancePolicyNumber, insuranceExpiryDate: m.insuranceExpiryDate,
         insuranceIntervalDays: m.insuranceIntervalDays, pucNumber: m.pucNumber,
@@ -306,20 +349,57 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         nextFitnessDueDate: m.nextFitnessDueDate, fitnessIntervalDays: m.fitnessIntervalDays,
         status: m.status,
       });
+      const created = mapMachine(r);
+      if (hoursBased) {
+        saveMachineServiceConfig(created.id, {
+          serviceFrequencyUnit: 'hours',
+          serviceFrequencyValue: m.serviceFrequencyValue,
+          lastServiceHours: m.lastServiceHours ?? 0,
+        });
+      }
       await refresh();
-      return mapMachine(r);
+      return applyMachineServiceConfig(created);
     },
     updateMachine: async (id, m) => {
       const payload: any = {};
       if (m.status) payload.status = m.status;
       if (m.currentProjectId) payload.currentProjectId = m.currentProjectId;
       if (m.assignedOperatorId) payload.assignedOperatorId = m.assignedOperatorId;
+      // Servicing settings are stored locally so hours-based intervals survive.
+      const servicePatch: Record<string, any> = {};
+      if (m.serviceFrequencyUnit) servicePatch.serviceFrequencyUnit = m.serviceFrequencyUnit;
+      if (m.serviceFrequencyValue !== undefined) servicePatch.serviceFrequencyValue = m.serviceFrequencyValue;
+      if (m.lastServiceHours !== undefined) servicePatch.lastServiceHours = m.lastServiceHours;
+      if (m.serviceReminderLeadHours !== undefined) servicePatch.serviceReminderLeadHours = m.serviceReminderLeadHours;
+      if (Object.keys(servicePatch).length) saveMachineServiceConfig(id, servicePatch);
       await api.patch(`/machines/${id}`, payload);
       await refresh();
     },
-    recordServiceCompleted: async (machineId, serviceDate, cost, notes, provider) => {
+    updateMachineServiceConfig: async (machineId, patch) => {
+      saveMachineServiceConfig(machineId, patch);
+      await refresh();
+    },
+    recordServiceCompleted: async (machineId, serviceDate, cost, notes, provider, operatingHours) => {
       await api.post(`/machines/${machineId}/service`, {
         serviceDate, costPaise: rupeesToPaise(cost), notes, serviceProvider: provider,
+        odometerOrHours: operatingHours,
+      });
+      const current = getMachineServiceConfig(machineId, machines.find((m) => m.id === machineId));
+      saveMachineServiceConfig(machineId, {
+        lastServiceHours: operatingHours ?? current.lastServiceHours ?? 0,
+        serviceHistory: [
+          {
+            id: `SR-${Date.now()}`,
+            serviceDate,
+            serviceType: 'Periodic Maintenance',
+            serviceProvider: provider ?? '',
+            cost,
+            odometerOrHours: operatingHours,
+            notes,
+            completedBy: currentUser.name,
+          },
+          ...current.serviceHistory,
+        ],
       });
       await refresh();
     },
@@ -492,17 +572,96 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await refresh();
     },
 
+    addPayrollAdjustment: async (month, employeeCode, type, label, amount, remarks) => {
+      const key = payrollAdjustmentKey(month, employeeCode);
+      savePayrollAdjustment(key, type, {
+        id: crypto.randomUUID(),
+        label,
+        amount,
+        remarks,
+        createdAt: new Date().toISOString(),
+      });
+      setPayrollAdjustments(getPayrollAdjustments());
+    },
+    removePayrollAdjustment: async (month, employeeCode, type, id) => {
+      removeStoredAdjustment(payrollAdjustmentKey(month, employeeCode), type, id);
+      setPayrollAdjustments(getPayrollAdjustments());
+    },
+
+    setPersonalPin: async (pin) => {
+      setPinHash(pin);
+      setPersonalPinSet(true);
+    },
+    verifyPersonalPin: (pin) => verifyPin(pin),
+    addPersonalRecord: async (record) => {
+      const created: PersonalRecord = {
+        ...record,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      const next = [...getPersonalRecords(), created];
+      savePersonalRecords(next);
+      setPersonalRecords(next);
+      return created;
+    },
+    updatePersonalRecord: async (id, patch) => {
+      const next = getPersonalRecords().map((r) => (r.id === id ? { ...r, ...patch } : r));
+      savePersonalRecords(next);
+      setPersonalRecords(next);
+    },
+    deletePersonalRecord: async (id) => {
+      const next = getPersonalRecords().filter((r) => r.id !== id);
+      savePersonalRecords(next);
+      setPersonalRecords(next);
+    },
+
     getEmiAlerts: () => buildReminderAlerts(emiLoans.flatMap((l) => l.installments.filter((i) => i.status !== 'paid').map((i) => ({
       category: 'emi' as const, id: `EMI-${l.id}-${i.installmentNumber}`, targetId: l.assetId ?? (l as any).assetCode ?? l.id,
       targetType: 'loan' as const, title: `${(l as any).assetCode ?? l.assetId} – EMI #${i.installmentNumber}`,
       subtitle: `${l.loanProvider} | ₹${l.emiAmount.toLocaleString('en-IN')}`, dueDate: i.dueDate,
       amount: i.amountDue, lead: l.reminderLeadDays, actionLabel: 'Pay EMI', heading: 'MACHINE EMI REMINDERS',
     }))), companySettings.emiReminderLeadDays),
-    getServiceAlerts: () => buildReminderAlerts(machines.map((m) => ({
-      category: 'service' as const, id: `SRV-${m.id}`, targetId: m.assetId, targetType: 'machine' as const,
-      title: `${m.assetId} – ${m.make} ${m.model}`, subtitle: `Every ${m.serviceFrequencyValue} ${m.serviceFrequencyUnit}`,
-      dueDate: m.nextServiceDueDate, lead: m.serviceReminderLeadDays, actionLabel: 'Record Service', heading: 'MACHINE SERVICE REMINDERS',
-    })), companySettings.serviceReminderLeadDays),
+    getServiceAlerts: () => {
+      const calendarAlerts = buildReminderAlerts(machines
+        .filter((m) => m.serviceFrequencyUnit !== 'hours')
+        .map((m) => ({
+          category: 'service' as const, id: `SRV-${m.id}`, targetId: m.assetId, targetType: 'machine' as const,
+          title: `${m.assetId} – ${m.make} ${m.model}`,
+          subtitle: `Every ${formatServiceInterval(m.serviceFrequencyValue, m.serviceFrequencyUnit)}`,
+          dueDate: m.nextServiceDueDate, lead: m.serviceReminderLeadDays, actionLabel: 'Record Service', heading: 'MACHINE SERVICE REMINDERS',
+        })), companySettings.serviceReminderLeadDays);
+
+      const hourAlerts: ReminderAlertItem[] = machines
+        .filter((m) => m.serviceFrequencyUnit === 'hours')
+        .flatMap((m) => {
+          const cfg = getMachineServiceConfig(m.id, m);
+          const logged = sumOperatingHours(machineWorkingLogs, m.id, m.lastServiceDate);
+          const status = evaluateServiceHours(
+            logged,
+            m.serviceFrequencyValue,
+            cfg.serviceReminderLeadHours ?? m.serviceReminderLeadHours ?? 50,
+          );
+          if (status.status === 'none') return [];
+          return [{
+            id: `SRV-${m.id}`,
+            category: 'service' as const,
+            categoryHeading: 'MACHINE SERVICE REMINDERS',
+            title: `${m.assetId} – ${m.make} ${m.model}`,
+            subtitle: `Every ${formatServiceInterval(m.serviceFrequencyValue, 'hours')} · ${Math.round(status.hoursSinceService)} h used`,
+            targetId: m.assetId,
+            targetType: 'machine' as const,
+            dueDate: m.lastServiceDate,
+            daysRemaining: Math.round(status.hoursRemaining),
+            status: status.status,
+            urgencyLabel: status.label,
+            actionLabel: 'Record Service',
+            metricUnit: 'hours' as const,
+            hoursRemaining: status.hoursRemaining,
+          }];
+        });
+
+      return [...calendarAlerts, ...hourAlerts].sort((a, b) => a.daysRemaining - b.daysRemaining);
+    },
     getInsuranceAlerts: () => buildReminderAlerts(machines.map((m) => ({
       category: 'insurance' as const, id: `INS-${m.id}`, targetId: m.assetId, targetType: 'machine' as const,
       title: `${m.assetId} – ${m.insuranceProvider}`, subtitle: `Policy #${m.insurancePolicyNumber}`,
@@ -527,7 +686,8 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         dueDate: e.transportLicenseExpiry, lead: companySettings.licenseReminderLeadDays, actionLabel: 'Update License', heading: 'OPERATOR LICENSE RENEWAL REMINDERS' },
     ]), companySettings.licenseReminderLeadDays),
   }), [currentUser, isAuthenticated, availableUsers, companySettings, projects, employees, machines, emiLoans,
-    attendance, advances, payrollRuns, expenses, machineWorkingLogs, auditLogs, notifications, loadAll, refresh]);
+    attendance, advances, payrollRuns, expenses, machineWorkingLogs, auditLogs, notifications,
+    payrollAdjustments, personalRecords, personalPinSet, loadAll, refresh]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 };

@@ -15,7 +15,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
-import { formatINR, formatDateDDMMYYYY, calculateExpiryFromInterval } from '../../utils/calculations';
+import { formatINR, formatDateDDMMYYYY, calculateExpiryFromInterval, sumOperatingHours, formatServiceInterval } from '../../utils/calculations';
 import { ReminderAlertItem } from '../../types';
 
 type AlertType = 'emi' | 'service' | 'insurance' | 'puc' | 'fitness' | 'license';
@@ -78,6 +78,7 @@ export const RemindersView: React.FC = () => {
     renewMachineFitness,
     renewOperatorLicense,
     machines,
+    machineWorkingLogs,
     employees,
     emiLoans,
   } = useSkyhook();
@@ -99,6 +100,7 @@ export const RemindersView: React.FC = () => {
   const [serviceCost, setServiceCost] = useState('25000');
   const [serviceNotes, setServiceNotes] = useState('');
   const [serviceProvider, setServiceProvider] = useState('Authorized OEM Service');
+  const [serviceHours, setServiceHours] = useState('');
 
   // Statutory renewal states with interval-based auto calculation
   const [renewalDate, setRenewalDate] = useState(currentDate);
@@ -208,13 +210,25 @@ export const RemindersView: React.FC = () => {
         }
       }
     } else if (type === 'service') {
+      const machine = machines.find(
+        (m) => m.id === item.targetId || m.assetId === item.targetId,
+      );
+      const reading =
+        machine?.serviceFrequencyUnit === 'hours'
+          ? serviceHours !== ''
+            ? parseFloat(serviceHours)
+            : (machine.lastServiceHours || 0) +
+              sumOperatingHours(machineWorkingLogs, machine.id, machine.lastServiceDate)
+          : undefined;
       recordServiceCompleted(
-        item.targetId,
+        machine?.id ?? item.targetId,
         serviceDate,
         parseFloat(serviceCost) || 0,
         serviceNotes,
-        serviceProvider
+        serviceProvider,
+        reading,
       );
+      setServiceHours('');
     } else if (type === 'insurance') {
       renewMachineInsurance(item.targetId, renewalExpiry, serviceProvider, renewalCertNo, renewalDate);
     } else if (type === 'puc') {
@@ -437,7 +451,9 @@ export const RemindersView: React.FC = () => {
                       {activeDialog.item.urgencyLabel}
                     </span>
                     <span className="text-ink-500">
-                      · Due {formatDateDDMMYYYY(activeDialog.item.dueDate)}
+                      · {activeDialog.item.metricUnit === 'hours'
+                        ? `${Math.round(activeDialog.item.hoursRemaining ?? 0)} operating hours remaining`
+                        : `Due ${formatDateDDMMYYYY(activeDialog.item.dueDate)}`}
                     </span>
                   </div>
                 </div>
@@ -486,6 +502,38 @@ export const RemindersView: React.FC = () => {
                         className="form-input"
                       />
                     </div>
+                    {(() => {
+                      const machine = machines.find(
+                        (m) =>
+                          m.id === activeDialog.item.targetId ||
+                          m.assetId === activeDialog.item.targetId,
+                      );
+                      if (!machine || machine.serviceFrequencyUnit !== 'hours') return null;
+                      const logged = sumOperatingHours(
+                        machineWorkingLogs,
+                        machine.id,
+                        machine.lastServiceDate,
+                      );
+                      return (
+                        <div className="notice notice--warning">
+                          <span className="stat-label text-warning-800">
+                            Operating-hour service · interval {formatServiceInterval(machine.serviceFrequencyValue, 'hours')}
+                          </span>
+                          <p className="mt-1 text-xs text-warning-900">
+                            {Math.round(logged)} h logged since the last service. Remaining:{" "}
+                            {Math.max(0, Math.round(machine.serviceFrequencyValue - logged))} h.
+                          </p>
+                          <input
+                            type="number"
+                            value={serviceHours}
+                            onChange={(e) => setServiceHours(e.target.value)}
+                            placeholder={`Reading at service (e.g. ${Math.round((machine.lastServiceHours || 0) + logged)} h)`}
+                            className="form-input mt-2"
+                          />
+                        </div>
+                      );
+                    })()}
+
                     <div>
                       <label htmlFor="service-provider" className="form-label">Service Vendor / Workshop:</label>
                       <input
