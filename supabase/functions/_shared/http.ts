@@ -44,6 +44,9 @@ export function routePath(req: Request): string {
   const i = p.indexOf(marker);
   let path = i >= 0 ? p.slice(i + marker.length) : p;
   if (!path.startsWith('/')) path = `/${path}`;
+  // The Supabase gateway forwards /api/<route> to the function (and older
+  // gateways forwarded /functions/v1/api/<route>). Accept both shapes.
+  if (path === '/api' || path.startsWith('/api/')) path = path.slice(4) || '/';
   return path.replace(/\/+$/, '') || '/';
 }
 
