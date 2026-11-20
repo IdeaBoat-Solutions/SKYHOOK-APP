@@ -749,7 +749,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   onClick={() => onNavigateTab(action.tab)}
                   className="group flex items-center gap-3 rounded-lg border border-line bg-surface p-3 text-left transition-colors hover:bg-surface-muted"
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 transition-colors group-hover:bg-ink-900 group-hover:text-white">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 transition-colors group-hover:bg-logo-700 group-hover:text-white">
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0 flex-1">

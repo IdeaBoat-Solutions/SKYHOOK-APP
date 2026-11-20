@@ -192,7 +192,7 @@ export const ProjectsView: React.FC = () => {
             .reduce((s, m) => s + m.workingHours, 0);
 
           return (
-            <div className="card flex flex-col justify-between overflow-hidden transition-colors hover:border-line-strong">
+            <div key={p.id} className="card flex flex-col justify-between overflow-hidden transition-colors hover:border-line-strong">
               <div className="card-pad space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">

@@ -104,7 +104,7 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
               onClick={() => selectTab(id)}
               className={`inline-flex shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                 active
-                  ? 'border-ink-900 bg-ink-900 text-white'
+                  ? 'border-logo-700 bg-logo-700 text-white'
                   : 'border-line bg-surface text-ink-600 hover:border-line-strong hover:text-ink-900'
               }`}
             >
@@ -116,7 +116,7 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
         <button
           type="button"
           onClick={() => setBuilder({ open: true })}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-dashed border-line-strong px-3.5 py-2 text-[13px] font-semibold text-ink-600 transition-colors hover:border-ink-900 hover:text-ink-900"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-dashed border-line-strong px-3.5 py-2 text-[13px] font-semibold text-ink-600 transition-colors hover:border-logo-700 hover:text-ink-900"
         >
           <Plus className="h-4 w-4" />
           Add calculator

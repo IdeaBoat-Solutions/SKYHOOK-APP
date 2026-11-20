@@ -516,8 +516,8 @@ export const AssetsView: React.FC = () => {
   const totalComplianceAlerts =
     srvAlerts.length + insAlerts.length + pucAlerts.length + fitAlerts.length;
 
-  const findAlert = (list: ReminderAlertItem[], machineId: string) =>
-    list.find((a) => a.targetId === machineId);
+  const findAlert = (list: ReminderAlertItem[], machine: MachineAsset) =>
+    list.find((a) => a.targetId === machine.id || a.targetId === machine.assetId);
 
   const renderSectionHeader = (
     title: string,
@@ -710,10 +710,10 @@ export const AssetsView: React.FC = () => {
               const currentPrj = projects.find(
                 (p) => p.id === m.currentProjectId,
               );
-              const serviceAlert = findAlert(srvAlerts, m.id);
-              const insuranceAlert = findAlert(insAlerts, m.id);
-              const pucAlert = findAlert(pucAlerts, m.id);
-              const fitnessAlert = findAlert(fitAlerts, m.id);
+              const serviceAlert = findAlert(srvAlerts, m);
+              const insuranceAlert = findAlert(insAlerts, m);
+              const pucAlert = findAlert(pucAlerts, m);
+              const fitnessAlert = findAlert(fitAlerts, m);
               const totalAlertsOnMachine =
                 (serviceAlert ? 1 : 0) +
                 (insuranceAlert ? 1 : 0) +
@@ -1388,7 +1388,7 @@ export const AssetsView: React.FC = () => {
                             }
                             className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
                               insuranceIntervalDays === preset.days
-                                ? "border-ink-800 bg-ink-900 text-white"
+                                ? "border-logo-700 bg-logo-700 text-white"
                                 : "border-line bg-surface text-ink-600 hover:bg-surface-muted"
                             }`}
                           >
@@ -1481,7 +1481,7 @@ export const AssetsView: React.FC = () => {
                             onClick={() => handlePucIntervalChange(preset.days)}
                             className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
                               pucIntervalDays === preset.days
-                                ? "border-ink-800 bg-ink-900 text-white"
+                                ? "border-logo-700 bg-logo-700 text-white"
                                 : "border-line bg-surface text-ink-600 hover:bg-surface-muted"
                             }`}
                           >
@@ -1578,7 +1578,7 @@ export const AssetsView: React.FC = () => {
                             }
                             className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
                               fitnessIntervalDays === preset.days
-                                ? "border-ink-800 bg-ink-900 text-white"
+                                ? "border-logo-700 bg-logo-700 text-white"
                                 : "border-line bg-surface text-ink-600 hover:bg-surface-muted"
                             }`}
                           >
@@ -1928,7 +1928,7 @@ export const AssetsView: React.FC = () => {
                           onClick={() => handleRenewIntervalChange(preset.days)}
                           className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
                             renewIntervalDays === preset.days
-                              ? "border-ink-800 bg-ink-900 text-white"
+                              ? "border-logo-700 bg-logo-700 text-white"
                               : "border-line bg-surface text-ink-600 hover:bg-surface-muted"
                           }`}
                         >

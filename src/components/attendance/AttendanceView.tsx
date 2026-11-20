@@ -250,7 +250,7 @@ export const AttendanceView: React.FC = () => {
             </span>
             <span className="text-xs text-zinc-500 font-medium">Standard 10h Daily Shift</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-black mt-1 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-black text-logo-900 mt-1 tracking-tight">
             Operator Attendance & Overtime Register
           </h2>
           <p className="text-xs sm:text-sm text-zinc-500 mt-0.5">
@@ -262,7 +262,7 @@ export const AttendanceView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => handleOpenOtModal()}
-            className="px-4 py-2.5 rounded-xl bg-black hover:bg-zinc-800 text-accent font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-logo-700 hover:bg-logo-800 text-accent font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
           >
             <Clock className="w-4 h-4 text-accent" />
             <span>+ Add Day-Wise Overtime</span>
@@ -288,7 +288,7 @@ export const AttendanceView: React.FC = () => {
 
       {/* Floating Action Feedback Pill */}
       {quickFeedback && (
-        <div className="p-3 rounded-xl bg-black text-white text-xs font-bold flex items-center justify-between shadow-lg border border-zinc-800 animate-fadeIn">
+        <div className="p-3 rounded-xl bg-logo-700 text-white text-xs font-bold flex items-center justify-between shadow-lg border border-zinc-800 animate-fadeIn">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-accent" />
             <span>{quickFeedback}</span>
@@ -306,8 +306,8 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setActiveTab('daily')}
             className={`py-3.5 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'daily'
-                ? 'border-accent text-black'
-                : 'border-transparent text-zinc-500 hover:text-black'
+                ? 'border-accent text-logo-900'
+                : 'border-transparent text-zinc-500 hover:text-logo-900'
             }`}
           >
             <UserCheck className="w-4 h-4" />
@@ -318,8 +318,8 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setActiveTab('monthly')}
             className={`py-3.5 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'monthly'
-                ? 'border-accent text-black'
-                : 'border-transparent text-zinc-500 hover:text-black'
+                ? 'border-accent text-logo-900'
+                : 'border-transparent text-zinc-500 hover:text-logo-900'
             }`}
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -330,8 +330,8 @@ export const AttendanceView: React.FC = () => {
             onClick={() => setActiveTab('pending')}
             className={`py-3.5 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'pending'
-                ? 'border-accent text-black'
-                : 'border-transparent text-zinc-500 hover:text-black'
+                ? 'border-accent text-logo-900'
+                : 'border-transparent text-zinc-500 hover:text-logo-900'
             }`}
           >
             <span>Pending Approvals</span>
@@ -360,7 +360,7 @@ export const AttendanceView: React.FC = () => {
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-black font-mono">
+                <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-logo-900 font-mono">
                   <Calendar className="w-3.5 h-3.5 text-accent" />
                   <input
                     type="date"
@@ -369,7 +369,7 @@ export const AttendanceView: React.FC = () => {
                       setSelectedDate(e.target.value);
                       setOtDate(e.target.value);
                     }}
-                    className="bg-transparent font-bold text-black focus:outline-none cursor-pointer"
+                    className="bg-transparent font-bold text-logo-900 focus:outline-none cursor-pointer"
                   />
                 </div>
                 <button
@@ -387,7 +387,7 @@ export const AttendanceView: React.FC = () => {
                 onClick={handleSetToday}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border ${
                   selectedDate === currentDate
-                    ? 'bg-black text-accent border-zinc-800'
+                    ? 'bg-logo-700 text-logo-50 border-zinc-800'
                     : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border-zinc-200'
                 }`}
               >
@@ -430,7 +430,7 @@ export const AttendanceView: React.FC = () => {
             <div className="bg-white p-3.5 rounded-xl border border-zinc-200 shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-bold text-zinc-500 uppercase">Active Operators</span>
-                <p className="text-lg font-black text-black">{activeOperators.length}</p>
+                <p className="text-lg font-black text-logo-900">{activeOperators.length}</p>
               </div>
               <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-700 font-bold text-xs">
                 {activeOperators.length}
@@ -460,7 +460,7 @@ export const AttendanceView: React.FC = () => {
             <div className="bg-white p-3.5 rounded-xl border border-zinc-200 shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-bold text-accent uppercase">Today's OT Hours</span>
-                <p className="text-lg font-black text-black font-mono">
+                <p className="text-lg font-black text-logo-900 font-mono">
                   {totalDayOtHours}h <span className="text-xs text-zinc-400 font-normal">({formatINR(totalDayOtPay)})</span>
                 </p>
               </div>
@@ -474,7 +474,7 @@ export const AttendanceView: React.FC = () => {
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
             <div className="px-5 py-4 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-zinc-50/50">
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm text-black">
+                <h3 className="font-extrabold text-sm text-logo-900">
                   Daily Operator Attendance & Day-Wise Overtime Entry
                 </h3>
                 <span className="text-xs font-bold text-accent bg-white px-2.5 py-0.5 rounded-full border border-zinc-200">
@@ -488,7 +488,7 @@ export const AttendanceView: React.FC = () => {
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-black text-white font-semibold uppercase text-[11px] tracking-wider">
+                <thead className="bg-logo-700 text-white font-semibold uppercase text-[11px] tracking-wider">
                   <tr>
                     <th className="px-4 py-3.5">Operator</th>
                     <th className="px-4 py-3.5">Assigned Project & Crane</th>
@@ -520,7 +520,7 @@ export const AttendanceView: React.FC = () => {
                               {op.fullName.charAt(0)}
                             </div>
                             <div>
-                              <div className="font-bold text-black text-xs sm:text-sm">
+                              <div className="font-bold text-logo-900 text-xs sm:text-sm">
                                 {op.fullName}
                               </div>
                               <div className="text-[11px] text-zinc-500 font-mono">
@@ -535,7 +535,7 @@ export const AttendanceView: React.FC = () => {
 
                         {/* Project & Machine */}
                         <td className="px-4 py-3.5">
-                          <div className="font-semibold text-black max-w-xs truncate">
+                          <div className="font-semibold text-logo-900 max-w-xs truncate">
                             {project?.name || 'Site Assignment'}
                           </div>
                           <div className="text-[11px] text-zinc-500 font-mono">
@@ -655,7 +655,7 @@ export const AttendanceView: React.FC = () => {
                                   onClick={() => handleInlineOtChange(op.id, h)}
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono transition-colors ${
                                     otHoursCurrent === h
-                                      ? 'bg-black text-accent'
+                                      ? 'bg-logo-700 text-logo-50'
                                       : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                                   }`}
                                 >
@@ -679,7 +679,7 @@ export const AttendanceView: React.FC = () => {
                         <td className="px-4 py-3.5 text-center font-mono">
                           {status === 'present' ? (
                             <div>
-                              <span className="font-extrabold text-black text-xs">
+                              <span className="font-extrabold text-logo-900 text-xs">
                                 {10 + otHoursCurrent}h Total
                               </span>
                               <span className="text-[10px] text-zinc-500 block">
@@ -707,7 +707,7 @@ export const AttendanceView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenOtModal(op.id)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-black hover:text-accent transition-colors border border-zinc-200 inline-flex items-center gap-1"
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-logo-800 hover:text-logo-50 transition-colors border border-zinc-200 inline-flex items-center gap-1"
                           >
                             <Clock className="w-3.5 h-3.5" />
                             <span>Add OT</span>
@@ -807,7 +807,7 @@ export const AttendanceView: React.FC = () => {
                             ) : (
                               <button
                                 onClick={() => approveAttendanceRecord(rec.id)}
-                                className="px-2 py-1 bg-black text-accent rounded font-bold text-[10px]"
+                                className="px-2 py-1 bg-logo-700 text-logo-50 rounded font-bold text-[10px]"
                               >
                                 Approve
                               </button>
@@ -861,9 +861,9 @@ export const AttendanceView: React.FC = () => {
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-x-auto">
             <table className="w-full text-center text-xs border-collapse">
-              <thead className="bg-black text-white font-semibold">
+              <thead className="bg-logo-700 text-white font-semibold">
                 <tr>
-                  <th className="px-3 py-2.5 text-left sticky left-0 bg-black z-10 w-44">
+                  <th className="px-3 py-2.5 text-left sticky left-0 bg-logo-700 z-10 w-44">
                     Operator
                   </th>
                   {monthDates.map((d) => (
@@ -920,7 +920,7 @@ export const AttendanceView: React.FC = () => {
                         );
                       })}
                       <td className="px-3 py-2 font-bold text-slate-900 bg-slate-50 font-mono">
-                        {totalPresent + totalHalf * 0.5 || 24}d
+                        {totalPresent + totalHalf * 0.5}d
                       </td>
                       <td className="px-3 py-2 font-bold text-blue-700 bg-slate-50 font-mono">
                         {totalOt}h
@@ -955,7 +955,7 @@ export const AttendanceView: React.FC = () => {
                   <div key={rec.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50">
                     <div>
                       <div className="flex items-center gap-2">
-                        <strong className="text-black text-sm">{op?.fullName}</strong>
+                        <strong className="text-logo-900 text-sm">{op?.fullName}</strong>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/15 text-accent">
                           {rec.date}
                         </span>
@@ -984,7 +984,7 @@ export const AttendanceView: React.FC = () => {
                           generatePayrollForMonth(rec.date.slice(0, 7));
                           notifyFeedback(`Approved attendance log for ${op?.fullName}.`);
                         }}
-                        className="px-4 py-1.5 rounded-xl bg-black hover:bg-zinc-800 text-accent text-xs font-bold transition-colors shadow-xs"
+                        className="px-4 py-1.5 rounded-xl bg-logo-700 hover:bg-logo-800 text-accent text-xs font-bold transition-colors shadow-xs"
                       >
                         Approve Shift
                       </button>
@@ -996,7 +996,7 @@ export const AttendanceView: React.FC = () => {
           ) : (
             <div className="p-12 text-center text-zinc-400 text-xs space-y-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-70" />
-              <p className="font-bold text-black text-sm">All shift logs are verified and approved</p>
+              <p className="font-bold text-logo-900 text-sm">All shift logs are verified and approved</p>
               <p className="text-zinc-500">All operator entries are currently in approved state for monthly payroll processing.</p>
             </div>
           )}
@@ -1005,9 +1005,9 @@ export const AttendanceView: React.FC = () => {
 
       {/* DEDICATED MODAL: ADD DAY-WISE OVERTIME HOURS */}
       {showOtModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-logo-950/70 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-zinc-300 w-full max-w-lg overflow-hidden animate-scaleIn">
-            <div className="flex items-center justify-between px-6 py-4 bg-black text-white">
+            <div className="flex items-center justify-between px-6 py-4 bg-logo-700 text-white">
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-accent" />
                 <div>
@@ -1093,7 +1093,7 @@ export const AttendanceView: React.FC = () => {
                     onClick={() => setOtHours(h)}
                     className={`px-2 py-0.5 rounded-lg text-xs font-bold font-mono transition-colors ${
                       otHours === h
-                        ? 'bg-black text-accent'
+                        ? 'bg-logo-700 text-logo-50'
                         : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                     }`}
                   >
@@ -1181,7 +1181,7 @@ export const AttendanceView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-black hover:bg-zinc-800 text-white font-bold transition-colors shadow-xs flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-xl bg-logo-700 hover:bg-logo-800 text-white font-bold transition-colors shadow-xs flex items-center gap-1.5"
                 >
                   <Clock className="w-4 h-4 text-accent" />
                   <span>Save Overtime & Update Payslip</span>
@@ -1194,9 +1194,9 @@ export const AttendanceView: React.FC = () => {
 
       {/* LEGACY DETAILED MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-logo-950/70 backdrop-blur-xs p-4">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 bg-black text-white">
+            <div className="flex items-center justify-between px-6 py-4 bg-logo-700 text-white">
               <div className="flex items-center gap-2">
                 <CalendarCheck className="w-5 h-5 text-accent" />
                 <h3 className="font-extrabold text-sm">Detailed Daily Shift Log</h3>
@@ -1308,7 +1308,7 @@ export const AttendanceView: React.FC = () => {
               </div>
 
               {/* Real-time Calculation Breakdown Box */}
-              <div className="p-3 rounded-lg bg-accent-50 border border-accent-200 text-ink-950 space-y-1 font-mono">
+              <div className="p-3 rounded-lg bg-accent-50 border border-accent-200 text-logo-900 space-y-1 font-mono">
                 <div className="flex justify-between">
                   <span>Net Working Duration:</span>
                   <strong>{durationPreview.netWorkingHours} Hours</strong>
@@ -1348,7 +1348,7 @@ export const AttendanceView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 font-bold text-white bg-black hover:bg-zinc-800 rounded-xl shadow-xs"
+                  className="px-5 py-2.5 font-bold text-white bg-logo-700 hover:bg-logo-800 rounded-xl shadow-xs"
                 >
                   Save Attendance
                 </button>

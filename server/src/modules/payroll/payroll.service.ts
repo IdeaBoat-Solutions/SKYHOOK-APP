@@ -98,8 +98,10 @@ export async function generatePayroll(
     const payableDays = emp.salary_type === 'daily'
       ? Math.max(0, presentDays + halfDays * 0.5)
       : Math.max(0, daysInMonth - unpaidLeaveDays);
-    const effectivePayable = own.length > 0 ? payableDays : (emp.salary_type === 'daily' ? 24 : daysInMonth);
-    const effectivePresent = own.length > 0 ? presentDays : 24;
+    // No approved attendance for a daily-wage employee means no pay. Monthly staff
+    // still receive their full salary (payableDays already excludes unpaid leave).
+    const effectivePayable = payableDays;
+    const effectivePresent = presentDays;
 
     const advance = (advances.rows as any[]).find((a) => a.employee_id === emp.id);
     const outstanding = advance?.outstanding_paise ?? 0;

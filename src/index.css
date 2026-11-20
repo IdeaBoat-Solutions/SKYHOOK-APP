@@ -2,7 +2,7 @@
 
 /* ==========================================================================
    SKYHOOK ERP — DESIGN SYSTEM (shadcn Nova inspired)
-   Neutral zinc surfaces, near-monochrome primary, flat borders, no shadows.
+   Neutral zinc surfaces, logo-blue primary, flat borders, no shadows.
    ========================================================================== */
 
 @theme {
@@ -25,6 +25,22 @@
   --color-ink-300: #d4d4d8;
   --color-ink-200: #e4e4e7;
 
+  /* Brand blue sampled from the SKYHOOK logo wordmark (#319BCF). The 500 step
+     is the exact logo colour; the surrounding steps keep contrast on both
+     light and dark surfaces so no black is needed for brand moments. */
+  --color-logo-50: #eff9fd;
+  --color-logo-100: #d9f0fa;
+  --color-logo-200: #b3e0f4;
+  --color-logo-300: #7fc8ec;
+  --color-logo-400: #4aabe0;
+  --color-logo-500: #319bcf;
+  --color-logo-600: #237ead;
+  --color-logo-700: #1c648a;
+  --color-logo-800: #1a5372;
+  --color-logo-900: #19455e;
+  --color-logo-950: #102e42;
+  --color-logo: var(--color-logo-500);
+
   /* The one accent: signal amber, drawn from crane/hazard markings.
      Neutrals do the structure; amber is spent only on the action, the active
      state and the brand moment. Every surface in the product reads from this
@@ -45,20 +61,19 @@
   --color-accent-soft: var(--color-accent-100);
   --color-accent-text: var(--color-accent-700);
 
-  /* Legacy brand ramp: the ERP's near-monochrome primary. Kept as aliases to
-     the ink scale so every existing utility keeps its exact former colour;
-     amber is reserved for the single accent, never a second primary. */
-  --color-brand-50: var(--color-surface-muted);
-  --color-brand-100: var(--color-ink-200);
-  --color-brand-200: var(--color-ink-300);
-  --color-brand-300: var(--color-ink-400);
-  --color-brand-400: var(--color-ink-500);
-  --color-brand-500: var(--color-ink-600);
-  --color-brand-600: var(--color-ink-800);
-  --color-brand-700: var(--color-ink-900);
-  --color-brand-800: var(--color-ink-950);
-  --color-brand-900: var(--color-ink-950);
-  --color-brand-950: #000000;
+  /* Brand ramp: the logo blue is the product's primary. Amber stays the
+     single hazard accent; blue owns buttons, active states and brand marks. */
+  --color-brand-50: var(--color-logo-50);
+  --color-brand-100: var(--color-logo-100);
+  --color-brand-200: var(--color-logo-200);
+  --color-brand-300: var(--color-logo-300);
+  --color-brand-400: var(--color-logo-400);
+  --color-brand-500: var(--color-logo-500);
+  --color-brand-600: var(--color-logo-600);
+  --color-brand-700: var(--color-logo-700);
+  --color-brand-800: var(--color-logo-800);
+  --color-brand-900: var(--color-logo-900);
+  --color-brand-950: var(--color-logo-950);
 
   /* Status colors (used sparingly) */
   --color-success-50: #ecfdf5;
@@ -128,7 +143,7 @@
 
   ::selection {
     background: var(--color-accent-200);
-    color: var(--color-ink-950);
+    color: var(--color-logo-950);
   }
 }
 
@@ -666,7 +681,7 @@
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    background: rgb(9 9 11 / 0.5);
+    background: rgb(16 46 66 / 0.6);
   }
 
   .modal-panel {
@@ -675,7 +690,8 @@
     max-height: calc(100vh - 2rem);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-line);
     border-radius: var(--radius-modal);

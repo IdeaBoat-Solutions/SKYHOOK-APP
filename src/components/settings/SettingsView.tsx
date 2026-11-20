@@ -640,7 +640,7 @@ export const SettingsView: React.FC = () => {
                       <tr key={u.id} className="transition-colors hover:bg-surface-muted">
                         <td className="px-4 py-3.5 pr-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-900 text-[11px] font-semibold text-white">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-logo-700 text-[11px] font-semibold text-white">
                               {u.name.charAt(0)}
                             </div>
                             <div className="min-w-0">
@@ -723,7 +723,7 @@ export const SettingsView: React.FC = () => {
       {showAddUserModal && (
         <div className="modal-overlay">
           <div className="modal-panel">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-ink-700 bg-ink-900 px-5 py-4 text-white">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-ink-700 bg-logo-700 px-5 py-4 text-white">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
                   <UserPlus className="h-4 w-4" />
@@ -739,7 +739,7 @@ export const SettingsView: React.FC = () => {
                 type="button"
                 onClick={() => setShowAddUserModal(false)}
                 aria-label="Close"
-                className="icon-btn h-8 w-8 shrink-0 text-ink-300 hover:bg-ink-800 hover:text-white"
+                className="icon-btn h-8 w-8 shrink-0 text-ink-300 hover:bg-logo-800 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>

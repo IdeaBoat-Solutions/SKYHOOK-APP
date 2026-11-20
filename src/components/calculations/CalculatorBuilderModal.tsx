@@ -257,7 +257,7 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
                     onClick={() => setIcon(key)}
                     className={`flex aspect-square items-center justify-center rounded-lg border transition-colors ${
                       active
-                        ? 'border-ink-900 bg-ink-900 text-white'
+                        ? 'border-logo-700 bg-logo-700 text-white'
                         : 'border-line text-ink-600 hover:border-line-strong hover:bg-surface-muted'
                     }`}
                   >

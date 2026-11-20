@@ -158,7 +158,7 @@ export const OperatorDirectoryView: React.FC = () => {
                     </td>
                     <td className="px-3.5 py-3">
                       <div className="flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-900 text-[11px] font-bold text-white">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-logo-700 text-[11px] font-bold text-white">
                           {op.fullName.charAt(0)}
                         </span>
                         <div className="min-w-0">
@@ -225,7 +225,7 @@ export const OperatorDirectoryView: React.FC = () => {
           <div className="modal-panel modal-panel-wide" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-900 text-sm font-bold text-white">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-logo-700 text-sm font-bold text-white">
                   {selected.fullName.charAt(0)}
                 </span>
                 <div className="min-w-0">

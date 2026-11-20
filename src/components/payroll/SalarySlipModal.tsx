@@ -27,7 +27,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
     <div className="modal-overlay overflow-y-auto">
       <div className="modal-panel modal-panel-wide">
         {/* Top Modal Bar (Excluded from print) */}
-        <div className="flex items-center justify-between px-6 py-3.5 bg-ink-900 text-white no-print">
+        <div className="flex items-center justify-between px-6 py-3.5 bg-logo-700 text-white no-print">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-sm">Official Salary Slip Preview</span>
             <span className="badge badge-neutral">
@@ -80,7 +80,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
             </div>
 
             <div className="text-right">
-              <div className="inline-block px-3 py-1 rounded-full bg-ink-900 text-white text-xs font-bold tracking-wider uppercase mb-1">
+              <div className="inline-block px-3 py-1 rounded-full bg-logo-700 text-white text-xs font-bold tracking-wider uppercase mb-1">
                 SALARY SLIP
               </div>
               <p className="text-xs font-semibold text-ink-600">Pay Period: {payrollMonth}</p>
@@ -133,7 +133,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
 
           {/* Earnings & Deductions Breakdown Table */}
           <div className="border border-line rounded-lg overflow-hidden">
-            <div className="grid grid-cols-2 bg-ink-900 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-4">
+            <div className="grid grid-cols-2 bg-logo-700 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-4">
               <div>Earnings Description</div>
               <div className="text-right">Deductions Description</div>
             </div>

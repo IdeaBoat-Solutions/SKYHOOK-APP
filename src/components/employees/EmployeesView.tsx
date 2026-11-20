@@ -926,8 +926,8 @@ export const EmployeesView: React.FC = () => {
               </div>
 
               {/* Dedicated Operator & Employee Documents Upload Section (Before Saving) */}
-              <div className="rounded-lg border border-ink-800 bg-ink-900 p-4 space-y-4 text-white">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ink-800 pb-3">
+              <div className="rounded-lg border border-logo-700 bg-logo-700 p-4 space-y-4 text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-logo-700 pb-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <Paperclip className="w-4 h-4 text-ink-300" />
@@ -945,13 +945,13 @@ export const EmployeesView: React.FC = () => {
                 </div>
 
                 {/* Upload Inputs Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border border-ink-800 bg-ink-950 p-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border border-logo-700 bg-logo-800 p-3">
                   <div>
                     <label className="form-label mb-1 !text-ink-300">
                       Document Type:
                     </label>
                     <Select value={uploadDocType} onValueChange={setUploadDocType}>
-                      <SelectTrigger className="form-input !border-line-strong !bg-ink-900 !text-white">
+                      <SelectTrigger className="form-input !border-line-strong !bg-logo-700 !text-white">
                         <SelectValue placeholder="Select document type" />
                       </SelectTrigger>
                       <SelectContent>
@@ -973,7 +973,7 @@ export const EmployeesView: React.FC = () => {
                       placeholder="e.g. Official DL Front & Back"
                       value={uploadDocTitle}
                       onChange={(e) => setUploadDocTitle(e.target.value)}
-                      className="form-input !border-line-strong !bg-ink-900 !text-white"
+                      className="form-input !border-line-strong !bg-logo-700 !text-white"
                     />
                   </div>
 
@@ -985,15 +985,15 @@ export const EmployeesView: React.FC = () => {
                       type="date"
                       value={uploadDocExpiry}
                       onChange={(e) => setUploadDocExpiry(e.target.value)}
-                      className="form-input !border-line-strong !bg-ink-900 !text-white"
+                      className="form-input !border-line-strong !bg-logo-700 !text-white"
                     />
                   </div>
                 </div>
 
                 {/* File Selector & Stage Button */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-lg border border-ink-800 bg-ink-900 p-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-lg border border-logo-700 bg-logo-700 p-3">
                   <div className="flex items-center gap-3">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-ink-800 px-3 py-2 text-xs font-semibold text-white hover:bg-ink-700">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-logo-800 px-3 py-2 text-xs font-semibold text-white hover:bg-ink-700">
                       <Upload className="w-3.5 h-3.5 text-ink-300" />
                       <span>Choose File (PDF/Image)</span>
                       <input
@@ -1035,7 +1035,7 @@ export const EmployeesView: React.FC = () => {
                       {stagedDocuments.map((doc) => (
                         <div
                           key={doc.id}
-                          className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900 p-2.5"
+                          className="flex items-center justify-between rounded-lg border border-logo-700 bg-logo-700 p-2.5"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="section-icon w-7 h-7">

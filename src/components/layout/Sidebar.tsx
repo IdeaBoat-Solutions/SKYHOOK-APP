@@ -222,14 +222,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-ink-950/60 backdrop-blur-[2px] lg:hidden"
+          className="fixed inset-0 z-40 bg-logo-950/70 backdrop-blur-[2px] lg:hidden"
           onClick={onCloseMobile}
           aria-hidden="true"
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-white/5 bg-ink-950 text-ink-200 transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-white/5 bg-logo-700 text-ink-200 transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } ${isCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
       >

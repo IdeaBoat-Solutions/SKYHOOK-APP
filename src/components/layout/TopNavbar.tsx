@@ -369,7 +369,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
 
           <div
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-900 text-[10px] font-bold text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-logo-700 text-[10px] font-bold text-white"
             title={`${currentUser.name} · ${currentUser.role === 'owner' ? 'Owner / Admin' : 'Manager'}`}
           >
             {currentUser.name.charAt(0)}

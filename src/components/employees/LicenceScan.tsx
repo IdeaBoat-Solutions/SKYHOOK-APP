@@ -127,7 +127,7 @@ export const LicenceDetailsFields: React.FC<FieldsProps> = ({ value, onChange })
                 onClick={() => toggleClass(code)}
                 className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
                   active
-                    ? 'border-ink-800 bg-ink-900 text-white'
+                    ? 'border-logo-700 bg-logo-700 text-white'
                     : 'border-line bg-surface text-ink-600 hover:bg-surface-muted'
                 }`}
               >
@@ -307,7 +307,7 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
       <button
         type="button"
         onClick={() => ref.current?.click()}
-        className="flex aspect-[1.6] w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-line-strong bg-surface-muted transition-colors hover:border-ink-900"
+        className="flex aspect-[1.6] w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-line-strong bg-surface-muted transition-colors hover:border-logo-700"
       >
         {previews[side] ? (
           <img src={previews[side]} alt={`${title} preview`} className="h-full w-full object-contain" />

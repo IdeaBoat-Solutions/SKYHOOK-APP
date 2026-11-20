@@ -271,7 +271,7 @@ export const PersonalView: React.FC = () => {
       <div className="mx-auto max-w-md space-y-6 pb-12 pt-6">
         <div className="card card-pad space-y-6">
           <div className="text-center">
-            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-900 text-white">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-logo-700 text-white">
               {personalPinSet ? <KeyRound className="h-7 w-7" /> : <ShieldCheck className="h-7 w-7" />}
             </span>
             <h2 className="mt-4 text-lg font-bold tracking-tight text-ink-900">
@@ -506,7 +506,7 @@ export const PersonalView: React.FC = () => {
         <button
           type="button"
           onClick={openCategoryForm}
-          className="flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong p-4 text-ink-600 transition-colors hover:border-ink-900 hover:text-ink-900"
+          className="flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong p-4 text-ink-600 transition-colors hover:border-logo-700 hover:text-ink-900"
         >
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-muted">
             <Plus className="h-5 w-5" />
@@ -639,7 +639,7 @@ export const PersonalView: React.FC = () => {
                           onClick={() => setCategoryForm({ ...categoryForm, type: t })}
                           className={`rounded-lg border p-3 text-left transition-colors ${
                             active
-                              ? 'border-ink-900 bg-surface-muted'
+                              ? 'border-logo-700 bg-surface-muted'
                               : 'border-line hover:border-line-strong'
                           }`}
                         >
@@ -671,7 +671,7 @@ export const PersonalView: React.FC = () => {
                           onClick={() => setCategoryForm({ ...categoryForm, icon: key })}
                           className={`flex aspect-square items-center justify-center rounded-lg border transition-colors ${
                             active
-                              ? 'border-ink-900 bg-ink-900 text-white'
+                              ? 'border-logo-700 bg-logo-700 text-white'
                               : 'border-line text-ink-600 hover:border-line-strong hover:bg-surface-muted'
                           }`}
                         >

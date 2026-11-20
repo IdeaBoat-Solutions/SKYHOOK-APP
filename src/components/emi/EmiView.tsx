@@ -348,7 +348,7 @@ export const EmiView: React.FC = () => {
                   }}
                   className={`rounded-lg border p-4 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 ${
                     isSelected
-                      ? 'border-ink-800 bg-surface-muted'
+                      ? 'border-logo-700 bg-surface-muted'
                       : 'border-line bg-surface hover:border-line-strong hover:bg-surface-muted'
                   }`}
                 >

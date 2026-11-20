@@ -280,7 +280,7 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
 
             {/* Live calculation results */}
             <div className="stat-grid sm:grid-cols-3">
-              <div className="stat-card border-ink-800">
+              <div className="stat-card border-logo-700">
                 <span className="stat-label">Monthly EMI payout</span>
                 <div className="stat-value">
                   <Currency value={calculatedEmi} size="xl" />

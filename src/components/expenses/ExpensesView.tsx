@@ -98,7 +98,7 @@ export const ExpensesView: React.FC = () => {
             </span>
             <span className="text-xs text-slate-500 font-medium">Site Cost Centers</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-black mt-1 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-black text-logo-900 mt-1 tracking-tight">
             Project-Wise Expense Management
           </h2>
           <p className="text-xs sm:text-sm text-zinc-500 mt-0.5">
@@ -109,7 +109,7 @@ export const ExpensesView: React.FC = () => {
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => exportProjectExpenses(filteredExpenses, projects)}
-            className="px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-black font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-logo-900 font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
           >
             <Download className="w-4 h-4 text-zinc-600" />
             <span>Export XLSX</span>
@@ -128,7 +128,7 @@ export const ExpensesView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-xl bg-white border border-zinc-200 shadow-2xs">
           <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Filtered Expenses</span>
-          <div className="text-2xl font-black text-black mt-1">{filteredExpenses.length}</div>
+          <div className="text-2xl font-black text-logo-900 mt-1">{filteredExpenses.length}</div>
           <span className="text-[10px] text-slate-400">Total expense vouchers</span>
         </div>
 
@@ -198,7 +198,7 @@ export const ExpensesView: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-black text-white font-semibold uppercase text-[11px]">
+            <thead className="bg-logo-700 text-white font-semibold uppercase text-[11px]">
               <tr>
                 <th className="px-3.5 py-3">Expense ID</th>
                 <th className="px-3.5 py-3">Date</th>
@@ -281,9 +281,9 @@ export const ExpensesView: React.FC = () => {
 
       {/* Add Expense Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-logo-950/80 backdrop-blur-xs p-4">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden">
-            <div className="px-6 py-4 bg-black text-white flex items-center justify-between">
+            <div className="px-6 py-4 bg-logo-700 text-white flex items-center justify-between">
               <h3 className="font-bold text-sm">Add Project Expense Voucher</h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -410,7 +410,7 @@ export const ExpensesView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 font-bold text-white bg-black hover:bg-zinc-800 rounded-xl shadow-xs"
+                  className="px-5 py-2.5 font-bold text-white bg-logo-700 hover:bg-logo-800 rounded-xl shadow-xs"
                 >
                   Record Voucher
                 </button>
