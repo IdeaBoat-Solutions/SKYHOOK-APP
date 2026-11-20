@@ -96,7 +96,9 @@ function addMonths(dateStr: string, months: number): string {
   return d.toISOString().split('T')[0]!;
 }
 
-function nextServiceDate(lastService: string, value: number, unit: 'days' | 'months'): string {
+function nextServiceDate(lastService: string, value: number, unit: 'days' | 'months' | 'hours'): string {
+  // Hour-based servicing has no calendar due date (due point is an hour reading).
+  if (unit === 'hours') return '';
   return unit === 'days' ? addDays(lastService, value) : addMonths(lastService, value);
 }
 
@@ -180,7 +182,10 @@ export const machinesRoutes: Route[] = [
       const limit = queryLimit(sp);
       const result = await withTenantRead(auth.tenantId, async (c) => {
         const r = await c.query(
-          `SELECT * FROM machines WHERE tenant_id=$1 AND deleted_at IS NULL
+          `SELECT *, (SELECT sr.odometer_or_hours FROM service_records sr
+             WHERE sr.machine_id = machines.id
+             ORDER BY sr.service_date DESC LIMIT 1) AS last_service_hours
+           FROM machines WHERE tenant_id=$1 AND deleted_at IS NULL
              AND ($2::text IS NULL OR machine_type::text=$2) AND ($3::text IS NULL OR status::text=$3)
            ORDER BY asset_code LIMIT $4`,
           [auth.tenantId, type, status, limit],
@@ -197,7 +202,13 @@ export const machinesRoutes: Route[] = [
       requirePermission(auth, 'machine:read');
       const id = idFromPath(req);
       const result = await withTenantRead(auth.tenantId, async (c) => {
-        const r = await c.query('SELECT * FROM machines WHERE tenant_id=$1 AND id=$2', [auth.tenantId, id]);
+        const r = await c.query(
+          `SELECT *, (SELECT sr.odometer_or_hours FROM service_records sr
+             WHERE sr.machine_id = machines.id
+             ORDER BY sr.service_date DESC LIMIT 1) AS last_service_hours
+           FROM machines WHERE tenant_id=$1 AND id=$2`,
+          [auth.tenantId, id],
+        );
         if (!r.rows[0]) throw Errors.notFound('Machine');
         return r.rows[0];
       });
@@ -220,7 +231,8 @@ export const machinesRoutes: Route[] = [
       const purchaseDate = strField(b, 'purchaseDate');
       const purchaseCostPaise = numField(b, 'purchaseCostPaise', { integer: true, min: 0 });
       const serviceFrequencyValue = numField(b, 'serviceFrequencyValue', { integer: true, min: 1, fallback: 60 })!;
-      const serviceFrequencyUnit = enumField(b, 'serviceFrequencyUnit', ['days', 'months'], { fallback: 'days' })!;
+      const serviceFrequencyUnit = enumField(b, 'serviceFrequencyUnit', ['days', 'months', 'hours'], { fallback: 'days' })!;
+      const serviceReminderLeadHours = numField(b, 'serviceReminderLeadHours', { min: 0, fallback: 50 })!;
       const lastServiceDate = strField(b, 'lastServiceDate');
       const insuranceProvider = strField(b, 'insuranceProvider');
       const insurancePolicyNumber = strField(b, 'insurancePolicyNumber');
@@ -243,17 +255,17 @@ export const machinesRoutes: Route[] = [
             last_service_date,next_service_due_date,insurance_provider,insurance_policy_number,
             insurance_expiry_date,insurance_interval_days,puc_number,puc_issue_date,puc_expiry_date,
             puc_interval_days,fitness_certificate_number,last_fitness_date,next_fitness_due_date,
-            fitness_interval_days,status,created_by)
+            fitness_interval_days,status,created_by,service_reminder_lead_hours)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13::date,$14::date,$15,$16,$17::date,$18,
-             $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28) RETURNING *`,
+             $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29) RETURNING *`,
           [auth.tenantId, code, machineType, make, model, registrationNumber, serialNumber ?? null,
             tonnageCapacity ?? null, purchaseDate ?? null, purchaseCostPaise ?? null,
             serviceFrequencyValue, serviceFrequencyUnit, lastServiceDate ?? null,
-            lastServiceDate ? nextServiceDate(lastServiceDate, serviceFrequencyValue, serviceFrequencyUnit) : null,
+            lastServiceDate ? (nextServiceDate(lastServiceDate, serviceFrequencyValue, serviceFrequencyUnit) || null) : null,
             insuranceProvider ?? null, insurancePolicyNumber ?? null, insuranceExpiryDate ?? null, insuranceIntervalDays,
             pucNumber ?? null, pucIssueDate ?? null, pucExpiryDate ?? null, pucIntervalDays,
             fitnessCertificateNumber ?? null, lastFitnessDate ?? null, nextFitnessDueDate ?? null,
-            fitnessIntervalDays, status, auth.userId],
+            fitnessIntervalDays, status, auth.userId, serviceReminderLeadHours],
         );
         await writeAudit(c, auth, { action: 'ASSET_CREATED', entity: 'MachineAsset', entityId: r.rows[0].id, reason: `Registered ${make} ${model}`, requestId: ctx.requestId });
         return r.rows[0];
@@ -276,10 +288,13 @@ export const machinesRoutes: Route[] = [
         b.serviceFrequencyValue = numField(raw, 'serviceFrequencyValue', { integer: true, min: 1 });
       }
       if (raw?.serviceFrequencyUnit !== undefined && raw?.serviceFrequencyUnit !== null) {
-        b.serviceFrequencyUnit = enumField(raw, 'serviceFrequencyUnit', ['days', 'months']);
+        b.serviceFrequencyUnit = enumField(raw, 'serviceFrequencyUnit', ['days', 'months', 'hours']);
+      }
+      if (raw?.serviceReminderLeadHours !== undefined && raw?.serviceReminderLeadHours !== null) {
+        b.serviceReminderLeadHours = numField(raw, 'serviceReminderLeadHours', { min: 0 });
       }
       const result = await withTenant(auth.tenantId, async (c) => {
-        const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit' };
+        const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours' };
         const entries = Object.entries(b).filter(([, v]) => v !== undefined);
         if (!entries.length) throw Errors.badRequest('No fields to update');
         // Fixed upstream off-by-one: values occupy $4..$n; $3 is the id in WHERE.
@@ -321,7 +336,7 @@ export const machinesRoutes: Route[] = [
       const result = await withTenant(auth.tenantId, async (c) => {
         const m = await c.query('SELECT * FROM machines WHERE tenant_id=$1 AND id=$2', [auth.tenantId, id]);
         if (!m.rows[0]) throw Errors.notFound('Machine');
-        const next = nextServiceDate(serviceDate, m.rows[0].service_frequency_value, m.rows[0].service_frequency_unit);
+        const next = nextServiceDate(serviceDate, m.rows[0].service_frequency_value, m.rows[0].service_frequency_unit) || null;
         await c.query(
           `INSERT INTO service_records (tenant_id,machine_id,service_date,service_type,service_provider,cost_paise,odometer_or_hours,notes,completed_by)
            VALUES ($1,$2,$3::date,'Periodic Maintenance',$4,$5,$6,$7,$8)`,

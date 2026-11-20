@@ -57,7 +57,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister })
       <header className="landing-header">
         <nav className="landing-nav" aria-label="Primary">
           <a className="landing-brand" href="#landing-main">
-            <span className="landing-brand__mark" aria-hidden="true">S</span>
+            <img className="landing-brand__mark" src="/assets/image.png" alt="" aria-hidden="true" />
             <span className="landing-brand__name">Skyhook</span>
             <span className="landing-brand__tag">ERP</span>
           </a>

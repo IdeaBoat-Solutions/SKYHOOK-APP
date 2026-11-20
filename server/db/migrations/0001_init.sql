@@ -25,7 +25,7 @@ DO $$ BEGIN CREATE TYPE machine_type AS ENUM ('hydraulic_crane','mobile_crane','
 DO $$ BEGIN CREATE TYPE emi_status AS ENUM ('upcoming','due_today','overdue','paid','partially_paid'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE reminder_category AS ENUM ('emi','service','insurance','puc','fitness','license','payroll','attendance'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE priority AS ENUM ('critical','high','medium','low'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE frequency_unit AS ENUM ('days','months'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE frequency_unit AS ENUM ('days','months','hours'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE payment_mode AS ENUM ('cash','bank_transfer','upi','cheque','company_card'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ---------------------------------------------------------------------------
@@ -277,6 +277,7 @@ CREATE TABLE IF NOT EXISTS machines (
   service_frequency_unit frequency_unit NOT NULL DEFAULT 'days',
   next_service_due_date DATE,
   service_reminder_lead_days SMALLINT NOT NULL DEFAULT 15,
+  service_reminder_lead_hours NUMERIC NOT NULL DEFAULT 50,
   insurance_provider TEXT, insurance_policy_number TEXT,
   insurance_start_date DATE, insurance_expiry_date DATE,
   insurance_interval_days INTEGER DEFAULT 365,
@@ -676,6 +677,38 @@ CREATE TABLE IF NOT EXISTS export_jobs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ
 );
+
+-- Custom pay/deduction lines and per-user personal records (formerly localStorage).
+CREATE TABLE IF NOT EXISTS payroll_adjustments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  month TEXT NOT NULL,
+  employee_code TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('pay','deduction')),
+  label TEXT NOT NULL,
+  amount_paise BIGINT NOT NULL CHECK (amount_paise >= 0),
+  remarks TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_payroll_adjustments ON payroll_adjustments (tenant_id, month, employee_code);
+
+CREATE TABLE IF NOT EXISTS personal_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT '',
+  reference_number TEXT NOT NULL DEFAULT '',
+  amount_paise BIGINT NOT NULL DEFAULT 0,
+  periodic_amount_paise BIGINT NOT NULL DEFAULT 0,
+  start_date TEXT,
+  due_date TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_personal_records_user ON personal_records (tenant_id, user_id);
 
 -- ---------------------------------------------------------------------------
 -- Triggers

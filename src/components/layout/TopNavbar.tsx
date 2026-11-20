@@ -69,6 +69,10 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
     title: 'Machine EMI Loans & Installments',
     subtitle: 'Equipment finance repayment schedules, monthly installment reminders and payment proofs.',
   },
+  calculations: {
+    title: 'Calculations',
+    subtitle: 'Machine EMI, fleet totals and your own custom calculators in one place.',
+  },
   reminders: {
     title: 'Statutory Compliance & Renewal Alerts',
     subtitle: 'Actionable deadline tracking for Service, Insurance, PUC, Fitness and Operator Licenses.',

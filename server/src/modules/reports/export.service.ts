@@ -62,7 +62,9 @@ export async function buildExport(
     rows = r.rows.map((x: any) => ({
       'Asset ID': x.asset_code, 'Type': x.machine_type, 'Make': x.make, 'Model': x.model,
       'Registration': x.registration_number, 'Capacity (T)': x.tonnage_capacity, 'Status': x.status,
-      'Service Due': formatDateDDMMYYYY(x.next_service_due_date),
+      'Service Due': x.service_frequency_unit === 'hours'
+        ? `Every ${x.service_frequency_value} operating hours`
+        : formatDateDDMMYYYY(x.next_service_due_date),
       'Insurance Expiry': formatDateDDMMYYYY(x.insurance_expiry_date),
       'PUC Expiry': formatDateDDMMYYYY(x.puc_expiry_date),
       'Fitness Due': formatDateDDMMYYYY(x.next_fitness_due_date),

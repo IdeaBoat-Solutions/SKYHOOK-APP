@@ -3,6 +3,7 @@ import type {
   User, CompanySettings, Project, Employee, MachineAsset, AttendanceRecord,
   SalaryAdvance, PayrollRun, PayrollEntry, ProjectExpense, MachineEmiLoan,
   EmiInstallment, MachineWorkingLog, AuditLog, InAppNotification,
+  ServiceRecord, PayrollAdjustment, PersonalRecord,
 } from '../types';
 
 const rupees = (paise: number | null | undefined): number => Math.round((paise ?? 0) / 100);
@@ -72,6 +73,8 @@ export function mapMachine(r: any): MachineAsset {
     lastServiceDate: str(r.last_service_date), serviceFrequencyValue: r.service_frequency_value ?? 60,
     serviceFrequencyUnit: r.service_frequency_unit ?? 'days', nextServiceDueDate: str(r.next_service_due_date),
     serviceReminderLeadDays: r.service_reminder_lead_days ?? 15,
+    serviceReminderLeadHours: r.service_reminder_lead_hours ?? 50,
+    lastServiceHours: r.last_service_hours ?? r.lastServiceHours ?? 0,
     insuranceProvider: r.insurance_provider ?? '', insurancePolicyNumber: r.insurance_policy_number ?? '',
     insuranceStartDate: str(r.insurance_start_date), insuranceExpiryDate: str(r.insurance_expiry_date),
     insuranceIntervalDays: r.insurance_interval_days ?? undefined,
@@ -202,6 +205,46 @@ export function mapNotification(r: any): InAppNotification {
     id: r.id, category: r.category, title: r.title, description: r.description ?? '',
     relatedRecordId: r.related_id, dueDate: str(r.due_date), priority: r.priority,
     read: r.is_read ?? false, createdAt: r.created_at,
+  };
+}
+
+export function mapServiceRecord(r: any): ServiceRecord {
+  return {
+    id: r.id,
+    serviceDate: str(r.service_date ?? r.serviceDate),
+    serviceType: r.service_type ?? r.serviceType ?? '',
+    serviceProvider: r.service_provider ?? r.serviceProvider ?? '',
+    cost: rupees(r.cost_paise ?? r.costPaise),
+    odometerOrHours: r.odometer_or_hours ?? r.odometerOrHours ?? undefined,
+    notes: r.notes ?? undefined,
+    invoiceUrl: r.invoice_key ?? r.invoice_url ?? r.invoiceUrl ?? undefined,
+    completedBy: str(r.completed_by ?? r.completedBy),
+  };
+}
+
+export function mapPayrollAdjustment(r: any): PayrollAdjustment {
+  return {
+    id: r.id,
+    label: r.label ?? '',
+    amount: rupees(r.amount_paise ?? r.amountPaise),
+    remarks: r.remarks ?? undefined,
+    createdAt: r.created_at ?? r.createdAt ?? '',
+  };
+}
+
+export function mapPersonalRecord(r: any): PersonalRecord {
+  return {
+    id: r.id,
+    kind: r.kind,
+    title: r.title ?? '',
+    provider: r.provider ?? '',
+    referenceNumber: r.reference_number ?? r.referenceNumber ?? '',
+    amount: rupees(r.amount_paise ?? r.amountPaise),
+    periodicAmount: rupees(r.periodic_amount_paise ?? r.periodicAmountPaise),
+    startDate: str(r.start_date ?? r.startDate),
+    dueDate: str(r.due_date ?? r.dueDate),
+    notes: r.notes ?? undefined,
+    createdAt: r.created_at ?? r.createdAt ?? '',
   };
 }
 

@@ -198,7 +198,7 @@ export const EmployeesView: React.FC = () => {
       id: `DOC-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       type: uploadDocType,
       name: uploadDocTitle.trim() || uploadFileName || `${uploadDocType} Document`,
-      fileUrl: uploadFileDataUrl || '/assets/aistudio/SH_e808acaf.png',
+      fileUrl: uploadFileDataUrl || '/assets/image.png',
       uploadDate: currentDate,
       expiryDate: uploadDocExpiry || undefined,
       sizeKb: uploadFileSize || Math.floor(Math.random() * 500) + 150,

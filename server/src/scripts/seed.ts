@@ -39,13 +39,15 @@ export async function seed(): Promise<void> {
       [roleId('manager'), [...MANAGER_PERMISSIONS]]);
 
     // users — passwords live in Supabase Auth when configured, else in credentials.
-    const passwordHash = supabaseMode ? null : await hashPassword('skyhook2026');
-    const users = [
-      ['Vikram Singhania', 'owner@skyhook.in', 'owner'],
-      ['Rajesh Sharma', 'manager@skyhook.in', 'manager'],
-      ['Amit Verma', 'amit@skyhook.in', 'manager'],
+    const users: [name: string, email: string, role: string, password: string][] = [
+      ['Skyhook Admin', 'admin@skyhook.com', 'owner', 'skyhook@2026'],
+      ['Skyhook Manager', 'manager@skyhook.com', 'manager', 'skyhook@2026'],
+      ['Vikram Singhania', 'owner@skyhook.in', 'owner', 'skyhook2026'],
+      ['Rajesh Sharma', 'manager@skyhook.in', 'manager', 'skyhook2026'],
+      ['Amit Verma', 'amit@skyhook.in', 'manager', 'skyhook2026'],
     ];
-    for (const [name, email, role] of users) {
+    for (const [name, email, role, password] of users) {
+      const passwordHash = supabaseMode ? null : await hashPassword(password);
       const existing = await c.query(
         'SELECT id, auth_user_id FROM users WHERE tenant_id=$1 AND email=$2',
         [tenantId, email],
@@ -64,7 +66,7 @@ export async function seed(): Promise<void> {
         };
         authUserId = await provisionAuthUser({
           ...claims,
-          password: 'skyhook2026',
+          password,
           authUserId,
         });
       }

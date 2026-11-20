@@ -14,12 +14,14 @@ import { useSkyhook } from '../../data/apiStore';
 import { User } from '../../types';
 import { navigate } from '../../lib/nav';
 
+const DEMO_PASSWORD = 'skyhook@2026';
+
 export const LoginPage: React.FC = () => {
   const { availableUsers, login, companySettings } = useSkyhook();
 
   const [selectedUserId, setSelectedUserId] = useState<string>(availableUsers[0]?.id || 'USR-001');
-  const [email, setEmail] = useState<string>(availableUsers[0]?.email || 'owner@skyhook.in');
-  const [password, setPassword] = useState<string>('skyhook2026');
+  const [email, setEmail] = useState<string>(availableUsers[0]?.email || 'admin@skyhook.com');
+  const [password, setPassword] = useState<string>(DEMO_PASSWORD);
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -29,7 +31,7 @@ export const LoginPage: React.FC = () => {
   const handleSelectUser = (u: User) => {
     setSelectedUserId(u.id);
     setEmail(u.email);
-    setPassword('skyhook2026');
+    setPassword(DEMO_PASSWORD);
     setErrorMessage('');
   };
 
@@ -63,7 +65,7 @@ export const LoginPage: React.FC = () => {
     setErrorMessage('');
     setIsLoading(true);
     try {
-      await login(u, 'skyhook2026');
+      await login(u, DEMO_PASSWORD);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Login failed. Check your credentials.');
     } finally {
@@ -78,7 +80,7 @@ export const LoginPage: React.FC = () => {
           <a href="/" className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80" aria-label="Skyhook home">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-surface p-1.5">
               <img
-                src={companySettings.logoUrl || '/assets/aistudio/SH_e808acaf.png'}
+                src={companySettings.logoUrl || '/assets/image.png'}
                 alt="Skyhook Logo"
                 className="max-h-full max-w-full object-contain"
               />
@@ -208,7 +210,7 @@ export const LoginPage: React.FC = () => {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@skyhook.in"
+                    placeholder="name@skyhook.com"
                     required
                     className="form-input"
                   />
@@ -217,7 +219,7 @@ export const LoginPage: React.FC = () => {
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
                     <label className="text-xs font-semibold text-ink-700">Password / Access PIN</label>
-                    <span className="text-[11px] text-ink-400">Demo: skyhook2026</span>
+                    <span className="text-[11px] text-ink-400">Demo: skyhook@2026</span>
                   </div>
                   <div className="relative">
                     <input

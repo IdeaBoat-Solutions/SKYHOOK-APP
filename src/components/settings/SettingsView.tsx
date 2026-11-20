@@ -266,7 +266,7 @@ export const SettingsView: React.FC = () => {
               <span className="stat-label block">Official Skyhook Logo</span>
               <div className="mx-auto mt-3 flex h-28 w-28 items-center justify-center overflow-hidden rounded-lg border border-line bg-surface p-2">
                 <img
-                  src={logoUrl || '/assets/aistudio/SH_e808acaf.png'}
+                  src={logoUrl || '/assets/image.png'}
                   alt="Skyhook Logo"
                   className="h-full w-full object-contain"
                 />

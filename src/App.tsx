@@ -17,7 +17,7 @@ import { PayrollView } from './components/payroll/PayrollView';
 import { AdvancesView } from './components/advances/AdvancesView';
 import { ExpensesView } from './components/expenses/ExpensesView';
 import { AssetsView } from './components/assets/AssetsView';
-import { EmiView } from './components/emi/EmiView';
+import { CalculationsView, CalcTab } from './components/calculations/CalculationsView';
 import { RemindersView } from './components/reminders/RemindersView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
@@ -28,6 +28,7 @@ function MainAppShell() {
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [calcRequest, setCalcRequest] = useState<{ tab?: CalcTab; n: number }>({ n: 0 });
   const { currentUser } = useSkyhook();
 
   const handleToggleSidebar = () => {
@@ -41,8 +42,17 @@ function MainAppShell() {
   const isManager = currentUser.role === 'manager';
 
   const handleNavigateTab = (tab: NavTab) => {
-    // Restrict manager from owner-only tabs (EMI + Personal vault).
-    if (isManager && (tab === 'emi' || tab === 'personal')) {
+    // Machine EMI now lives inside Calculations; 'emi' deep-links to that sub-tab.
+    if (tab === 'emi') {
+      if (isManager) {
+        setCurrentTab('dashboard');
+        return;
+      }
+      setCalcRequest((r) => ({ tab: 'emi', n: r.n + 1 }));
+      tab = 'calculations';
+    }
+    // Restrict manager from the owner-only Personal vault.
+    if (isManager && tab === 'personal') {
       setCurrentTab('dashboard');
       return;
     }
@@ -53,7 +63,8 @@ function MainAppShell() {
   const handleOpenAlert = (alert: ReminderAlertItem) => {
     if (alert.category === 'emi') {
       if (!isManager) {
-        setCurrentTab('emi');
+        setCalcRequest((r) => ({ tab: 'emi', n: r.n + 1 }));
+        setCurrentTab('calculations');
       }
     } else if (
       alert.category === 'service' ||
@@ -114,7 +125,9 @@ function MainAppShell() {
 
           {currentTab === 'assets' && <AssetsView />}
 
-          {currentTab === 'emi' && <EmiView />}
+          {currentTab === 'calculations' && (
+            <CalculationsView key={calcRequest.n} initialTab={calcRequest.tab} />
+          )}
 
           {currentTab === 'reminders' && <RemindersView />}
 

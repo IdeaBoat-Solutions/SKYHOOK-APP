@@ -62,7 +62,9 @@ export const ReportsView: React.FC = () => {
       'Purchase Date': formatDateDDMMYYYY(m.purchaseDate),
       'Purchase Cost': formatINR(m.purchaseCost),
       'Status': m.status.toUpperCase(),
-      'Next Service Due': formatDateDDMMYYYY(m.nextServiceDueDate),
+      'Next Service Due': m.serviceFrequencyUnit === 'hours'
+        ? `Every ${m.serviceFrequencyValue} operating hours`
+        : formatDateDDMMYYYY(m.nextServiceDueDate),
       'Insurance Expiry': formatDateDDMMYYYY(m.insuranceExpiryDate),
       'PUC Expiry': formatDateDDMMYYYY(m.pucExpiryDate),
       'Fitness Expiry': formatDateDDMMYYYY(m.nextFitnessDueDate),

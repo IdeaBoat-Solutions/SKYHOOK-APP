@@ -6,6 +6,7 @@ import {
   calculatePayrollEntry,
   calculateWorkingAndOt,
   evaluateReminderStatus,
+  evaluateServiceHours,
   nextServiceDate,
 } from './calculations.js';
 
@@ -98,6 +99,15 @@ describe('reminders', () => {
   it('computes next service and expiry dates', () => {
     expect(nextServiceDate('2026-10-20', 60, 'days')).toBe('2026-12-19');
     expect(addDays('2026-10-24', 365)).toBe('2027-10-24');
+    // Hour-based servicing has no calendar due date.
+    expect(nextServiceDate('2026-10-20', 500, 'hours')).toBe('');
+  });
+
+  it('evaluates hour-based service due points', () => {
+    expect(evaluateServiceHours(480, 500, 50).status).toBe('upcoming');
+    expect(evaluateServiceHours(500, 500, 50).status).toBe('due_today');
+    expect(evaluateServiceHours(620, 500, 50).status).toBe('overdue');
+    expect(evaluateServiceHours(100, 500, 50).status).toBe('none');
   });
 });
 

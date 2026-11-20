@@ -18,7 +18,8 @@ const createSchema = z.object({
   purchaseDate: z.string().optional(),
   purchaseCostPaise: z.number().int().nonnegative().optional(),
   serviceFrequencyValue: z.number().int().positive().default(60),
-  serviceFrequencyUnit: z.enum(['days', 'months']).default('days'),
+  serviceFrequencyUnit: z.enum(['days', 'months', 'hours']).default('days'),
+  serviceReminderLeadHours: z.number().nonnegative().default(50),
   lastServiceDate: z.string().optional(),
   insuranceProvider: z.string().optional(),
   insurancePolicyNumber: z.string().optional(),
@@ -40,7 +41,11 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
     const q = z.object({ type: z.string().optional(), status: z.string().optional(), limit: z.coerce.number().int().max(500).default(200) }).parse(request.query);
     return withTenantRead(request.auth.tenantId, async (c) => {
       const r = await c.query(
-        `SELECT * FROM machines WHERE tenant_id=$1 AND deleted_at IS NULL
+        `SELECT machines.*,
+                (SELECT sr.odometer_or_hours FROM service_records sr
+                 WHERE sr.machine_id = machines.id
+                 ORDER BY sr.service_date DESC LIMIT 1) AS last_service_hours
+         FROM machines WHERE tenant_id=$1 AND deleted_at IS NULL
            AND ($2::text IS NULL OR machine_type::text=$2) AND ($3::text IS NULL OR status::text=$3)
          ORDER BY asset_code LIMIT $4`,
         [request.auth.tenantId, q.type ?? null, q.status ?? null, q.limit],
@@ -52,7 +57,14 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
   app.get('/machines/:id', { preHandler: requirePermission('machine:read') }, async (request) => {
     const { id } = request.params as { id: string };
     return withTenantRead(request.auth.tenantId, async (c) => {
-      const r = await c.query('SELECT * FROM machines WHERE tenant_id=$1 AND id=$2', [request.auth.tenantId, id]);
+      const r = await c.query(
+        `SELECT machines.*,
+                (SELECT sr.odometer_or_hours FROM service_records sr
+                 WHERE sr.machine_id = machines.id
+                 ORDER BY sr.service_date DESC LIMIT 1) AS last_service_hours
+         FROM machines WHERE tenant_id=$1 AND id=$2`,
+        [request.auth.tenantId, id],
+      );
       if (!r.rows[0]) throw Errors.notFound('Machine');
       return r.rows[0];
     });
@@ -68,17 +80,18 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
           last_service_date,next_service_due_date,insurance_provider,insurance_policy_number,
           insurance_expiry_date,insurance_interval_days,puc_number,puc_issue_date,puc_expiry_date,
           puc_interval_days,fitness_certificate_number,last_fitness_date,next_fitness_due_date,
-          fitness_interval_days,status,created_by)
+          fitness_interval_days,status,created_by,service_reminder_lead_hours)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13::date,$14::date,$15,$16,$17::date,$18,
-           $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28) RETURNING *`,
+           $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29) RETURNING *`,
         [request.auth.tenantId, code, b.machineType, b.make, b.model, b.registrationNumber, b.serialNumber ?? null,
           b.tonnageCapacity ?? null, b.purchaseDate ?? null, b.purchaseCostPaise ?? null,
           b.serviceFrequencyValue, b.serviceFrequencyUnit, b.lastServiceDate ?? null,
-          b.lastServiceDate ? nextServiceDate(b.lastServiceDate, b.serviceFrequencyValue, b.serviceFrequencyUnit) : null,
+          // Hour-based servicing has no calendar date — store NULL instead.
+          b.lastServiceDate ? (nextServiceDate(b.lastServiceDate, b.serviceFrequencyValue, b.serviceFrequencyUnit) || null) : null,
           b.insuranceProvider ?? null, b.insurancePolicyNumber ?? null, b.insuranceExpiryDate ?? null, b.insuranceIntervalDays,
           b.pucNumber ?? null, b.pucIssueDate ?? null, b.pucExpiryDate ?? null, b.pucIntervalDays,
           b.fitnessCertificateNumber ?? null, b.lastFitnessDate ?? null, b.nextFitnessDueDate ?? null,
-          b.fitnessIntervalDays, b.status, request.auth.userId],
+          b.fitnessIntervalDays, b.status, request.auth.userId, b.serviceReminderLeadHours],
       );
       await writeAudit(c, request.auth, { action: 'ASSET_CREATED', entity: 'MachineAsset', entityId: r.rows[0].id, reason: `Registered ${b.make} ${b.model}`, requestId: request.id });
       return reply.code(201).send(r.rows[0]);
@@ -91,13 +104,15 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
       status: z.string().optional(), currentProjectId: z.string().uuid().optional().nullable(),
       assignedOperatorId: z.string().uuid().optional().nullable(),
       serviceFrequencyValue: z.number().int().positive().optional(),
-      serviceFrequencyUnit: z.enum(['days', 'months']).optional(),
+      serviceFrequencyUnit: z.enum(['days', 'months', 'hours']).optional(),
+      serviceReminderLeadHours: z.number().nonnegative().optional(),
     }).parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
-      const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit' };
+      const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours' };
       const entries = Object.entries(b).filter(([, v]) => v !== undefined);
       if (!entries.length) throw Errors.badRequest('No fields to update');
-      const sets = entries.map(([k], i) => `${map[k]!} = $${i + 3}`).join(', ');
+      // Values occupy $4..$n; $3 is the machine id in WHERE.
+      const sets = entries.map(([k], i) => `${map[k]!} = $${i + 4}`).join(', ');
       const r = await c.query(`UPDATE machines SET ${sets}, updated_by=$2 WHERE tenant_id=$1 AND id=$3 RETURNING *`,
         [request.auth.tenantId, request.auth.userId, id, ...entries.map(([, v]) => v)]);
       if (!r.rows[0]) throw Errors.notFound('Machine');
@@ -123,7 +138,7 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
     return withTenant(request.auth.tenantId, async (c) => {
       const m = await c.query('SELECT * FROM machines WHERE tenant_id=$1 AND id=$2', [request.auth.tenantId, id]);
       if (!m.rows[0]) throw Errors.notFound('Machine');
-      const next = nextServiceDate(b.serviceDate, m.rows[0].service_frequency_value, m.rows[0].service_frequency_unit);
+      const next = nextServiceDate(b.serviceDate, m.rows[0].service_frequency_value, m.rows[0].service_frequency_unit) || null;
       await c.query(
         `INSERT INTO service_records (tenant_id,machine_id,service_date,service_type,service_provider,cost_paise,odometer_or_hours,notes,completed_by)
          VALUES ($1,$2,$3::date,'Periodic Maintenance',$4,$5,$6,$7,$8)`,

@@ -86,7 +86,7 @@ export const RegisterPage: React.FC = () => {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
           <a href="/" className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80" aria-label="Skyhook home">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-surface p-1.5">
-              <img src="/assets/aistudio/SH_e808acaf.png" alt="Skyhook logo" className="max-h-full max-w-full object-contain" />
+              <img src="/assets/image.png" alt="Skyhook logo" className="max-h-full max-w-full object-contain" />
             </div>
             <div className="flex items-center gap-2">
               <span className="text-base font-semibold tracking-tight text-ink-900">SKYHOOK</span>

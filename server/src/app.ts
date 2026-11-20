@@ -22,6 +22,7 @@ import { reminderRoutes } from './modules/reminders/reminders.routes.js';
 import { userRoutes } from './modules/users/users.routes.js';
 import { reportRoutes } from './modules/reports/reports.routes.js';
 import { fileRoutes } from './modules/files/files.routes.js';
+import { extrasRoutes } from './modules/extras/extras.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -87,6 +88,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(userRoutes);
   await app.register(reportRoutes);
   await app.register(fileRoutes);
+  await app.register(extrasRoutes);
 
   return app;
 }

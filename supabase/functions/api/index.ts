@@ -24,6 +24,7 @@ import { advancesRoutes } from './advances.ts';
 import { remindersRoutes } from './reminders.ts';
 import { reportsRoutes } from './reports.ts';
 import { filesRoutes } from './files.ts';
+import { extrasRoutes } from './extras.ts';
 
 const routes: Route[] = [
   ...identityRoutes,
@@ -41,6 +42,7 @@ const routes: Route[] = [
   ...remindersRoutes,
   ...reportsRoutes,
   ...filesRoutes,
+  ...extrasRoutes,
 ];
 
 const PUBLIC_EXTRA = new Set(['/health/live', '/health/ready']);

@@ -75,16 +75,10 @@
 }
 
 .landing-brand__mark {
-  display: grid;
-  place-items: center;
-  inline-size: 30px;
-  block-size: 30px;
-  border-radius: 9px;
-  background: var(--color-accent);
-  color: #ffffff;
-  font-size: 0.875rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
+  display: block;
+  inline-size: 34px;
+  block-size: 34px;
+  object-fit: contain;
 }
 
 .landing-brand__name {

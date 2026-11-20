@@ -348,11 +348,22 @@ export const PersonalView: React.FC = () => {
               </div>
             )}
 
-            {personalPinSet && cooldown === 0 && (
-              <button type="button" className="btn btn-primary w-full" onClick={() => submitPin(pin)}>
-                <Unlock className="h-4 w-4" />
-                Unlock vault
+            {!personalPinSet ? (
+              <button
+                type="button"
+                className="btn btn-primary w-full"
+                onClick={() => submitPin(pin)}
+              >
+                <KeyRound className="h-4 w-4" />
+                Set PIN &amp; unlock
               </button>
+            ) : (
+              cooldown === 0 && (
+                <button type="button" className="btn btn-primary w-full" onClick={() => submitPin(pin)}>
+                  <Unlock className="h-4 w-4" />
+                  Unlock vault
+                </button>
+              )
             )}
           </div>
 

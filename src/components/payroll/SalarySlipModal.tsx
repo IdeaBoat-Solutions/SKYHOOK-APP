@@ -58,7 +58,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-lg border border-line p-1 flex items-center justify-center bg-surface">
                 <img
-                  src={settings.logoUrl || '/assets/aistudio/SH_e808acaf.png'}
+                  src={settings.logoUrl || '/assets/image.png'}
                   alt="Skyhook Logo"
                   className="max-h-full max-w-full object-contain"
                 />
@@ -171,6 +171,13 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
                   </div>
                 )}
 
+                {entry.customPay?.map((item) => (
+                  <div key={item.id} className="flex justify-between items-center pl-2 text-[11px] text-success-800">
+                    <span>{item.label}</span>
+                    <Currency value={item.amount} size="xs" />
+                  </div>
+                ))}
+
                 <div className="pt-4 border-t border-line flex justify-between items-center font-bold text-ink-900">
                   <span>Gross Earnings:</span>
                   <Currency value={entry.grossSalary} size="lg" className="text-ink-900 font-bold" />
@@ -190,6 +197,13 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
                     <Currency value={entry.otherDeductions} />
                   </div>
                 )}
+
+                {entry.customDeductions?.map((item) => (
+                  <div key={item.id} className="flex justify-between items-center pl-2 text-[11px] text-danger-700">
+                    <span>{item.label}</span>
+                    <Currency value={item.amount} size="xs" />
+                  </div>
+                ))}
 
                 <div className="pt-4 border-t border-line flex justify-between items-center font-bold text-ink-900">
                   <span>Total Deductions:</span>

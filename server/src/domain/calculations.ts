@@ -194,8 +194,49 @@ export function addMonths(dateStr: string, months: number): string {
   return d.toISOString().split('T')[0]!;
 }
 
-export function nextServiceDate(lastService: string, value: number, unit: 'days' | 'months'): string {
+export function nextServiceDate(
+  lastService: string, value: number, unit: 'days' | 'months' | 'hours',
+): string {
+  // Hour-based servicing has no calendar due date — the due point is a running
+  // operating-hour reading (see evaluateServiceHours).
+  if (unit === 'hours') return '';
   return unit === 'days' ? addDays(lastService, value) : addMonths(lastService, value);
+}
+
+export interface ServiceHoursStatus {
+  hoursSinceService: number;
+  dueAfterHours: number;
+  hoursRemaining: number;
+  status: 'overdue' | 'due_today' | 'upcoming' | 'none';
+  label: string;
+}
+
+/** Evaluate a service due point measured in crane operating hours. */
+export function evaluateServiceHours(
+  loggedHoursSinceService: number,
+  frequencyHours: number,
+  leadHours: number,
+): ServiceHoursStatus {
+  const used = Math.max(0, Number(loggedHoursSinceService) || 0);
+  const dueAfter = Math.max(0, Number(frequencyHours) || 0);
+  const remaining = dueAfter - used;
+  const lead = Math.max(0, Number(leadHours) || 0);
+
+  if (remaining < 0) {
+    const overdue = Math.abs(Math.round(remaining));
+    return { hoursSinceService: used, dueAfterHours: dueAfter, hoursRemaining: remaining,
+      status: 'overdue', label: `Overdue by ${overdue} h` };
+  }
+  if (remaining === 0) {
+    return { hoursSinceService: used, dueAfterHours: dueAfter, hoursRemaining: 0,
+      status: 'due_today', label: 'Service due now' };
+  }
+  if (remaining <= lead) {
+    return { hoursSinceService: used, dueAfterHours: dueAfter, hoursRemaining: remaining,
+      status: 'upcoming', label: `${Math.round(remaining)} h remaining` };
+  }
+  return { hoursSinceService: used, dueAfterHours: dueAfter, hoursRemaining: remaining,
+    status: 'none', label: `Scheduled (${Math.round(remaining)} h away)` };
 }
 
 export interface EmiInstallmentPlan {

@@ -32,6 +32,54 @@ function evaluateReminderStatus(dueDateStr: string | null | undefined, leadDays:
   return { status: 'none' as const, label: `Scheduled (${daysRemaining} days away)` };
 }
 
+function evaluateServiceHours(usedHours: number, dueAfterHours: number, leadHours: number) {
+  const used = Math.max(0, Number(usedHours) || 0);
+  const dueAfter = Math.max(0, Number(dueAfterHours) || 0);
+  const remaining = dueAfter - used;
+  const lead = Math.max(0, Number(leadHours) || 0);
+  if (remaining < 0) {
+    const n = Math.abs(Math.round(remaining));
+    return { status: 'overdue' as const, label: `Overdue by ${n} h` };
+  }
+  if (remaining === 0) return { status: 'due_today' as const, label: 'Service due now' };
+  if (remaining <= lead) return { status: 'upcoming' as const, label: `${Math.round(remaining)} h remaining` };
+  return { status: 'none' as const, label: `Scheduled (${Math.round(remaining)} h away)` };
+}
+
+/** Hour-based service reminders: sum approved operating hours since last service. */
+async function serviceHoursTick(tenantId: string): Promise<number> {
+  const machines = await query(
+    `SELECT id, asset_code, service_frequency_value, service_reminder_lead_hours, last_service_date
+     FROM machines WHERE tenant_id=$1 AND service_frequency_unit='hours' AND deleted_at IS NULL
+       AND last_service_date IS NOT NULL`,
+    [tenantId],
+  );
+  let raised = 0;
+  for (const m of machines.rows) {
+    const logged = await query(
+      `SELECT COALESCE(sum(working_hours),0)::numeric AS h FROM machine_working_logs
+       WHERE tenant_id=$1 AND machine_id=$2 AND log_date > $3::date AND approval_status <> 'rejected'`,
+      [tenantId, m.id, m.last_service_date],
+    );
+    const ev = evaluateServiceHours(
+      Number(logged.rows[0]?.h ?? 0), m.service_frequency_value, m.service_reminder_lead_hours ?? 50,
+    );
+    if (ev.status === 'none') continue;
+    await withTenant(tenantId, async (c) => {
+      const r = await c.query(
+        `INSERT INTO notifications (tenant_id,category,title,description,related_entity,related_id,due_date,priority,status)
+         SELECT $1,'service'::reminder_category,$2,$3,'machine',$4,$5::date,$6::priority,'open'
+         WHERE NOT EXISTS (SELECT 1 FROM notifications n WHERE n.tenant_id=$1 AND n.category='service'
+                           AND n.related_id=$4 AND n.due_date=$5::date AND n.title=$2)`,
+        [tenantId, `${m.asset_code} — service`, ev.label, m.id, m.last_service_date,
+          ev.status === 'overdue' ? 'critical' : ev.status === 'due_today' ? 'high' : 'medium'],
+      );
+      raised += r.rowCount ?? 0;
+    });
+  }
+  return raised;
+}
+
 async function drainOutbox(tenantId: string): Promise<number> {
   return withTenant(tenantId, async (c) => {
     const events = await c.query(
@@ -143,12 +191,13 @@ Deno.serve(async (req) => {
       throw new ApiError(401, 'unauthorized', 'Unauthorized', 'Invalid cron secret');
     }
     const tenants = await query('SELECT id FROM tenants');
-    const results: Array<{ tenantId: string; published: number; raised: number; exports: number }> = [];
+    const results: Array<{ tenantId: string; published: number; raised: number; serviceHours: number; exports: number }> = [];
     for (const t of tenants.rows) {
       const published = await drainOutbox(t.id);
       const raised = await evaluateReminders(t.id);
+      const serviceHours = await serviceHoursTick(t.id);
       const exports = await processExports(t.id);
-      results.push({ tenantId: t.id, published, raised, exports });
+      results.push({ tenantId: t.id, published, raised, serviceHours, exports });
     }
     return json({ ok: true, ranAt: new Date().toISOString(), results });
   } catch (err) {

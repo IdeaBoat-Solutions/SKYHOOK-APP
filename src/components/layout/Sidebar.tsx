@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   Cpu,
   Calculator,
+  Sigma,
   ReceiptIndianRupee,
   Truck,
   BellRing,
@@ -34,6 +35,7 @@ export type NavTab =
   | 'expenses'
   | 'assets'
   | 'emi'
+  | 'calculations'
   | 'reminders'
   | 'reports'
   | 'settings'
@@ -47,7 +49,7 @@ interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
-const DEFAULT_LOGO = '/assets/aistudio/SH_e808acaf.png';
+const DEFAULT_LOGO = '/assets/image.png';
 const SIDEBAR_MARK = '/assets/aistudio/SH_crane_mark.png';
 
 const NAV_BADGE = {
@@ -90,9 +92,12 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
     items: [
       { id: 'machine_working', label: 'Machine Working (Crane)', icon: Cpu },
       { id: 'assets', label: 'Asset Master (Cranes)', icon: Truck, badge: 'asset' },
-      { id: 'emi', label: 'Machine EMI Loans', icon: FileText, badge: 'emi', ownerOnly: true },
       { id: 'expenses', label: 'Project Expenses', icon: FileSpreadsheet },
     ],
+  },
+  {
+    label: 'Calculations',
+    items: [{ id: 'calculations', label: 'Calculations', icon: Sigma, badge: 'emi' }],
   },
   {
     label: 'Alerts & reports',

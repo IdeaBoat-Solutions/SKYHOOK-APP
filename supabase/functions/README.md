@@ -67,6 +67,16 @@ npx -y deno@2.9.6 check --config supabase/functions/deno.json \
   supabase/functions/api/index.ts supabase/functions/worker/index.ts
 ```
 
+## Machine servicing in operating hours
+`service_frequency_unit = 'hours'` is a first-class value end-to-end:
+- `next_service_due_date` is `NULL` for these machines — the due point is measured in hours.
+- Due hours = `SUM(machine_working_logs.working_hours)` since `last_service_date`
+  (all logs except `rejected`), compared against `service_frequency_value` with a
+  `service_reminder_lead_hours` lead time.
+- The worker raises hour-based reminders (`Overdue by N h`, `N h remaining`).
+- Existing databases need `supabase/0003_service_hours.sql` (adds the enum value +
+  `machines.service_reminder_lead_hours`, default 50). Fresh installs get it from the main migration.
+
 ## Project structure
 ```
 supabase/functions/

@@ -2,7 +2,7 @@ import { pool } from '../db/pool.js';
 import { withTenant } from '../db/tenant.js';
 import { config } from '../config.js';
 import { businessDate } from '../common/date.js';
-import { evaluateReminderStatus } from '../domain/calculations.js';
+import { evaluateReminderStatus, evaluateServiceHours } from '../domain/calculations.js';
 import { buildExport, type ExportKind } from '../modules/reports/export.service.js';
 import { saveObject, exportKey } from '../common/storage.js';
 
@@ -117,12 +117,49 @@ async function processExports(tenantId: string): Promise<number> {
   });
 }
 
+/** Hour-based service reminders: due point = hours logged since last service. */
+async function serviceHoursTick(tenantId: string): Promise<number> {
+  const machines = await pool.query(
+    `SELECT id, tenant_id, asset_code, service_frequency_value, service_reminder_lead_hours, last_service_date
+     FROM machines WHERE tenant_id=$1 AND service_frequency_unit='hours' AND deleted_at IS NULL
+       AND last_service_date IS NOT NULL`,
+    [tenantId],
+  );
+  let raised = 0;
+  for (const m of machines.rows as any[]) {
+    const logged = await pool.query(
+      `SELECT COALESCE(sum(working_hours),0)::numeric AS h FROM machine_working_logs
+       WHERE tenant_id=$1 AND machine_id=$2 AND log_date > $3::date AND approval_status <> 'rejected'`,
+      [m.tenant_id, m.id, m.last_service_date],
+    );
+    const ev = evaluateServiceHours(
+      Number(logged.rows[0]?.h ?? 0), m.service_frequency_value, m.service_reminder_lead_hours ?? 50,
+    );
+    if (ev.status === 'none') continue;
+    await withTenant(m.tenant_id, async (c) => {
+      const r = await c.query(
+        `INSERT INTO notifications (tenant_id,category,title,description,related_entity,related_id,due_date,priority,status)
+         SELECT $1,'service'::reminder_category,$2,$3,'machine',$4,$5::date,$6::priority,'open'
+         WHERE NOT EXISTS (SELECT 1 FROM notifications n WHERE n.tenant_id=$1 AND n.category='service'
+                           AND n.related_id=$4 AND n.due_date=$5::date AND n.title=$2)`,
+        [m.tenant_id, `${m.asset_code} — service`, ev.label, m.id, m.last_service_date,
+          ev.status === 'overdue' ? 'critical' : ev.status === 'due_today' ? 'high' : 'medium'],
+      );
+      raised += r.rowCount ?? 0;
+    });
+  }
+  return raised;
+}
+
 async function tick() {
   for (const t of await tenants()) {
     try {
       const published = await drainOutbox(t);
       const raised = await evaluateReminders(t);
-      if (published || raised) console.log(`[worker] tenant ${t}: ${published} events, ${raised} reminders`);
+      const serviceHours = await serviceHoursTick(t);
+      if (published || raised || serviceHours) {
+        console.log(`[worker] tenant ${t}: ${published} events, ${raised} reminders, ${serviceHours} service-hours alerts`);
+      }
     } catch (err) {
       console.error(`[worker] tenant ${t} failed:`, err);
     }
