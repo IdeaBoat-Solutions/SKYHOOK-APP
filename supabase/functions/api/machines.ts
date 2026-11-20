@@ -230,8 +230,8 @@ export const machinesRoutes: Route[] = [
       const tonnageCapacity = numField(b, 'tonnageCapacity', { min: 0 });
       const purchaseDate = strField(b, 'purchaseDate');
       const purchaseCostPaise = numField(b, 'purchaseCostPaise', { integer: true, min: 0 });
-      const serviceFrequencyValue = numField(b, 'serviceFrequencyValue', { integer: true, min: 1, fallback: 60 })!;
-      const serviceFrequencyUnit = enumField(b, 'serviceFrequencyUnit', ['days', 'months', 'hours'], { fallback: 'days' })!;
+      const serviceFrequencyValue = numField(b, 'serviceFrequencyValue', { integer: true, min: 1, fallback: 500 })!;
+      const serviceFrequencyUnit = enumField(b, 'serviceFrequencyUnit', ['days', 'months', 'hours'], { fallback: 'hours' })!;
       const serviceReminderLeadHours = numField(b, 'serviceReminderLeadHours', { min: 0, fallback: 50 })!;
       const lastServiceDate = strField(b, 'lastServiceDate');
       const insuranceProvider = strField(b, 'insuranceProvider');
@@ -245,7 +245,7 @@ export const machinesRoutes: Route[] = [
       const fitnessCertificateNumber = strField(b, 'fitnessCertificateNumber');
       const lastFitnessDate = strField(b, 'lastFitnessDate');
       const nextFitnessDueDate = strField(b, 'nextFitnessDueDate');
-      const fitnessIntervalDays = numField(b, 'fitnessIntervalDays', { integer: true, min: 1, fallback: 365 })!;
+      const fitnessIntervalDays = numField(b, 'fitnessIntervalDays', { integer: true, min: 1, fallback: 730 })!;
       const status = enumField(b, 'status', MACHINE_STATUSES, { fallback: 'available' })!;
       const created = await withTenant(auth.tenantId, async (c) => {
         const code = assetCode ?? `CR-${String((await c.query('SELECT count(*)::int n FROM machines WHERE tenant_id=$1', [auth.tenantId])).rows[0].n + 1).padStart(3, '0')}`;
@@ -367,7 +367,7 @@ export const machinesRoutes: Route[] = [
         const m = await c.query('SELECT * FROM machines WHERE tenant_id=$1 AND id=$2', [auth.tenantId, id]);
         if (!m.rows[0]) throw Errors.notFound('Machine');
         const machine = m.rows[0];
-        const defaultInterval = category === 'insurance' ? machine.insurance_interval_days ?? 365 : category === 'puc' ? machine.puc_interval_days ?? 180 : machine.fitness_interval_days ?? 365;
+        const defaultInterval = category === 'insurance' ? machine.insurance_interval_days ?? 365 : category === 'puc' ? machine.puc_interval_days ?? 180 : machine.fitness_interval_days ?? 730;
         const interval = intervalDays ?? defaultInterval;
         const expiry = newExpiry ?? addDays(renewalDate, interval);
         const previousExpiry = category === 'insurance' ? machine.insurance_expiry_date

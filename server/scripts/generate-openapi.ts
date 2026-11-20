@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 type Route = [method: string, path: string, tag: string, summary: string, auth?: boolean];
 
 const routes: Route[] = [
-  ['get', '/auth/profiles', 'Auth', 'Public account profiles for the login screen', false],
   ['post', '/auth/token', 'Auth', 'Exchange credentials for access + refresh tokens', false],
   ['post', '/dev/token', 'Auth', 'Dev-only token minting', false],
   ['get', '/auth/me', 'Auth', 'Current user, roles and permissions'],
@@ -133,11 +132,11 @@ const spec = {
       },
       LoginRequest: {
         type: 'object',
-        required: ['tenantSlug', 'email', 'password'],
+        required: ['email', 'password'],
         properties: {
-          tenantSlug: { type: 'string', example: 'skyhook' },
-          email: { type: 'string', format: 'email', example: 'owner@skyhook.in' },
-          password: { type: 'string', example: 'skyhook2026' },
+          tenantSlug: { type: 'string', description: 'Optional; resolved from the account when omitted' },
+          email: { type: 'string', format: 'email', example: 'admin@skyhook.com' },
+          password: { type: 'string', format: 'password' },
         },
       },
       TokenResponse: {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Truck, FileText } from 'lucide-react';
+import { Plus, Truck, FileText, LockKeyhole } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import {
   CustomCalculator,
@@ -8,11 +8,12 @@ import {
 } from '../../data/customCalculators';
 import { EmiView } from '../emi/EmiView';
 import { TotalMachinesView } from './TotalMachinesView';
+import { PersonalView } from '../personal/PersonalView';
 import { CustomCalculatorView } from './CustomCalculatorView';
 import { CalculatorBuilderModal } from './CalculatorBuilderModal';
 import { calcIcon } from './calcUi';
 
-export type CalcTab = 'emi' | 'total_machines' | `custom:${string}`;
+export type CalcTab = 'emi' | 'personal' | 'total_machines' | `custom:${string}`;
 
 const TAB_KEY = 'skyhook:calculations:tab';
 
@@ -47,7 +48,9 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
   const customId = tab.startsWith('custom:') ? tab.slice(7) : null;
   const activeCustom = customId ? calculators.find((c) => c.id === customId) : undefined;
   const resolvedTab: CalcTab =
-    (tab === 'emi' && isManager) || (customId && !activeCustom) ? 'total_machines' : tab;
+    ((tab === 'emi' || tab === 'personal') && isManager) || (customId && !activeCustom)
+      ? 'total_machines'
+      : tab;
 
   const selectTab = (next: CalcTab) => {
     setTab(next);
@@ -77,6 +80,8 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
 
   const tabs: { id: CalcTab; label: string; icon: React.ElementType }[] = [
     ...(isManager ? [] : [{ id: 'emi' as CalcTab, label: 'Machine EMI', icon: FileText }]),
+    // Owner-only; the view itself is gated by a 4-digit PIN.
+    ...(isManager ? [] : [{ id: 'personal' as CalcTab, label: 'Personal', icon: LockKeyhole }]),
     { id: 'total_machines', label: 'Total Machines', icon: Truck },
     ...calculators.map((c) => ({
       id: `custom:${c.id}` as CalcTab,
@@ -119,6 +124,7 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
       </div>
 
       {resolvedTab === 'emi' && <EmiView />}
+      {resolvedTab === 'personal' && <PersonalView />}
       {resolvedTab === 'total_machines' && <TotalMachinesView />}
       {activeCustom && resolvedTab === `custom:${activeCustom.id}` && (
         <CustomCalculatorView

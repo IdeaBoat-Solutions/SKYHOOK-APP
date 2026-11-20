@@ -61,7 +61,27 @@ export interface DocumentRecord {
   sizeKb?: number;
 }
 
-export interface Employee {
+/** Extra driving-licence details, from an OCR scan or typed by hand. */
+export interface LicenceExtras {
+  /** Son / Daughter / Wife of. */
+  guardianName?: string;
+  bloodGroup?: string;
+  licenseIssueDate?: string;
+  /** Validity for non-transport vehicles. */
+  licenseValidNt?: string;
+  /** Validity for transport vehicles. */
+  licenseValidTr?: string;
+  licenseFirstIssueDate?: string;
+  licenseIssuingState?: string;
+  /** RTO / licensing authority. */
+  licenseIssuingAuthority?: string;
+  licenseVehicleClasses?: string[];
+  organDonor?: boolean;
+  /** True when these details were read from a scanned licence. */
+  licenseScanned?: boolean;
+}
+
+export interface Employee extends LicenceExtras {
   id: string;
   employeeId: string; // e.g. EMP-001 or OP-001
   fullName: string;
@@ -482,13 +502,12 @@ export interface InAppNotification {
   createdAt: string;
 }
 
-/** The five private, owner-only record categories in the Personal vault. */
-export type PersonalRecordKind =
-  | 'home_loan'
-  | 'family_insurance'
-  | 'term_plan'
-  | 'auto_loan'
-  | 'auto_insurance';
+/**
+ * Category key of a private, owner-only record. Defaults are home_loan,
+ * family_insurance, term_plan, auto_loan and auto_insurance; the owner can add
+ * more, so any string is valid (see data/personalCategories.ts).
+ */
+export type PersonalRecordKind = string;
 
 export interface PersonalRecord {
   id: string;

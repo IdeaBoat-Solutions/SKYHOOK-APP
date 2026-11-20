@@ -17,8 +17,8 @@ const createSchema = z.object({
   tonnageCapacity: z.number().nonnegative().optional(),
   purchaseDate: z.string().optional(),
   purchaseCostPaise: z.number().int().nonnegative().optional(),
-  serviceFrequencyValue: z.number().int().positive().default(60),
-  serviceFrequencyUnit: z.enum(['days', 'months', 'hours']).default('days'),
+  serviceFrequencyValue: z.number().int().positive().default(500),
+  serviceFrequencyUnit: z.enum(['days', 'months', 'hours']).default('hours'),
   serviceReminderLeadHours: z.number().nonnegative().default(50),
   lastServiceDate: z.string().optional(),
   insuranceProvider: z.string().optional(),
@@ -32,7 +32,7 @@ const createSchema = z.object({
   fitnessCertificateNumber: z.string().optional(),
   lastFitnessDate: z.string().optional(),
   nextFitnessDueDate: z.string().optional(),
-  fitnessIntervalDays: z.number().int().positive().default(365),
+  fitnessIntervalDays: z.number().int().positive().default(730),
   status: z.enum(['available', 'assigned', 'under_maintenance', 'inactive', 'sold']).default('available'),
 });
 
@@ -163,7 +163,7 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
       const m = await c.query('SELECT * FROM machines WHERE tenant_id=$1 AND id=$2', [request.auth.tenantId, id]);
       if (!m.rows[0]) throw Errors.notFound('Machine');
       const machine = m.rows[0];
-      const defaultInterval = b.category === 'insurance' ? machine.insurance_interval_days ?? 365 : b.category === 'puc' ? machine.puc_interval_days ?? 180 : machine.fitness_interval_days ?? 365;
+      const defaultInterval = b.category === 'insurance' ? machine.insurance_interval_days ?? 365 : b.category === 'puc' ? machine.puc_interval_days ?? 180 : machine.fitness_interval_days ?? 730;
       const interval = b.intervalDays ?? defaultInterval;
       const expiry = b.newExpiry ?? addDays(b.renewalDate, interval);
       const previousExpiry = b.category === 'insurance' ? machine.insurance_expiry_date

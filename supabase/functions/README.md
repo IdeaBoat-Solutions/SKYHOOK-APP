@@ -13,7 +13,7 @@ the worker (outbox drain, reminders, XLSX exports). The full function set typech
 - `_shared/http.ts` — CORS, JSON, error mapping, path parsing
 - `api/` — router + identity module:
   - `GET /health/live`, `GET /health/ready`
-  - `GET /auth/profiles`, `POST /auth/token`, `POST /auth/register`, `POST /dev/token`
+  - `POST /auth/token`, `POST /auth/register`, `POST /dev/token`
   - `GET /auth/me`, `GET /audit-logs`
 - `worker/` — one-shot outbox drain + reminder evaluation (replaces the long-running worker timers)
 

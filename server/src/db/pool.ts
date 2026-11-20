@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import pg from 'pg';
 import { config } from '../config.js';
 
@@ -13,8 +15,36 @@ types.setTypeParser(1082, (v) => v);       // date
 types.setTypeParser(1083, (v) => v);       // time without time zone
 types.setTypeParser(1266, (v) => v);       // time with time zone
 
+/**
+ * Resolve the trusted CA for the database connection. Accepts inline PEM or a
+ * path (relative paths resolve from the server directory).
+ */
+function loadCa(): string | undefined {
+  const value = config.DATABASE_SSL_CA?.trim();
+  if (!value) return undefined;
+  if (value.includes('BEGIN CERTIFICATE')) return value;
+  const file = path.resolve(process.cwd(), value);
+  if (!fs.existsSync(file)) {
+    throw new Error(`DATABASE_SSL_CA file not found: ${file}`);
+  }
+  return fs.readFileSync(file, 'utf8');
+}
+
+/**
+ * pg lets the connection string override the `ssl` option, so when a CA is
+ * configured the sslmode parameter is stripped and TLS is set explicitly:
+ * encrypted, and the server certificate is verified against that CA.
+ */
+function connectionOptions(connectionString: string): pg.PoolConfig {
+  const ca = loadCa();
+  if (!ca) return { connectionString };
+  const url = new URL(connectionString);
+  for (const key of ['sslmode', 'sslrootcert', 'uselibpqcompat']) url.searchParams.delete(key);
+  return { connectionString: url.toString(), ssl: { ca, rejectUnauthorized: true } };
+}
+
 export const pool = new Pool({
-  connectionString: config.DATABASE_URL,
+  ...connectionOptions(config.DATABASE_URL),
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
@@ -32,7 +62,7 @@ pool.on('error', (err) => {
  * (non-pooled) database connection while the app uses the transaction pooler.
  */
 export const migrationPool = new Pool({
-  connectionString: config.DATABASE_URL_DIRECT ?? config.DATABASE_URL,
+  ...connectionOptions(config.DATABASE_URL_DIRECT ?? config.DATABASE_URL),
   max: 2,
   connectionTimeoutMillis: 10_000,
   options: '-c search_path=skyhook,public -c client_encoding=UTF8',

@@ -3,11 +3,6 @@ import {
   Lock,
   Unlock,
   ShieldCheck,
-  Home,
-  HeartPulse,
-  Shield,
-  CarFront,
-  Car,
   Plus,
   Pencil,
   Trash2,
@@ -22,56 +17,17 @@ import {
 import { useSkyhook } from '../../data/apiStore';
 import { PersonalRecord, PersonalRecordKind } from '../../types';
 import { formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
-
-const CATEGORIES: Array<{
-  kind: PersonalRecordKind;
-  label: string;
-  description: string;
-  icon: React.ElementType;
-  tone: string;
-  amountLabel: string;
-}> = [
-  {
-    kind: 'home_loan',
-    label: 'Home Loan',
-    description: 'Outstanding principal, EMI and next due date',
-    icon: Home,
-    tone: 'bg-brand-50 text-brand-700',
-    amountLabel: 'Outstanding',
-  },
-  {
-    kind: 'family_insurance',
-    label: 'Family Insurance',
-    description: 'Health cover for the family',
-    icon: HeartPulse,
-    tone: 'bg-success-50 text-success-700',
-    amountLabel: 'Sum assured',
-  },
-  {
-    kind: 'term_plan',
-    label: 'Term Plan',
-    description: 'Life cover and premium schedule',
-    icon: Shield,
-    tone: 'bg-warning-50 text-warning-700',
-    amountLabel: 'Sum assured',
-  },
-  {
-    kind: 'auto_loan',
-    label: 'Auto Loan',
-    description: 'Vehicle finance and EMIs',
-    icon: CarFront,
-    tone: 'bg-brand-50 text-brand-700',
-    amountLabel: 'Outstanding',
-  },
-  {
-    kind: 'auto_insurance',
-    label: 'Auto Insurance',
-    description: 'Motor policy and renewal dates',
-    icon: Car,
-    tone: 'bg-success-50 text-success-700',
-    amountLabel: 'IDV / cover',
-  },
-];
+import {
+  DEFAULT_PERSONAL_CATEGORIES,
+  PERSONAL_TYPE_META,
+  PersonalCategory,
+  PersonalCategoryType,
+  categoryFromKind,
+  categoryKeyFor,
+  getCustomPersonalCategories,
+  saveCustomPersonalCategories,
+} from '../../data/personalCategories';
+import { CALC_ICONS, calcIcon } from '../calculations/calcUi';
 
 const EMPTY_FORM = {
   title: '',
@@ -106,6 +62,15 @@ export const PersonalView: React.FC = () => {
   const [cooldown, setCooldown] = useState(0);
 
   const [activeKind, setActiveKind] = useState<PersonalRecordKind>('home_loan');
+  const [customCategories, setCustomCategories] = useState<PersonalCategory[]>(getCustomPersonalCategories);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [categoryForm, setCategoryForm] = useState<{
+    label: string;
+    description: string;
+    type: PersonalCategoryType;
+    icon: string;
+  }>({ label: '', description: '', type: 'loan', icon: 'bank' });
+  const [categoryError, setCategoryError] = useState('');
   const [editing, setEditing] = useState<PersonalRecord | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -163,18 +128,33 @@ export const PersonalView: React.FC = () => {
     if (digits.length === 4 && (!personalPinSet || cooldown === 0)) submitPin(digits);
   };
 
+  /** Defaults, then the owner's own, then any kind found only on records. */
+  const categories = useMemo(() => {
+    const known = [...DEFAULT_PERSONAL_CATEGORIES, ...customCategories];
+    const knownKinds = new Set(known.map((c) => c.kind));
+    const orphans = [...new Set(personalRecords.map((r) => r.kind))]
+      .filter((k) => !knownKinds.has(k))
+      .map(categoryFromKind);
+    return [...known, ...orphans];
+  }, [customCategories, personalRecords]);
+
+  const categoryOf = (kind: PersonalRecordKind): PersonalCategory =>
+    categories.find((c) => c.kind === kind) ?? categoryFromKind(kind);
+
   const recordsFor = (kind: PersonalRecordKind) =>
     personalRecords.filter((r) => r.kind === kind);
 
   const totals = useMemo(() => {
+    const typeOf = (kind: string) =>
+      (categories.find((c) => c.kind === kind) ?? categoryFromKind(kind)).type;
     const loans = personalRecords
-      .filter((r) => r.kind === 'home_loan' || r.kind === 'auto_loan')
+      .filter((r) => typeOf(r.kind) === 'loan')
       .reduce((sum, r) => sum + (r.amount || 0), 0);
     const cover = personalRecords
-      .filter((r) => r.kind === 'family_insurance' || r.kind === 'term_plan' || r.kind === 'auto_insurance')
+      .filter((r) => typeOf(r.kind) === 'policy')
       .reduce((sum, r) => sum + (r.amount || 0), 0);
     const annualPremium = personalRecords
-      .filter((r) => r.kind !== 'home_loan' && r.kind !== 'auto_loan')
+      .filter((r) => typeOf(r.kind) === 'policy')
       .reduce((sum, r) => sum + (r.periodicAmount || 0) * 12, 0);
     const today = new Date(`${currentDate}T00:00:00`);
     const horizon = new Date(today);
@@ -185,7 +165,53 @@ export const PersonalView: React.FC = () => {
       return due >= today && due <= horizon;
     }).length;
     return { loans, cover, annualPremium, upcoming };
-  }, [personalRecords, currentDate]);
+  }, [personalRecords, categories, currentDate]);
+
+  const openCategoryForm = () => {
+    setCategoryForm({ label: '', description: '', type: 'loan', icon: 'bank' });
+    setCategoryError('');
+    setShowCategoryForm(true);
+  };
+
+  const handleCategorySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const label = categoryForm.label.trim();
+    if (!label) {
+      setCategoryError('Give the category a name.');
+      return;
+    }
+    if (categories.some((c) => c.label.toLowerCase() === label.toLowerCase())) {
+      setCategoryError('A category with this name already exists.');
+      return;
+    }
+    const kind = categoryKeyFor(label, categories.map((c) => c.kind));
+    const next: PersonalCategory[] = [
+      ...customCategories,
+      {
+        kind,
+        label,
+        description: categoryForm.description.trim() || PERSONAL_TYPE_META[categoryForm.type].hint,
+        icon: categoryForm.icon,
+        type: categoryForm.type,
+      },
+    ];
+    setCustomCategories(next);
+    saveCustomPersonalCategories(next);
+    setActiveKind(kind);
+    setShowCategoryForm(false);
+  };
+
+  const removeCategory = (cat: PersonalCategory) => {
+    if (recordsFor(cat.kind).length > 0) {
+      window.alert(`Delete the ${recordsFor(cat.kind).length} record(s) in "${cat.label}" first.`);
+      return;
+    }
+    if (!window.confirm(`Remove the "${cat.label}" category?`)) return;
+    const next = customCategories.filter((c) => c.kind !== cat.kind);
+    setCustomCategories(next);
+    saveCustomPersonalCategories(next);
+    if (activeKind === cat.kind) setActiveKind('home_loan');
+  };
 
   const openForm = (kind: PersonalRecordKind, record?: PersonalRecord) => {
     setActiveKind(kind);
@@ -211,7 +237,7 @@ export const PersonalView: React.FC = () => {
     e.preventDefault();
     const payload = {
       kind: activeKind,
-      title: form.title.trim() || CATEGORIES.find((c) => c.kind === activeKind)!.label,
+      title: form.title.trim() || categoryOf(activeKind).label,
       provider: form.provider.trim(),
       referenceNumber: form.referenceNumber.trim(),
       amount: Number(form.amount) || 0,
@@ -377,7 +403,9 @@ export const PersonalView: React.FC = () => {
 
   /* -------------------------------------------------------------- unlocked */
 
-  const currentCategory = CATEGORIES.find((c) => c.kind === activeKind)!;
+  const currentCategory = categoryOf(activeKind);
+  const CurrentIcon = calcIcon(currentCategory.icon);
+  const currentMeta = PERSONAL_TYPE_META[currentCategory.type];
   const visibleRecords = recordsFor(activeKind);
 
   return (
@@ -386,7 +414,7 @@ export const PersonalView: React.FC = () => {
         <div>
           <h2 className="page-title">Personal Vault</h2>
           <p className="page-subtitle">
-            Private family finances — loans, insurance and term plans. Only visible to the Owner.
+            Private family finances — loans, insurance and anything else you add. Only visible to the Owner.
           </p>
         </div>
         <button
@@ -432,41 +460,66 @@ export const PersonalView: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {CATEGORIES.map((cat) => {
-          const Icon = cat.icon;
+        {categories.map((cat) => {
+          const Icon = calcIcon(cat.icon);
           const items = recordsFor(cat.kind);
           const total = items.reduce((sum, r) => sum + (r.amount || 0), 0);
           const isActive = cat.kind === activeKind;
+          const removable = !cat.builtin && customCategories.some((c) => c.kind === cat.kind);
           return (
-            <button
-              key={cat.kind}
-              type="button"
-              onClick={() => setActiveKind(cat.kind)}
-              className={`card card-pad text-left transition-colors ${
-                isActive ? 'ring-1 ring-inset ring-brand-600' : 'hover:bg-surface-muted'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className={`rounded-lg p-2 ${cat.tone}`}>
-                  <Icon className="h-5 w-5" />
-                </span>
-                {isActive && <CheckCircle2 className="h-4 w-4 text-brand-700" />}
-              </div>
-              <h3 className="mt-3 text-sm font-bold tracking-tight text-ink-900">{cat.label}</h3>
-              <p className="mt-1 text-[11px] leading-snug text-ink-500">{cat.description}</p>
-              <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
-                <span className="text-[11px] text-ink-500">{items.length} record{items.length === 1 ? '' : 's'}</span>
-                <span className="text-xs font-bold text-ink-900">{formatINR(total)}</span>
-              </div>
-            </button>
+            <div key={cat.kind} className="relative">
+              <button
+                type="button"
+                onClick={() => setActiveKind(cat.kind)}
+                className={`card card-pad h-full w-full text-left transition-colors ${
+                  isActive ? 'ring-1 ring-inset ring-brand-600' : 'hover:bg-surface-muted'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className={`rounded-lg p-2 ${PERSONAL_TYPE_META[cat.type].tone}`}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  {isActive && <CheckCircle2 className="h-4 w-4 text-brand-700" />}
+                </div>
+                <h3 className="mt-3 text-sm font-bold tracking-tight text-ink-900">{cat.label}</h3>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-500">{cat.description}</p>
+                <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
+                  <span className="text-[11px] text-ink-500">{items.length} record{items.length === 1 ? '' : 's'}</span>
+                  <span className="text-xs font-bold text-ink-900">{formatINR(total)}</span>
+                </div>
+              </button>
+              {removable && (
+                <button
+                  type="button"
+                  onClick={() => removeCategory(cat)}
+                  className="icon-btn absolute right-2 top-2 !h-6 !w-6 bg-surface hover:text-danger-700"
+                  title={`Remove ${cat.label}`}
+                  aria-label={`Remove ${cat.label}`}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           );
         })}
+
+        <button
+          type="button"
+          onClick={openCategoryForm}
+          className="flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong p-4 text-ink-600 transition-colors hover:border-ink-900 hover:text-ink-900"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-muted">
+            <Plus className="h-5 w-5" />
+          </span>
+          <span className="text-sm font-semibold">New category</span>
+          <span className="text-[11px] text-ink-500">Loan, insurance or anything similar</span>
+        </button>
       </div>
 
       <div className="table-card">
         <div className="card-header">
           <div>
-            <h3 className="text-sm font-bold text-ink-900">{currentCategory.label}</h3>
+            <h3 className="flex items-center gap-2 text-sm font-bold text-ink-900"><CurrentIcon className="h-4 w-4 text-ink-500" />{currentCategory.label}</h3>
             <p className="text-[11px] text-ink-500">{currentCategory.description}</p>
           </div>
           <button onClick={() => openForm(activeKind)} className="btn btn-primary btn-sm">
@@ -482,7 +535,7 @@ export const PersonalView: React.FC = () => {
                 <tr>
                   <th className="px-3.5 py-3">Particulars</th>
                   <th className="px-3.5 py-3">Provider / Ref</th>
-                  <th className="px-3.5 py-3">{currentCategory.amountLabel}</th>
+                  <th className="px-3.5 py-3">{currentMeta.amountLabel}</th>
                   <th className="px-3.5 py-3">EMI / Premium</th>
                   <th className="px-3.5 py-3">Dates</th>
                   <th className="px-3.5 py-3 text-right">Actions</th>
@@ -529,7 +582,7 @@ export const PersonalView: React.FC = () => {
             </table>
           ) : (
             <div className="empty-state">
-              <currentCategory.icon className="h-7 w-7 text-ink-400" />
+              <CurrentIcon className="h-7 w-7 text-ink-400" />
               <span className="text-sm font-semibold text-ink-700">No {currentCategory.label.toLowerCase()} records yet</span>
               <span className="text-xs text-ink-500">Add your first record to start tracking it privately.</span>
               <button onClick={() => openForm(activeKind)} className="btn btn-primary btn-sm mt-2">
@@ -540,6 +593,128 @@ export const PersonalView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {showCategoryForm && (
+        <div className="modal-overlay" onClick={() => setShowCategoryForm(false)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="min-w-0">
+                <span className="stat-label block">Personal vault</span>
+                <h3 className="modal-title mt-0.5">New category</h3>
+              </div>
+              <button onClick={() => setShowCategoryForm(false)} className="icon-btn" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCategorySubmit}>
+              <div className="modal-body space-y-4">
+                <div>
+                  <label className="form-label" htmlFor="cat-name">Name</label>
+                  <input
+                    id="cat-name"
+                    autoFocus
+                    value={categoryForm.label}
+                    onChange={(e) => {
+                      setCategoryForm({ ...categoryForm, label: e.target.value });
+                      setCategoryError('');
+                    }}
+                    placeholder="e.g. Education Loan, Bike Insurance"
+                    maxLength={40}
+                    className="form-input"
+                  />
+                </div>
+
+                <div>
+                  <span className="form-label">Type</span>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Category type">
+                    {(Object.keys(PERSONAL_TYPE_META) as PersonalCategoryType[]).map((t) => {
+                      const active = categoryForm.type === t;
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          onClick={() => setCategoryForm({ ...categoryForm, type: t })}
+                          className={`rounded-lg border p-3 text-left transition-colors ${
+                            active
+                              ? 'border-ink-900 bg-surface-muted'
+                              : 'border-line hover:border-line-strong'
+                          }`}
+                        >
+                          <span className="block text-xs font-bold text-ink-900">
+                            {PERSONAL_TYPE_META[t].label}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] leading-snug text-ink-500">
+                            {PERSONAL_TYPE_META[t].hint}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="form-label">Icon</span>
+                  <div className="grid grid-cols-6 gap-2 sm:grid-cols-8" role="radiogroup" aria-label="Category icon">
+                    {Object.entries(CALC_ICONS).map(([key, { icon: Icon, label }]) => {
+                      const active = categoryForm.icon === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          title={label}
+                          aria-label={label}
+                          onClick={() => setCategoryForm({ ...categoryForm, icon: key })}
+                          className={`flex aspect-square items-center justify-center rounded-lg border transition-colors ${
+                            active
+                              ? 'border-ink-900 bg-ink-900 text-white'
+                              : 'border-line text-ink-600 hover:border-line-strong hover:bg-surface-muted'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label" htmlFor="cat-desc">Description (optional)</label>
+                  <input
+                    id="cat-desc"
+                    value={categoryForm.description}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                    placeholder="What will you track here?"
+                    maxLength={80}
+                    className="form-input"
+                  />
+                </div>
+
+                {categoryError && (
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-danger-700">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {categoryError}
+                  </p>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" onClick={() => setShowCategoryForm(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  <Plus className="h-4 w-4" />
+                  Create category
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
@@ -590,7 +765,7 @@ export const PersonalView: React.FC = () => {
                 </div>
                 <div className="form-grid">
                   <div>
-                    <label className="form-label">{currentCategory.amountLabel} (₹)</label>
+                    <label className="form-label">{currentMeta.amountLabel} (₹)</label>
                     <input
                       type="number"
                       value={form.amount}
@@ -599,7 +774,7 @@ export const PersonalView: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="form-label">Monthly EMI / premium (₹)</label>
+                    <label className="form-label">{currentCategory.type === 'loan' ? 'Monthly EMI (₹)' : 'Monthly premium (₹)'}</label>
                     <input
                       type="number"
                       value={form.periodicAmount}

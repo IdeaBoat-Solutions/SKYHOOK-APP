@@ -21,7 +21,6 @@ import { CalculationsView, CalcTab } from './components/calculations/Calculation
 import { RemindersView } from './components/reminders/RemindersView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
-import { PersonalView } from './components/personal/PersonalView';
 import { ReminderAlertItem } from './types';
 
 function MainAppShell() {
@@ -50,11 +49,6 @@ function MainAppShell() {
       }
       setCalcRequest((r) => ({ tab: 'emi', n: r.n + 1 }));
       tab = 'calculations';
-    }
-    // Restrict manager from the owner-only Personal vault.
-    if (isManager && tab === 'personal') {
-      setCurrentTab('dashboard');
-      return;
     }
     setCurrentTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -135,7 +129,6 @@ function MainAppShell() {
 
           {currentTab === 'settings' && <SettingsView />}
 
-          {currentTab === 'personal' && <PersonalView />}
         </main>
       </div>
     </div>

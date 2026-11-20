@@ -7,7 +7,7 @@ import { config, requireConfig } from '../_shared/config.ts';
 import { healthCheck } from '../_shared/db.ts';
 import { verifyToken, type AuthContext } from '../_shared/auth.ts';
 import { ApiError, Errors } from '../_shared/errors.ts';
-import { corsHeaders, json, problem, requestId, routePath } from '../_shared/http.ts';
+import { corsHeaders, json, problem, requestId, routePath, withCors } from '../_shared/http.ts';
 import type { Route } from '../_shared/types.ts';
 import { identityRoutes } from './identity.ts';
 import { companyRoutes } from './company.ts';
@@ -65,7 +65,7 @@ function matchPath(pattern: string, path: string): Record<string, string> | null
   return params;
 }
 
-Deno.serve(async (req) => {
+async function handle(req: Request): Promise<Response> {
   const rid = requestId(req);
   const path = routePath(req);
   const method = req.method.toUpperCase();
@@ -114,4 +114,6 @@ Deno.serve(async (req) => {
   } catch (err) {
     return problem(err, rid, path);
   }
-});
+}
+
+Deno.serve(async (req) => withCors(req, await handle(req)));

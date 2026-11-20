@@ -14,6 +14,9 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   // DDL/migrations should use the direct (non-pooled) connection on Supabase.
   DATABASE_URL_DIRECT: z.string().optional(),
+  // PEM file (or inline PEM) of the CA that signed the database certificate.
+  // Supabase uses its own root CA, which Node does not trust by default.
+  DATABASE_SSL_CA: z.string().optional(),
   JWT_ISSUER: z.string().default('http://localhost:3001'),
   JWT_AUDIENCE: z.string().default('skyhook-api'),
   JWT_JWKS_URL: z.string().optional(),

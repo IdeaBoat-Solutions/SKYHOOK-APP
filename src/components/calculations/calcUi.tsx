@@ -23,6 +23,17 @@ import {
   Zap,
   Landmark,
   Sigma,
+  Home,
+  HeartPulse,
+  Shield,
+  CarFront,
+  Car,
+  Bike,
+  GraduationCap,
+  Plane,
+  Stethoscope,
+  Gem,
+  Building2,
   type LucideIcon,
 } from 'lucide-react';
 import { Currency } from '../common/Currency';
@@ -52,6 +63,17 @@ export const CALC_ICONS: Record<string, { icon: LucideIcon; label: string }> = {
   users: { icon: Users, label: 'People' },
   zap: { icon: Zap, label: 'Power' },
   bank: { icon: Landmark, label: 'Bank' },
+  home: { icon: Home, label: 'Home' },
+  heartpulse: { icon: HeartPulse, label: 'Health' },
+  shield: { icon: Shield, label: 'Cover' },
+  carfront: { icon: CarFront, label: 'Vehicle' },
+  car: { icon: Car, label: 'Car' },
+  bike: { icon: Bike, label: 'Bike' },
+  education: { icon: GraduationCap, label: 'Education' },
+  travel: { icon: Plane, label: 'Travel' },
+  medical: { icon: Stethoscope, label: 'Medical' },
+  gem: { icon: Gem, label: 'Gold' },
+  building: { icon: Building2, label: 'Property' },
 };
 
 export const calcIcon = (key: string): LucideIcon => CALC_ICONS[key]?.icon ?? Calculator;

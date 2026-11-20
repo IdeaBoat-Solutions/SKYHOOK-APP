@@ -22,7 +22,6 @@ export const SettingsView: React.FC = () => {
     updateCompanySettings,
     resetToDemoData,
     currentUser,
-    setCurrentUserRole,
     availableUsers,
     updateUserRole,
     addUser,
@@ -683,15 +682,9 @@ export const SettingsView: React.FC = () => {
                         </td>
                         <td className="px-3.5 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setCurrentUserRole(u.role)}
-                              className={`btn btn-sm ${
-                                isCurrentSession ? 'btn-primary' : 'btn-secondary'
-                              }`}
-                            >
-                              {isCurrentSession ? 'Active Session' : 'Switch Role'}
-                            </button>
+                            {isCurrentSession && (
+                              <span className="badge badge-brand">Active session</span>
+                            )}
                             {currentUser.role === 'owner' && !isCurrentSession && (
                               <button
                                 type="button"

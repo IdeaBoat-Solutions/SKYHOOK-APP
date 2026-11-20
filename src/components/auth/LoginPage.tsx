@@ -3,7 +3,6 @@ import {
   Shield,
   KeyRound,
   ArrowRight,
-  CheckCircle2,
   Lock,
   Eye,
   EyeOff,
@@ -11,63 +10,44 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
-import { User } from '../../types';
 import { navigate } from '../../lib/nav';
 
-const DEMO_PASSWORD = 'skyhook@2026';
-
+/**
+ * Credentials-only sign in. The server verifies the email + password against
+ * the database and decides the user, tenant and role — the client holds no
+ * user list and no passwords.
+ */
 export const LoginPage: React.FC = () => {
-  const { availableUsers, login, companySettings } = useSkyhook();
+  const { login, companySettings } = useSkyhook();
 
-  const [selectedUserId, setSelectedUserId] = useState<string>(availableUsers[0]?.id || 'USR-001');
-  const [email, setEmail] = useState<string>(availableUsers[0]?.email || 'admin@skyhook.com');
-  const [password, setPassword] = useState<string>(DEMO_PASSWORD);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-
-  const selectedUser = availableUsers.find((u) => u.id === selectedUserId) || availableUsers[0];
-
-  const handleSelectUser = (u: User) => {
-    setSelectedUserId(u.id);
-    setEmail(u.email);
-    setPassword(DEMO_PASSWORD);
-    setErrorMessage('');
-  };
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
-    const targetUser = availableUsers.find((u) => u.email.toLowerCase() === email.trim().toLowerCase()) || selectedUser;
-
-    if (!targetUser) {
-      setErrorMessage('User with this email not found. Please choose from registered profiles.');
-      return;
-    }
-
-    if (!password || password.trim().length === 0) {
-      setErrorMessage('Please enter your access password or security PIN.');
+    if (!email.trim() || !password) {
+      setErrorMessage('Enter your email and password.');
       return;
     }
 
     setIsLoading(true);
     try {
-      await login(targetUser, password);
+      await login(email, password);
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Login failed. Check your credentials.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickLogin = async (u: User) => {
-    setErrorMessage('');
-    setIsLoading(true);
-    try {
-      await login(u, DEMO_PASSWORD);
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Login failed. Check your credentials.');
+      const status = (err as { status?: number })?.status;
+      setErrorMessage(
+        status === 401
+          ? 'Invalid email or password.'
+          : err instanceof Error
+            ? err.message
+            : 'Sign in failed. Please try again.',
+      );
+      setPassword('');
     } finally {
       setIsLoading(false);
     }
@@ -155,7 +135,7 @@ export const LoginPage: React.FC = () => {
             <div className="card-header">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-ink-900">System Sign In</h2>
-                <p className="mt-0.5 text-xs text-ink-500">Select a profile or enter your credentials</p>
+                <p className="mt-0.5 text-xs text-ink-500">Your role is set by your account.</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-600">
                 <KeyRound className="h-5 w-5" />
@@ -163,67 +143,36 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <div className="card-pad">
-              <p className="form-label">Select Account Profile</p>
-              <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {availableUsers.map((u) => {
-                  const isSelected = u.id === selectedUserId;
-                  const isOwner = u.role === 'owner';
-                  return (
-                    <button
-                      type="button"
-                      key={u.id}
-                      onClick={() => handleSelectUser(u)}
-                      className={`flex flex-col justify-between rounded-lg border p-3 text-left transition-colors ${
-                        isSelected
-                          ? 'border-brand-500 bg-brand-50'
-                          : 'border-line bg-surface-muted hover:border-line-strong hover:bg-surface'
-                      }`}
-                    >
-                      <div className="mb-2 flex w-full items-center justify-between">
-                        <span
-                          className={`badge uppercase ${
-                            isOwner ? 'badge-neutral' : 'badge-brand'
-                          }`}
-                        >
-                          {isOwner ? 'Owner / Admin' : 'Manager'}
-                        </span>
-                        {isSelected && <CheckCircle2 className="h-4 w-4 text-brand-600" />}
-                      </div>
-                      <span className="truncate text-sm font-semibold text-ink-900">{u.name}</span>
-                      <span className="truncate text-xs text-ink-500">{u.email}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <form onSubmit={handleLoginSubmit} className="mt-5 space-y-4">
+              <form onSubmit={handleLoginSubmit} className="space-y-4" noValidate>
                 {errorMessage && (
-                  <div className="alert-banner">
+                  <div className="alert-banner" role="alert">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span className="text-xs">{errorMessage}</span>
                   </div>
                 )}
 
                 <div>
-                  <label className="form-label">Email / Username</label>
+                  <label className="form-label" htmlFor="login-email">Email</label>
                   <input
+                    id="login-email"
                     type="email"
+                    autoComplete="username"
+                    autoFocus
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@skyhook.com"
+                    placeholder="name@company.com"
                     required
                     className="form-input"
                   />
                 </div>
 
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <label className="text-xs font-semibold text-ink-700">Password / Access PIN</label>
-                    <span className="text-[11px] text-ink-400">Demo: skyhook@2026</span>
-                  </div>
+                  <label className="form-label" htmlFor="login-password">Password</label>
                   <div className="relative">
                     <input
+                      id="login-password"
                       type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter password"
@@ -253,7 +202,7 @@ export const LoginPage: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <span>Sign in as {selectedUser?.name ?? 'Loading profiles…'}</span>
+                      <span>Sign in</span>
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -269,36 +218,6 @@ export const LoginPage: React.FC = () => {
                     Create an account
                   </a>
                 </p>
-
-                <div className="pt-1">
-                  <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-widest text-ink-400">
-                    Instant Test Login
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const owner = availableUsers.find((u) => u.role === 'owner') || availableUsers[0];
-                        handleQuickLogin(owner);
-                      }}
-                      className="btn btn-secondary"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      Owner Login
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const manager = availableUsers.find((u) => u.role === 'manager') || availableUsers[1] || availableUsers[0];
-                        handleQuickLogin(manager);
-                      }}
-                      className="btn btn-primary"
-                    >
-                      <Briefcase className="h-3.5 w-3.5" />
-                      Manager Login
-                    </button>
-                  </div>
-                </div>
               </form>
             </div>
           </div>

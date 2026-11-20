@@ -6,11 +6,15 @@ import { Errors } from '../../common/errors.js';
 import { writeAudit } from '../../common/audit.js';
 import { addDays } from '../../domain/calculations.js';
 
+/** Blank strings from forms are treated as "not provided". */
+const dateStr = z.string().nullish().transform((v) => v || undefined);
+const textStr = z.string().max(500).nullish().transform((v) => (v && v.trim() ? v.trim() : undefined));
+
 const createSchema = z.object({
   fullName: z.string().min(1),
   mobile: z.string().min(1),
   email: z.string().email().optional(),
-  dateOfBirth: z.string().optional(),
+  dateOfBirth: dateStr,
   joiningDate: z.string().min(1),
   designation: z.string().min(1),
   employeeType: z.enum(['operator', 'manager', 'supervisor', 'accounts', 'office', 'other']),
@@ -20,9 +24,23 @@ const createSchema = z.object({
   monthlySalaryPaise: z.number().int().nonnegative().default(0),
   standardShiftMinutes: z.number().int().default(600),
   overtimeEligible: z.boolean().default(true),
-  licenseNumber: z.string().optional(),
-  craneLicenseExpiry: z.string().optional(),
-  transportLicenseExpiry: z.string().optional(),
+  licenseNumber: textStr,
+  craneLicenseDate: dateStr,
+  craneLicenseExpiry: dateStr,
+  transportLicenseDate: dateStr,
+  transportLicenseExpiry: dateStr,
+  guardianName: textStr,
+  bloodGroup: textStr,
+  licenseIssueDate: dateStr,
+  licenseValidNt: dateStr,
+  licenseValidTr: dateStr,
+  licenseFirstIssueDate: dateStr,
+  licenseIssuingState: textStr,
+  licenseIssuingAuthority: textStr,
+  licenseVehicleClasses: z.array(z.string().max(20)).max(30).default([]),
+  organDonor: z.boolean().nullish(),
+  /** Set when the licence details came from an OCR scan. */
+  licenseScanned: z.boolean().default(false),
 });
 
 export async function workforceRoutes(app: FastifyInstance): Promise<void> {
@@ -70,9 +88,12 @@ export async function workforceRoutes(app: FastifyInstance): Promise<void> {
         `INSERT INTO employees (tenant_id,employee_code,full_name,mobile,email,date_of_birth,
           joining_date,designation,employee_type,address,salary_type,daily_rate_paise,
           monthly_salary_paise,standard_shift_minutes,overtime_eligible,salary_effective_date,
-          license_number,crane_license_expiry,transport_license_expiry,created_by)
+          license_number,crane_license_expiry,transport_license_expiry,created_by,
+          crane_license_issue_date,transport_license_issue_date,guardian_name,blood_group,license_issue_date,license_valid_nt,license_valid_tr,license_first_issue_date,license_issuing_state,license_issuing_authority,license_vehicle_classes,organ_donor,license_scanned_at)
          VALUES ($1,$2,$3,$4,$5,COALESCE($6::date,NULL),$7::date,$8,$9,$10,$11,$12,$13,$14,$15,
-           CURRENT_DATE,$16,COALESCE($17::date,NULL),COALESCE($18::date,NULL),$19)
+           CURRENT_DATE,$16,COALESCE($17::date,NULL),COALESCE($18::date,NULL),$19,
+           $20::date,$21::date,$22,$23,$24::date,$25::date,$26::date,$27::date,$28,$29,$30::text[],$31,
+           CASE WHEN $32::boolean THEN now() ELSE NULL END)
          RETURNING *`,
         [
           request.auth.tenantId, code, body.fullName, body.mobile, body.email ?? null,
@@ -80,6 +101,11 @@ export async function workforceRoutes(app: FastifyInstance): Promise<void> {
           body.address ?? null, body.salaryType, body.dailyRatePaise, body.monthlySalaryPaise,
           body.standardShiftMinutes, body.overtimeEligible, body.licenseNumber ?? null,
           body.craneLicenseExpiry ?? null, body.transportLicenseExpiry ?? null, request.auth.userId,
+          body.craneLicenseDate ?? null, body.transportLicenseDate ?? null, body.guardianName ?? null,
+          body.bloodGroup ?? null, body.licenseIssueDate ?? null, body.licenseValidNt ?? null,
+          body.licenseValidTr ?? null, body.licenseFirstIssueDate ?? null,
+          body.licenseIssuingState ?? null, body.licenseIssuingAuthority ?? null,
+          body.licenseVehicleClasses, body.organDonor ?? null, body.licenseScanned,
         ],
       );
       await writeAudit(c, request.auth, {
@@ -109,8 +135,20 @@ export async function workforceRoutes(app: FastifyInstance): Promise<void> {
       standardShiftMinutes: z.number().int().optional(),
       overtimeEligible: z.boolean().optional(),
       licenseNumber: z.string().nullable().optional(),
+      craneLicenseDate: z.string().nullable().optional(),
       craneLicenseExpiry: z.string().nullable().optional(),
+      transportLicenseDate: z.string().nullable().optional(),
       transportLicenseExpiry: z.string().nullable().optional(),
+      guardianName: z.string().nullable().optional(),
+      bloodGroup: z.string().nullable().optional(),
+      licenseIssueDate: z.string().nullable().optional(),
+      licenseValidNt: z.string().nullable().optional(),
+      licenseValidTr: z.string().nullable().optional(),
+      licenseFirstIssueDate: z.string().nullable().optional(),
+      licenseIssuingState: z.string().nullable().optional(),
+      licenseIssuingAuthority: z.string().nullable().optional(),
+      licenseVehicleClasses: z.array(z.string().max(20)).max(30).optional(),
+      organDonor: z.boolean().nullable().optional(),
       status: z.enum(['active', 'inactive', 'on_leave', 'terminated']).optional(),
     }).passthrough().parse(request.body);
 
@@ -123,6 +161,13 @@ export async function workforceRoutes(app: FastifyInstance): Promise<void> {
       standardShiftMinutes: ['standard_shift_minutes'], overtimeEligible: ['overtime_eligible'],
       licenseNumber: ['license_number'], craneLicenseExpiry: ['crane_license_expiry', '::date'],
       transportLicenseExpiry: ['transport_license_expiry', '::date'], status: ['status', '::employment_status'],
+      craneLicenseDate: ['crane_license_issue_date', '::date'],
+      transportLicenseDate: ['transport_license_issue_date', '::date'],
+      guardianName: ['guardian_name'], bloodGroup: ['blood_group'],
+      licenseIssueDate: ['license_issue_date', '::date'], licenseValidNt: ['license_valid_nt', '::date'],
+      licenseValidTr: ['license_valid_tr', '::date'], licenseFirstIssueDate: ['license_first_issue_date', '::date'],
+      licenseIssuingState: ['license_issuing_state'], licenseIssuingAuthority: ['license_issuing_authority'],
+      licenseVehicleClasses: ['license_vehicle_classes', '::text[]'], organDonor: ['organ_donor'],
     };
     const entries = Object.entries(body).filter(([k, v]) => k in columns && v !== undefined);
     if (!entries.length) throw Errors.badRequest('No fields to update');

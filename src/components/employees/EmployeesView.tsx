@@ -24,10 +24,12 @@ import {
   Download,
   Paperclip,
   ArrowRight,
+  ScanLine,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import { formatDateDDMMYYYY } from '../../utils/calculations';
-import { Employee, EmployeeType, SalaryType, DocumentRecord } from '../../types';
+import { Employee, EmployeeType, SalaryType, DocumentRecord, LicenceExtras } from '../../types';
+import { LicenceDetailsFields, LicenceScanModal, ScanOutcome } from './LicenceScan';
 import { Currency } from '../common/Currency';
 
 const STANDARD_DOCUMENT_TYPES = [
@@ -49,6 +51,7 @@ export const EmployeesView: React.FC = () => {
     projects,
     machines,
     addEmployee,
+    attachEmployeeDocument,
     updateEmployee,
     deactivateEmployee,
     renewOperatorLicense,
@@ -77,10 +80,16 @@ export const EmployeesView: React.FC = () => {
   const [dailyRate, setDailyRate] = useState('900');
   const [monthlySalary, setMonthlySalary] = useState('25000');
   const [licenseNumber, setLicenseNumber] = useState('');
-  const [craneLicenseDate, setCraneLicenseDate] = useState('2018-01-01');
-  const [craneLicenseExpiry, setCraneLicenseExpiry] = useState('2027-01-01');
-  const [transportLicenseDate, setTransportLicenseDate] = useState('2015-01-01');
-  const [transportLicenseExpiry, setTransportLicenseExpiry] = useState('2028-01-01');
+  const [craneLicenseDate, setCraneLicenseDate] = useState('');
+  const [craneLicenseExpiry, setCraneLicenseExpiry] = useState('');
+  const [transportLicenseDate, setTransportLicenseDate] = useState('');
+  const [transportLicenseExpiry, setTransportLicenseExpiry] = useState('');
+  const [licenceExtras, setLicenceExtras] = useState<LicenceExtras>({ licenseVehicleClasses: [] });
+  const [showScan, setShowScan] = useState(false);
+  const [scannedLicence, setScannedLicence] = useState(false);
+  const [scanFiles, setScanFiles] = useState<{ front?: File; back?: File }>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [emergencyName, setEmergencyName] = useState('');
   const [emergencyMobile, setEmergencyMobile] = useState('');
   const [emergencyRelation, setEmergencyRelation] = useState('Wife');
@@ -114,11 +123,15 @@ export const EmployeesView: React.FC = () => {
     setSalaryType('daily');
     setDailyRate('900');
     setMonthlySalary('0');
-    setLicenseNumber('MH04-2020-009912');
-    setCraneLicenseDate('2020-01-15');
-    setCraneLicenseExpiry('2027-01-14');
-    setTransportLicenseDate('2018-05-10');
-    setTransportLicenseExpiry('2028-05-09');
+    setLicenseNumber('');
+    setCraneLicenseDate('');
+    setCraneLicenseExpiry('');
+    setTransportLicenseDate('');
+    setTransportLicenseExpiry('');
+    setLicenceExtras({ licenseVehicleClasses: [] });
+    setScannedLicence(false);
+    setScanFiles({});
+    setSaveError('');
     setEmergencyName('');
     setEmergencyMobile('');
     setEmergencyRelation('Wife');
@@ -153,6 +166,21 @@ export const EmployeesView: React.FC = () => {
     setCraneLicenseExpiry(emp.craneLicenseExpiry || '');
     setTransportLicenseDate(emp.transportLicenseDate || '');
     setTransportLicenseExpiry(emp.transportLicenseExpiry || '');
+    setLicenceExtras({
+      guardianName: emp.guardianName,
+      bloodGroup: emp.bloodGroup,
+      licenseIssueDate: emp.licenseIssueDate,
+      licenseValidNt: emp.licenseValidNt,
+      licenseValidTr: emp.licenseValidTr,
+      licenseFirstIssueDate: emp.licenseFirstIssueDate,
+      licenseIssuingState: emp.licenseIssuingState,
+      licenseIssuingAuthority: emp.licenseIssuingAuthority,
+      licenseVehicleClasses: emp.licenseVehicleClasses ?? [],
+      organDonor: emp.organDonor,
+    });
+    setScannedLicence(Boolean(emp.licenseScanned));
+    setScanFiles({});
+    setSaveError('');
     if (emp.emergencyContacts && emp.emergencyContacts[0]) {
       setEmergencyName(emp.emergencyContacts[0].name);
       setEmergencyMobile(emp.emergencyContacts[0].mobile);
@@ -218,61 +246,114 @@ export const EmployeesView: React.FC = () => {
     setStagedDocuments((prev) => prev.filter((d) => d.id !== docId));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  /** Copy reviewed scan results into the form; the user can still edit before saving. */
+  const handleApplyScan = ({ parsed, files }: ScanOutcome) => {
+    if (parsed.licenceNumber) setLicenseNumber(parsed.licenceNumber);
+    if (parsed.name) setFullName(parsed.name);
+    if (parsed.dateOfBirth) setDob(parsed.dateOfBirth);
+    if (parsed.address) setAddress(parsed.address);
+    // One card carries both validities: non-transport maps to the crane licence
+    // fields, transport to the transport licence fields (the two reminder tracks).
+    if (parsed.issueDate) {
+      setCraneLicenseDate(parsed.issueDate);
+      setTransportLicenseDate(parsed.issueDate);
+    }
+    if (parsed.validNt) setCraneLicenseExpiry(parsed.validNt);
+    if (parsed.validTr) setTransportLicenseExpiry(parsed.validTr);
+    setLicenceExtras({
+      guardianName: parsed.guardianName,
+      bloodGroup: parsed.bloodGroup,
+      licenseIssueDate: parsed.issueDate,
+      licenseValidNt: parsed.validNt,
+      licenseValidTr: parsed.validTr,
+      licenseFirstIssueDate: parsed.firstIssueDate,
+      licenseIssuingState: parsed.issuingState,
+      licenseIssuingAuthority: parsed.issuingAuthority,
+      licenseVehicleClasses: parsed.vehicleClasses ?? [],
+      organDonor: parsed.organDonor,
+    });
+    setScannedLicence(true);
+    setScanFiles(files);
+    setShowScan(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setSaveError('');
     const emergencyContacts = emergencyName
       ? [{ id: `EC-${Date.now()}`, name: emergencyName, mobile: emergencyMobile, relation: emergencyRelation }]
       : [];
 
-    if (editingEmployee) {
-      updateEmployee(editingEmployee.id, {
-        fullName,
-        mobile,
-        email,
-        dateOfBirth: dob,
-        joiningDate,
-        designation,
-        employeeType,
-        address,
-        salaryType,
-        dailyRate: parseFloat(dailyRate) || 0,
-        monthlySalary: parseFloat(monthlySalary) || 0,
-        licenseNumber,
-        craneLicenseDate,
-        craneLicenseExpiry,
-        transportLicenseDate,
-        transportLicenseExpiry,
-        emergencyContacts,
-        documents: stagedDocuments,
-      });
-    } else {
-      addEmployee({
-        employeeId: '',
-        fullName,
-        mobile,
-        email,
-        dateOfBirth: dob,
-        joiningDate,
-        designation,
-        employeeType,
-        address,
-        status: 'active',
-        salaryType,
-        dailyRate: parseFloat(dailyRate) || 0,
-        monthlySalary: parseFloat(monthlySalary) || 0,
-        standardShiftHours: 10,
-        overtimeEligible: true,
-        salaryEffectiveDate: currentDate,
-        licenseNumber,
-        craneLicenseDate,
-        craneLicenseExpiry,
-        transportLicenseDate,
-        transportLicenseExpiry,
-        emergencyContacts,
-        documents: stagedDocuments,
-      });
+    const common = {
+      fullName,
+      mobile,
+      email,
+      dateOfBirth: dob,
+      joiningDate,
+      designation,
+      employeeType,
+      address,
+      salaryType,
+      dailyRate: parseFloat(dailyRate) || 0,
+      monthlySalary: parseFloat(monthlySalary) || 0,
+      licenseNumber,
+      craneLicenseDate,
+      craneLicenseExpiry,
+      transportLicenseDate,
+      transportLicenseExpiry,
+      ...licenceExtras,
+      licenseScanned: scannedLicence,
+      emergencyContacts,
+      documents: stagedDocuments,
+    };
+
+    setSaving(true);
+    try {
+      let employeeId: string;
+      if (editingEmployee) {
+        await updateEmployee(editingEmployee.id, common);
+        employeeId = editingEmployee.id;
+      } else {
+        const created = await addEmployee({
+          ...common,
+          employeeId: '',
+          status: 'active',
+          standardShiftHours: 10,
+          overtimeEligible: true,
+          salaryEffectiveDate: currentDate,
+        });
+        employeeId = created.id;
+      }
+
+      // Keep the scanned photos with the record. The details are already saved,
+      // so a failed upload is reported without losing them.
+      const expiry = transportLicenseExpiry || craneLicenseExpiry || undefined;
+      const uploads: Array<[File | undefined, string]> = [
+        [scanFiles.front, 'Driving Licence – Front'],
+        [scanFiles.back, 'Driving Licence – Back'],
+      ];
+      const failed: string[] = [];
+      for (const [file, label] of uploads) {
+        if (!file) continue;
+        try {
+          await attachEmployeeDocument(employeeId, file, label, expiry);
+        } catch {
+          failed.push(label);
+        }
+      }
+      if (failed.length) {
+        setSaveError(
+          `Saved, but could not upload: ${failed.join(', ')}. Open the profile and attach the photo again.`,
+        );
+        return;
+      }
+      setShowModal(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    setShowModal(false);
   };
 
   const handleConfirmLicenseRenewal = (e: React.FormEvent) => {
@@ -493,6 +574,8 @@ export const EmployeesView: React.FC = () => {
         </div>
       </div>
 
+      {showScan && <LicenceScanModal onClose={() => setShowScan(false)} onApply={handleApplyScan} />}
+
       {/* License Quick Renewal Modal */}
       {licenseRenewalEmp && (
         <div className="modal-overlay">
@@ -710,10 +793,23 @@ export const EmployeesView: React.FC = () => {
                     <span className="stat-label block">
                       3. Heavy Crane Operator Licenses
                     </span>
-                    <span className="chip">
-                      RTO STATUTORY
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowScan(true)}
+                        className="btn btn-primary btn-sm"
+                      >
+                        <ScanLine className="h-3.5 w-3.5" />
+                        Scan licence
+                      </button>
+                      <span className="chip">
+                        {scannedLicence ? 'SCANNED' : 'RTO STATUTORY'}
+                      </span>
+                    </div>
                   </div>
+                  <p className="text-[11px] text-ink-500">
+                    Scan the licence photo to fill these in, or type them by hand. Everything stays editable.
+                  </p>
 
                   <div>
                     <label className="form-label">License Number:</label>
@@ -775,6 +871,18 @@ export const EmployeesView: React.FC = () => {
                       />
                     </div>
                   </div>
+
+                  <LicenceDetailsFields
+                    value={licenceExtras}
+                    onChange={(patch) => setLicenceExtras((prev) => ({ ...prev, ...patch }))}
+                  />
+                  {(scanFiles.front || scanFiles.back) && (
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {[scanFiles.front && 'Front', scanFiles.back && 'Back'].filter(Boolean).join(' + ')} photo
+                      will be saved with this record.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -981,6 +1089,13 @@ export const EmployeesView: React.FC = () => {
                 />
               </div>
 
+              {saveError && (
+                <div className="alert-banner" role="alert">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="text-xs">{saveError}</span>
+                </div>
+              )}
+
               {/* Submit / Cancel Buttons */}
               <div className="form-actions">
                 <button
@@ -992,13 +1107,16 @@ export const EmployeesView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={saving}
                   className="btn btn-primary"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>
-                    {editingEmployee
-                      ? `Save Profile (${stagedDocuments.length} Docs)`
-                      : `Register Operator (${stagedDocuments.length} Docs)`}
+                    {saving
+                      ? 'Saving…'
+                      : editingEmployee
+                        ? `Save Profile (${stagedDocuments.length} Docs)`
+                        : `Register Operator (${stagedDocuments.length} Docs)`}
                   </span>
                 </button>
               </div>

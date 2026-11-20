@@ -71,39 +71,6 @@
     }
   ],
   "paths": {
-    "/auth/profiles": {
-      "get": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Public account profiles for the login screen",
-        "operationId": "get_auth_profiles",
-        "security": [],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "422": {
-            "$ref": "#/components/responses/ValidationFailed"
-          },
-          "429": {
-            "$ref": "#/components/responses/RateLimited"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
     "/auth/token": {
       "post": {
         "tags": [
@@ -2834,23 +2801,22 @@
       "LoginRequest": {
         "type": "object",
         "required": [
-          "tenantSlug",
           "email",
           "password"
         ],
         "properties": {
           "tenantSlug": {
             "type": "string",
-            "example": "skyhook"
+            "description": "Optional; resolved from the account when omitted"
           },
           "email": {
             "type": "string",
             "format": "email",
-            "example": "owner@skyhook.in"
+            "example": "admin@skyhook.com"
           },
           "password": {
             "type": "string",
-            "example": "skyhook2026"
+            "format": "password"
           }
         }
       },

@@ -14,22 +14,27 @@ export interface LoginResult {
   tokenType?: string;
 }
 
-/** Supabase Auth: password is verified by GoTrue; tenant/roles come from signed claims. */
+/** One generic message for every failure so callers cannot probe which emails exist. */
+const invalidCredentials = () => Errors.unauthorized('Invalid email or password');
+
+/**
+ * Supabase Auth: password is verified by GoTrue; the tenant comes from the
+ * signed app_metadata claims, so the client never has to name its tenant.
+ */
 async function authenticateWithSupabase(
-  tenantSlug: string,
+  tenantSlug: string | undefined,
   email: string,
   password: string,
 ): Promise<LoginResult> {
-  const tenant = await pool.query('SELECT id FROM tenants WHERE slug = $1', [tenantSlug]);
-  if (!tenant.rows[0]) throw Errors.unauthorized('Unknown tenant');
-  const tenantId = tenant.rows[0].id as string;
-
   const { data, error } = await getSupabaseAnon().auth.signInWithPassword({ email, password });
-  if (error || !data.session || !data.user) throw Errors.unauthorized('Invalid credentials');
+  if (error || !data.session || !data.user) throw invalidCredentials();
 
   const claims = (data.user.app_metadata ?? {}) as Record<string, unknown>;
-  if (claims.tenant_id !== tenantId) {
-    throw Errors.unauthorized('This account does not belong to the requested tenant');
+  const tenantId = typeof claims.tenant_id === 'string' ? claims.tenant_id : null;
+  if (!tenantId) throw invalidCredentials();
+  if (tenantSlug) {
+    const tenant = await pool.query('SELECT id FROM tenants WHERE slug = $1', [tenantSlug]);
+    if (tenant.rows[0]?.id !== tenantId) throw invalidCredentials();
   }
 
   // Confirm the internal user is still active; RLS is scoped to the tenant from the JWT.
@@ -40,7 +45,7 @@ async function authenticateWithSupabase(
     ),
   );
   const user = result.rows[0];
-  if (!user || !user.is_active) throw Errors.unauthorized('Account is inactive');
+  if (!user || !user.is_active) throw invalidCredentials();
 
   return {
     token: data.session.access_token,
@@ -51,27 +56,42 @@ async function authenticateWithSupabase(
   };
 }
 
-/** Legacy dev stack: scrypt password check + locally minted HS256 token. */
+/**
+ * Legacy dev stack: password hash check + locally minted HS256 token.
+ * Without a tenant slug, every tenant holding this email is tried and the one
+ * whose stored hash matches wins (email is unique per tenant, not globally).
+ */
 async function authenticateLegacy(
-  tenantSlug: string,
+  tenantSlug: string | undefined,
   email: string,
   password: string,
 ): Promise<LoginResult> {
-  const tenant = await pool.query('SELECT id FROM tenants WHERE slug = $1', [tenantSlug]);
-  if (!tenant.rows[0]) throw Errors.unauthorized('Unknown tenant');
-  const tenantId = tenant.rows[0].id as string;
+  const tenants = tenantSlug
+    ? await pool.query('SELECT id FROM tenants WHERE slug = $1', [tenantSlug])
+    : await pool.query('SELECT id FROM tenants ORDER BY created_at');
+  for (const t of tenants.rows as { id: string }[]) {
+    const result = await tryTenantLogin(t.id, email, password);
+    if (result) return result;
+  }
+  throw invalidCredentials();
+}
 
+async function tryTenantLogin(
+  tenantId: string,
+  email: string,
+  password: string,
+): Promise<LoginResult | null> {
   return withTenantRead(tenantId, async (c) => {
     const u = await c.query(
-      'SELECT id, name, email, is_active FROM users WHERE email = $1 AND deleted_at IS NULL',
+      'SELECT id, name, email, is_active FROM users WHERE lower(email) = lower($1) AND deleted_at IS NULL',
       [email],
     );
     const user = u.rows[0];
-    if (!user || !user.is_active) throw Errors.unauthorized('Invalid credentials');
+    if (!user || !user.is_active) return null;
 
     const cred = await c.query('SELECT password_hash FROM credentials WHERE user_id = $1', [user.id]);
     if (!cred.rows[0] || !(await verifyPassword(password, cred.rows[0].password_hash))) {
-      throw Errors.unauthorized('Invalid credentials');
+      return null;
     }
 
     const perms = await c.query(
@@ -99,7 +119,11 @@ async function authenticateLegacy(
   });
 }
 
-export function authenticate(tenantSlug: string, email: string, password: string): Promise<LoginResult> {
+export function authenticate(
+  tenantSlug: string | undefined,
+  email: string,
+  password: string,
+): Promise<LoginResult> {
   return supabaseMode
     ? authenticateWithSupabase(tenantSlug, email, password)
     : authenticateLegacy(tenantSlug, email, password);

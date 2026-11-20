@@ -67,10 +67,10 @@ export interface RegisterInput {
 interface SkyhookStoreContextType {
   currentUser: User;
   isAuthenticated: boolean;
-  login: (user: User, password: string) => Promise<void>;
+  /** The server resolves the account and tenant; the client only sends credentials. */
+  login: (email: string, password: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => void;
-  setCurrentUserRole: (role: UserRole) => void;
   availableUsers: User[];
   updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
   addUser: (user: Omit<User, 'id'>) => Promise<User>;
@@ -83,6 +83,8 @@ interface SkyhookStoreContextType {
   deleteProject: (id: string) => Promise<void>;
   employees: Employee[];
   addEmployee: (e: Omit<Employee, 'id'>) => Promise<Employee>;
+  /** Upload a file to storage and register it as an employee document. */
+  attachEmployeeDocument: (employeeId: string, file: File, docType: string, expiryDate?: string) => Promise<void>;
   updateEmployee: (id: string, e: Partial<Employee>) => Promise<void>;
   deactivateEmployee: (id: string) => Promise<void>;
   renewOperatorLicense: (operatorId: string, newCraneExpiry?: string, newTransportExpiry?: string) => Promise<void>;
@@ -200,9 +202,14 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [personalPinSet, setPersonalPinSet] = useState(() => Boolean(getPinHash()));
 
   const loadAll = useCallback(async () => {
+    // Identity comes from the token via /auth/me — never from a client-side list.
+    const me = await api.get<any>('/auth/me');
+    setCurrentUser(mapUser(me));
+
     const [company, users, prj, emp, mach, loans, att, adv, runs, exp, logs, aud, notif, adj, personal] = await Promise.all([
       safeGet<any>('/company', null),
-      safeGet<{ items: any[] }>('/auth/profiles', { items: [] }),
+      // Staff directory for Settings; needs user:read, so managers get an empty list.
+      safeGet<{ items: any[] }>('/users', { items: [] }),
       safeGet<{ items: any[] }>('/projects', { items: [] }),
       safeGet<{ items: any[] }>('/employees', { items: [] }),
       safeGet<{ items: any[] }>('/machines', { items: [] }),
@@ -218,11 +225,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       safeGet<{ items: any[] }>('/personal-records', { items: [] }),
     ]);
     if (company) setCompanySettings(mapCompany(company));
-    const mappedUsers = users.items.map(mapUser);
-    if (mappedUsers.length) {
-      setAvailableUsers(mappedUsers);
-      setCurrentUser((prev) => mappedUsers.find((u) => u.id === prev.id) ?? mappedUsers.find((u) => u.role === 'owner') ?? mappedUsers[0]!);
-    }
+    setAvailableUsers(users.items.map(mapUser));
     setProjects(prj.items.map(mapProject));
     setEmployees(emp.items.map(mapEmployee));
     // Service history lives on its own endpoint; keep a machine usable if that
@@ -258,10 +261,6 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (getToken()) {
       loadAll().catch((e) => { console.error('Failed to load Skyhook data', e); setToken(null); setIsAuthenticated(false); });
-    } else {
-      api.get<{ items: any[] }>('/auth/profiles')
-        .then((r) => setAvailableUsers(r.items.map(mapUser)))
-        .catch(() => undefined);
     }
   }, [loadAll]);
 
@@ -274,14 +273,18 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     payrollAdjustments, personalRecords, personalPinSet,
     currentDate: DEMO_DATE,
 
-    login: async (user, password) => {
+    login: async (email, password) => {
       const r = await api.post<{ token: string }>('/auth/token', {
-        tenantSlug: user.tenantSlug ?? 'skyhook', email: user.email, password,
+        email: email.trim().toLowerCase(), password,
       });
       setToken(r.token);
-      setCurrentUser(user);
+      try {
+        await loadAll();
+      } catch (e) {
+        setToken(null);
+        throw e;
+      }
       setIsAuthenticated(true);
-      await loadAll();
     },
     register: async (input) => {
       const r = await api.post<{ token: string; user: any }>('/auth/register', input);
@@ -292,10 +295,11 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsAuthenticated(true);
       await loadAll();
     },
-    logout: () => { setToken(null); setIsAuthenticated(false); setCurrentUser(placeholderUser); },
-    setCurrentUserRole: (role) => {
-      const match = availableUsers.find((u) => u.role === role);
-      if (match) setCurrentUser(match);
+    logout: () => {
+      setToken(null);
+      setIsAuthenticated(false);
+      setCurrentUser(placeholderUser);
+      setAvailableUsers([]);
     },
     updateUserRole: async (userId, newRole) => {
       await api.post(`/users/${userId}/roles`, { role: newRole });
@@ -303,7 +307,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
     addUser: async (user) => {
       const r = await api.post<any>('/users', {
-        name: user.name, email: user.email, password: user.password ?? 'skyhook2026', phone: user.phone, role: user.role,
+        name: user.name, email: user.email, password: user.password, phone: user.phone, role: user.role,
       });
       await refresh();
       return mapUser(r);
@@ -351,19 +355,41 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     deleteProject: async (id) => { await api.patch(`/projects/${id}`, { status: 'cancelled' }); await refresh(); },
 
     addEmployee: async (e) => {
+      // Blank form fields mean "not provided"; the API rejects '' for dates and emails.
+      const blank = <T,>(v: T | '' | undefined | null): T | undefined => (v === '' || v == null ? undefined : v);
       const r = await api.post<any>('/employees', {
-        fullName: e.fullName, mobile: e.mobile, email: e.email, dateOfBirth: e.dateOfBirth,
+        fullName: e.fullName, mobile: e.mobile, email: blank(e.email), dateOfBirth: blank(e.dateOfBirth),
         joiningDate: e.joiningDate, designation: e.designation, employeeType: e.employeeType,
-        address: e.address, salaryType: e.salaryType, dailyRatePaise: rupeesToPaise(e.dailyRate),
+        address: blank(e.address), salaryType: e.salaryType, dailyRatePaise: rupeesToPaise(e.dailyRate),
         monthlySalaryPaise: rupeesToPaise(e.monthlySalary), standardShiftMinutes: (e.standardShiftHours ?? 10) * 60,
-        overtimeEligible: e.overtimeEligible, licenseNumber: e.licenseNumber,
-        craneLicenseExpiry: e.craneLicenseExpiry, transportLicenseExpiry: e.transportLicenseExpiry,
+        overtimeEligible: e.overtimeEligible, licenseNumber: blank(e.licenseNumber),
+        craneLicenseDate: blank(e.craneLicenseDate), craneLicenseExpiry: blank(e.craneLicenseExpiry),
+        transportLicenseDate: blank(e.transportLicenseDate), transportLicenseExpiry: blank(e.transportLicenseExpiry),
+        guardianName: blank(e.guardianName), bloodGroup: blank(e.bloodGroup),
+        licenseIssueDate: blank(e.licenseIssueDate), licenseValidNt: blank(e.licenseValidNt),
+        licenseValidTr: blank(e.licenseValidTr), licenseFirstIssueDate: blank(e.licenseFirstIssueDate),
+        licenseIssuingState: blank(e.licenseIssuingState), licenseIssuingAuthority: blank(e.licenseIssuingAuthority),
+        licenseVehicleClasses: e.licenseVehicleClasses ?? [], organDonor: e.organDonor ?? null,
+        licenseScanned: Boolean(e.licenseScanned),
       });
       await refresh();
       return mapEmployee(r);
     },
+    attachEmployeeDocument: async (employeeId, file, docType, expiryDate) => {
+      const signed = await api.post<{ objectKey: string }>('/files/sign-upload', {
+        kind: 'employee', ownerId: employeeId, name: file.name,
+      });
+      await api.putBinary(`/files/${signed.objectKey}`, await file.arrayBuffer());
+      await api.post('/documents', {
+        ownerType: 'employee', ownerId: employeeId, docType, name: file.name,
+        objectKey: signed.objectKey, sizeKb: Math.ceil(file.size / 1024),
+        mimeType: file.type || undefined, expiryDate: expiryDate || undefined,
+      });
+    },
     updateEmployee: async (id, e) => {
       const payload: any = { ...e };
+      if (payload.email === '') payload.email = null;
+      delete payload.emergencyContacts; delete payload.documents;
       if (e.dailyRate !== undefined) { payload.dailyRatePaise = rupeesToPaise(e.dailyRate); delete payload.dailyRate; }
       if (e.monthlySalary !== undefined) { payload.monthlySalaryPaise = rupeesToPaise(e.monthlySalary); delete payload.monthlySalary; }
       await api.patch(`/employees/${id}`, payload);

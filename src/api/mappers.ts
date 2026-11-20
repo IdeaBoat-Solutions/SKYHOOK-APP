@@ -10,7 +10,16 @@ const rupees = (paise: number | null | undefined): number => Math.round((paise ?
 const str = (v: unknown): string => (v == null ? '' : String(v));
 
 export function mapUser(r: any): User {
-  return { id: r.id, name: r.name, email: r.email, role: r.role ?? 'manager', phone: r.phone ?? undefined, tenantSlug: r.tenantSlug ?? r.tenant_slug ?? undefined };
+  // /users returns a roles array; /auth/me returns roles too. Owner wins.
+  const roles: string[] = Array.isArray(r.roles) ? r.roles : r.role ? [r.role] : [];
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role: roles.includes('owner') ? 'owner' : 'manager',
+    phone: r.phone ?? undefined,
+    tenantSlug: r.tenantSlug ?? r.tenant_slug ?? undefined,
+  };
 }
 
 export function mapCompany(r: any): CompanySettings {
@@ -57,6 +66,13 @@ export function mapEmployee(r: any): Employee {
     craneLicenseExpiry: r.crane_license_expiry ?? undefined,
     transportLicenseDate: r.transport_license_issue_date ?? undefined,
     transportLicenseExpiry: r.transport_license_expiry ?? undefined,
+    guardianName: r.guardian_name ?? undefined, bloodGroup: r.blood_group ?? undefined,
+    licenseIssueDate: r.license_issue_date ?? undefined, licenseValidNt: r.license_valid_nt ?? undefined,
+    licenseValidTr: r.license_valid_tr ?? undefined, licenseFirstIssueDate: r.license_first_issue_date ?? undefined,
+    licenseIssuingState: r.license_issuing_state ?? undefined,
+    licenseIssuingAuthority: r.license_issuing_authority ?? undefined,
+    licenseVehicleClasses: r.license_vehicle_classes ?? [], organDonor: r.organ_donor ?? undefined,
+    licenseScanned: Boolean(r.license_scanned_at),
     currentProjectId: r.current_project_id ?? undefined, currentMachineId: r.current_machine_id ?? undefined,
     emergencyContacts: r.contacts ?? [], documents: r.documents ?? [],
   };

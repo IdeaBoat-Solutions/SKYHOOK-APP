@@ -17,6 +17,26 @@ function optStr(v: unknown, field: string): string | undefined {
   return v === undefined ? undefined : str(v, field, 0, 5000);
 }
 
+/** Blank strings from forms mean "not provided"; never send '' to a ::date cast. */
+function optDate(v: unknown, field: string): string | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  return str(v, field, 1, 40);
+}
+
+function optText(v: unknown, field: string): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  const s = str(v, field, 0, 500);
+  return s ? s : undefined;
+}
+
+function textList(v: unknown, field: string): string[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > 30) {
+    throw Errors.validation([{ field, message: 'Must be a list of up to 30 short strings' }]);
+  }
+  return v.map((x) => str(x, field, 1, 20));
+}
+
 function nullableStr(v: unknown, field: string): string | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
@@ -154,8 +174,8 @@ export const workforceRoutes: Route[] = [
       const body = {
         fullName: str(b.fullName, 'fullName'),
         mobile: str(b.mobile, 'mobile'),
-        email: email(b.email, 'email'),
-        dateOfBirth: optStr(b.dateOfBirth, 'dateOfBirth'),
+        email: b.email === '' || b.email === null ? undefined : email(b.email, 'email'),
+        dateOfBirth: optDate(b.dateOfBirth, 'dateOfBirth'),
         joiningDate: str(b.joiningDate, 'joiningDate'),
         designation: str(b.designation, 'designation'),
         employeeType: enumOf(b.employeeType, 'employeeType', EMPLOYEE_TYPES),
@@ -165,9 +185,22 @@ export const workforceRoutes: Route[] = [
         monthlySalaryPaise: b.monthlySalaryPaise === undefined ? 0 : intVal(b.monthlySalaryPaise, 'monthlySalaryPaise', 0),
         standardShiftMinutes: b.standardShiftMinutes === undefined ? 600 : intVal(b.standardShiftMinutes, 'standardShiftMinutes'),
         overtimeEligible: b.overtimeEligible === undefined ? true : bool(b.overtimeEligible, 'overtimeEligible'),
-        licenseNumber: optStr(b.licenseNumber, 'licenseNumber'),
-        craneLicenseExpiry: optStr(b.craneLicenseExpiry, 'craneLicenseExpiry'),
-        transportLicenseExpiry: optStr(b.transportLicenseExpiry, 'transportLicenseExpiry'),
+        licenseNumber: optText(b.licenseNumber, 'licenseNumber'),
+        craneLicenseDate: optDate(b.craneLicenseDate, 'craneLicenseDate'),
+        craneLicenseExpiry: optDate(b.craneLicenseExpiry, 'craneLicenseExpiry'),
+        transportLicenseDate: optDate(b.transportLicenseDate, 'transportLicenseDate'),
+        transportLicenseExpiry: optDate(b.transportLicenseExpiry, 'transportLicenseExpiry'),
+        guardianName: optText(b.guardianName, 'guardianName'),
+        bloodGroup: optText(b.bloodGroup, 'bloodGroup'),
+        licenseIssueDate: optDate(b.licenseIssueDate, 'licenseIssueDate'),
+        licenseValidNt: optDate(b.licenseValidNt, 'licenseValidNt'),
+        licenseValidTr: optDate(b.licenseValidTr, 'licenseValidTr'),
+        licenseFirstIssueDate: optDate(b.licenseFirstIssueDate, 'licenseFirstIssueDate'),
+        licenseIssuingState: optText(b.licenseIssuingState, 'licenseIssuingState'),
+        licenseIssuingAuthority: optText(b.licenseIssuingAuthority, 'licenseIssuingAuthority'),
+        licenseVehicleClasses: textList(b.licenseVehicleClasses, 'licenseVehicleClasses'),
+        organDonor: b.organDonor === undefined || b.organDonor === null ? null : bool(b.organDonor, 'organDonor'),
+        licenseScanned: b.licenseScanned === true,
       };
 
       return withTenant(auth.tenantId, async (c) => {
@@ -182,9 +215,12 @@ export const workforceRoutes: Route[] = [
           `INSERT INTO employees (tenant_id,employee_code,full_name,mobile,email,date_of_birth,
             joining_date,designation,employee_type,address,salary_type,daily_rate_paise,
             monthly_salary_paise,standard_shift_minutes,overtime_eligible,salary_effective_date,
-            license_number,crane_license_expiry,transport_license_expiry,created_by)
+            license_number,crane_license_expiry,transport_license_expiry,created_by,
+            crane_license_issue_date,transport_license_issue_date,guardian_name,blood_group,license_issue_date,license_valid_nt,license_valid_tr,license_first_issue_date,license_issuing_state,license_issuing_authority,license_vehicle_classes,organ_donor,license_scanned_at)
            VALUES ($1,$2,$3,$4,$5,COALESCE($6::date,NULL),$7::date,$8,$9,$10,$11,$12,$13,$14,$15,
-             CURRENT_DATE,$16,COALESCE($17::date,NULL),COALESCE($18::date,NULL),$19)
+             CURRENT_DATE,$16,COALESCE($17::date,NULL),COALESCE($18::date,NULL),$19,
+             $20::date,$21::date,$22,$23,$24::date,$25::date,$26::date,$27::date,$28,$29,$30::text[],$31,
+             CASE WHEN $32::boolean THEN now() ELSE NULL END)
            RETURNING *`,
           [
             auth.tenantId, code, body.fullName, body.mobile, body.email ?? null,
@@ -192,6 +228,11 @@ export const workforceRoutes: Route[] = [
             body.address ?? null, body.salaryType, body.dailyRatePaise, body.monthlySalaryPaise,
             body.standardShiftMinutes, body.overtimeEligible, body.licenseNumber ?? null,
             body.craneLicenseExpiry ?? null, body.transportLicenseExpiry ?? null, auth.userId,
+            body.craneLicenseDate ?? null, body.transportLicenseDate ?? null, body.guardianName ?? null,
+            body.bloodGroup ?? null, body.licenseIssueDate ?? null, body.licenseValidNt ?? null,
+            body.licenseValidTr ?? null, body.licenseFirstIssueDate ?? null,
+            body.licenseIssuingState ?? null, body.licenseIssuingAuthority ?? null,
+            body.licenseVehicleClasses, body.organDonor, body.licenseScanned,
           ],
         );
         await writeAudit(c, auth, {
@@ -220,6 +261,11 @@ export const workforceRoutes: Route[] = [
         parsed.email = b.email === null ? null : email(b.email, 'email');
       }
       ns('dateOfBirth'); ns('address'); ns('licenseNumber'); ns('craneLicenseExpiry'); ns('transportLicenseExpiry');
+      ns('craneLicenseDate'); ns('transportLicenseDate'); ns('guardianName'); ns('bloodGroup');
+      ns('licenseIssueDate'); ns('licenseValidNt'); ns('licenseValidTr'); ns('licenseFirstIssueDate');
+      ns('licenseIssuingState'); ns('licenseIssuingAuthority');
+      if (b.licenseVehicleClasses !== undefined) parsed.licenseVehicleClasses = textList(b.licenseVehicleClasses, 'licenseVehicleClasses');
+      if (b.organDonor !== undefined) parsed.organDonor = b.organDonor === null ? null : bool(b.organDonor, 'organDonor');
       if (b.employeeType !== undefined && b.employeeType !== null) {
         parsed.employeeType = enumOf(b.employeeType, 'employeeType', EMPLOYEE_TYPES);
       }
@@ -243,6 +289,13 @@ export const workforceRoutes: Route[] = [
         standardShiftMinutes: ['standard_shift_minutes'], overtimeEligible: ['overtime_eligible'],
         licenseNumber: ['license_number'], craneLicenseExpiry: ['crane_license_expiry', '::date'],
         transportLicenseExpiry: ['transport_license_expiry', '::date'], status: ['status', '::employment_status'],
+        craneLicenseDate: ['crane_license_issue_date', '::date'],
+        transportLicenseDate: ['transport_license_issue_date', '::date'],
+        guardianName: ['guardian_name'], bloodGroup: ['blood_group'],
+        licenseIssueDate: ['license_issue_date', '::date'], licenseValidNt: ['license_valid_nt', '::date'],
+        licenseValidTr: ['license_valid_tr', '::date'], licenseFirstIssueDate: ['license_first_issue_date', '::date'],
+        licenseIssuingState: ['license_issuing_state'], licenseIssuingAuthority: ['license_issuing_authority'],
+        licenseVehicleClasses: ['license_vehicle_classes', '::text[]'], organDonor: ['organ_donor'],
       };
       const entries = Object.entries(parsed).filter(([k, v]) => k in columns && v !== undefined);
       if (!entries.length) throw Errors.badRequest('No fields to update');

@@ -14,6 +14,36 @@ export function corsHeaders(): Record<string, string> {
   };
 }
 
+/** Entry may end in ":*" to allow any port, e.g. http://localhost:* */
+function originMatches(entry: string, origin: string): boolean {
+  if (!entry.endsWith(':*')) return entry === origin;
+  try {
+    const base = new URL(entry.slice(0, -2));
+    const o = new URL(origin);
+    // origin must be a bare scheme://host:port (no path, userinfo or look-alike host)
+    return o.origin === origin && o.protocol === base.protocol && o.hostname === base.hostname;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ALLOWED_ORIGIN may be '*', one origin, or a comma-separated list (entries can
+ * end in ":*" for any port). For a list, or any wildcard-port entry, the
+ * request's own Origin is echoed back when it matches, since browsers accept
+ * only a single value. This lets production and local dev both be allowed.
+ */
+export function withCors(req: Request, res: Response): Response {
+  const allowed = config.ALLOWED_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
+  if (allowed.length === 0 || (allowed.length === 1 && !allowed[0].endsWith(':*'))) return res;
+  const origin = req.headers.get('origin');
+  const match = origin ? allowed.some((entry) => originMatches(entry, origin)) : false;
+  const headers = new Headers(res.headers);
+  headers.set('Access-Control-Allow-Origin', match && origin ? origin : allowed[0]);
+  headers.append('Vary', 'Origin');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

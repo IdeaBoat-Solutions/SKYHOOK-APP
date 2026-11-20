@@ -1,3 +1,7 @@
+-- Tables live in the skyhook schema. The SQL Editor defaults to public, so set it
+-- here; paste and run this whole file in ONE run.
+SET search_path = skyhook, public;
+
 -- Custom pay/deduction lines and per-user personal records that previously
 -- lived only in browser localStorage. Forward-only and safe to re-run.
 
@@ -64,3 +68,6 @@ BEGIN
       WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
   END IF;
 END $$;
+
+-- payroll_adjustments grants come from 0002 (select/insert/delete only, by design).
+GRANT SELECT, INSERT, UPDATE, DELETE ON personal_records TO skyhook_app;

@@ -39,9 +39,20 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
+type PgClient = { query: (text: string, params?: unknown[]) => Promise<unknown>; release: (destroy?: boolean) => void };
+
+async function rollbackQuietly(client: PgClient, onFail: () => void): Promise<void> {
+  try {
+    await client.query('ROLLBACK');
+  } catch {
+    onFail();
+  }
+}
+
 /** BEGIN + set_config('app.tenant_id') + COMMIT. RLS scopes every query in `work`. */
 export async function withTenant<T>(tenantId: string, work: (c: Queryable) => Promise<T>): Promise<T> {
   const client = await pool.connect();
+  let broken = false;
   try {
     await client.query('BEGIN');
     await client.query('SELECT set_config($1, $2, true)', ['app.tenant_id', tenantId]);
@@ -49,23 +60,30 @@ export async function withTenant<T>(tenantId: string, work: (c: Queryable) => Pr
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    await rollbackQuietly(client, () => { broken = true; });
     throw err;
   } finally {
-    client.release();
+    // A connection that could not be rolled back is destroyed, never reused.
+    client.release(broken);
   }
 }
 
 /** Same, but rolls back at the end — safe for read-only work. */
 export async function withTenantRead<T>(tenantId: string, work: (c: Queryable) => Promise<T>): Promise<T> {
   const client = await pool.connect();
+  let broken = false;
   try {
     await client.query('BEGIN');
     await client.query('SELECT set_config($1, $2, true)', ['app.tenant_id', tenantId]);
     const result = await work(client as unknown as Queryable);
     await client.query('ROLLBACK');
     return result;
+  } catch (err) {
+    // Without this, one failed query leaves the single pooled connection in an
+    // aborted transaction and every later request fails until the isolate recycles.
+    await rollbackQuietly(client, () => { broken = true; });
+    throw err;
   } finally {
-    client.release();
+    client.release(broken);
   }
 }

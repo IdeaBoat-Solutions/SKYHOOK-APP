@@ -13,7 +13,6 @@ import {
   BellRing,
   FileSpreadsheet,
   Settings,
-  LockKeyhole,
   AlertTriangle,
   FileText,
   LogOut,
@@ -21,7 +20,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
-import { UserRole } from '../../types';
 
 export type NavTab =
   | 'dashboard'
@@ -38,8 +36,7 @@ export type NavTab =
   | 'calculations'
   | 'reminders'
   | 'reports'
-  | 'settings'
-  | 'personal';
+  | 'settings';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -50,7 +47,6 @@ interface SidebarProps {
 }
 
 const DEFAULT_LOGO = '/assets/image.png';
-const SIDEBAR_MARK = '/assets/aistudio/SH_crane_mark.png';
 
 const NAV_BADGE = {
   alert: 'bg-red-500/15 text-red-300 ring-1 ring-inset ring-red-500/20',
@@ -116,7 +112,6 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
     label: 'System',
     items: [
       { id: 'settings', label: 'Company Settings', icon: Settings },
-      { id: 'personal', label: 'Personal Vault', icon: LockKeyhole, ownerOnly: true },
     ],
   },
 ];
@@ -131,7 +126,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const {
     currentUser,
     logout,
-    setCurrentUserRole,
     companySettings,
     getEmiAlerts,
     getServiceAlerts,
@@ -251,27 +245,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="-m-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             aria-label="Skyhook ERP, go to dashboard"
           >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-[3px] ring-1 ring-white/20">
+            {/* The logo already carries the SKYHOOK name, so it is shown as a
+                wordmark tile rather than a square icon with the name repeated. */}
+            <div className="flex h-14 w-[5.75rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-1.5 py-1 ring-1 ring-white/20">
               <img
-                src={
-                  companySettings.logoUrl && companySettings.logoUrl !== DEFAULT_LOGO
-                    ? companySettings.logoUrl
-                    : SIDEBAR_MARK
-                }
+                src={companySettings.logoUrl || DEFAULT_LOGO}
                 alt="Skyhook"
                 className="h-full w-full object-contain"
               />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[17px] font-bold leading-none tracking-[-0.045em] text-white">
-                  SKY<span className="text-ink-300">HOOK</span>
-                </span>
-                <span className="inline-flex items-center rounded bg-white/10 px-1.5 py-[3px] text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-ink-300 ring-1 ring-inset ring-white/10">
-                  ERP
-                </span>
-              </div>
-              <p className="mt-1 truncate text-[11px] leading-tight text-ink-300">
+              <span className="inline-flex items-center rounded bg-white/10 px-1.5 py-[3px] text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-ink-300 ring-1 ring-inset ring-white/10">
+                ERP
+              </span>
+              <p className="mt-1.5 line-clamp-2 text-[11px] leading-tight text-ink-300">
                 {companySettings.tagline || 'Elevating Crane Operations.'}
               </p>
             </div>
@@ -316,28 +303,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-white/[0.04] p-1">
-            {(['owner', 'manager'] as UserRole[]).map((r) => {
-              const isSelected = currentUser.role === r;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setCurrentUserRole(r)}
-                  aria-pressed={isSelected}
-                  className={`rounded-md px-2 py-1.5 text-[11px] font-semibold capitalize transition-colors ${
-                    isSelected
-                      ? 'bg-white/[0.12] text-white ring-1 ring-inset ring-white/10'
-                      : 'text-ink-400 hover:bg-white/5 hover:text-ink-200'
-                  }`}
-                >
-                  {r === 'owner' ? 'Owner / Admin' : 'Manager'}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-xs font-bold text-ink-200 ring-1 ring-inset ring-white/10">
                 {currentUser.name.charAt(0)}

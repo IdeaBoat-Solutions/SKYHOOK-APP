@@ -5,7 +5,8 @@ export const config = {
   SUPABASE_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   // Use the Supabase transaction pooler URI (port 6543) with sslmode=require.
   DATABASE_URL: Deno.env.get('DATABASE_URL') ?? '',
-  // Restrict in production to the Vercel origin, e.g. https://skyhook.vercel.app
+  // Restrict in production to the Vercel origin, e.g. https://skyhook.vercel.app.
+  // Comma-separate several: https://skyhook.vercel.app,http://localhost:3000
   ALLOWED_ORIGIN: Deno.env.get('ALLOWED_ORIGIN') ?? '*',
   CRON_SECRET: Deno.env.get('CRON_SECRET') ?? '',
   APP_TIMEZONE: Deno.env.get('APP_TIMEZONE') ?? 'Asia/Kolkata',

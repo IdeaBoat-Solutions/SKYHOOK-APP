@@ -11,8 +11,9 @@ import { supabaseMode } from '../../config.js';
 import { provisionAuthUser, deleteAuthUser } from '../../auth/supabase.js';
 
 const loginSchema = z.object({
-  tenantSlug: z.string().min(1),
-  email: z.string().email(),
+  /** Optional: the tenant is resolved from the account when omitted. */
+  tenantSlug: z.string().min(1).optional(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
 });
 
@@ -30,26 +31,6 @@ function slugify(input: string): string {
 }
 
 export async function identityRoutes(app: FastifyInstance): Promise<void> {
-  // Public list of account profiles for the login screen (no secrets returned).
-  // Tenants table has no RLS; users are read per tenant with RLS context set.
-  app.get('/auth/profiles', async (_request, reply) => {
-    const { pool } = await import('../../db/pool.js');
-    const tenants = await pool.query('SELECT id, slug FROM tenants ORDER BY created_at');
-    const items: any[] = [];
-    for (const t of tenants.rows as any[]) {
-      const users = await withTenantRead(t.id, async (c) => c.query(
-        `SELECT u.id, u.name, u.email, COALESCE(min(r.name::text),'manager') AS role
-         FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id AND ur.tenant_id=u.tenant_id
-         LEFT JOIN roles r ON r.id=ur.role_id
-         WHERE u.tenant_id=$1 AND u.is_active AND u.deleted_at IS NULL
-         GROUP BY u.id ORDER BY u.name`,
-        [t.id],
-      ));
-      for (const u of users.rows as any[]) items.push({ ...u, tenantSlug: t.slug });
-    }
-    return reply.send({ items });
-  });
-
   // Canonical login endpoint. In Supabase mode this returns a Supabase access
   // token; in dev mode it returns a locally minted HS256 token.
   app.post('/auth/token', async (request, reply) => {

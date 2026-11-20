@@ -85,10 +85,6 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
     title: 'Company & System Settings',
     subtitle: 'Configure company profile, official logo, payroll cutoff rules and reminder lead times.',
   },
-  personal: {
-    title: 'Owner Personal Vault',
-    subtitle: 'Private home loan, insurance and term plan records, protected by a 4-digit PIN.',
-  },
 };
 
 interface NotificationRowProps {

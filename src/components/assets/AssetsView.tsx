@@ -139,8 +139,8 @@ export const AssetsView: React.FC = () => {
 
   // Service details — intervals may be calendar months or crane operating hours
   const [lastServiceDate, setLastServiceDate] = useState("2026-08-20");
-  const [serviceFreqValue, setServiceFreqValue] = useState(60);
-  const [serviceFreqUnit, setServiceFreqUnit] = useState<"days" | "months" | "hours">("days");
+  const [serviceFreqValue, setServiceFreqValue] = useState(500);
+  const [serviceFreqUnit, setServiceFreqUnit] = useState<"days" | "months" | "hours">("hours");
   const [lastServiceHours, setLastServiceHours] = useState(0);
   const [nextServiceDueDate, setNextServiceDueDate] = useState("2026-10-20");
 
@@ -237,8 +237,9 @@ export const AssetsView: React.FC = () => {
     setStatus("available");
     setCurrentProject("");
     setLastServiceDate("2026-09-01");
-    setServiceFreqValue(60);
-    setServiceFreqUnit("months");
+    // New machines are serviced by operating hours by default.
+    setServiceFreqValue(500);
+    setServiceFreqUnit("hours");
     setLastServiceHours(0);
     setNextServiceDueDate("2026-10-31");
 
@@ -257,8 +258,8 @@ export const AssetsView: React.FC = () => {
     setPucNumber("PUC-MH04-" + Math.floor(100000 + Math.random() * 900000));
 
     setLastFitnessDate(currentDate);
-    setFitnessIntervalDays(365);
-    setFitnessDueDate(calculateExpiryFromInterval(currentDate, 365));
+    setFitnessIntervalDays(730); // fitness certificate: 2 years
+    setFitnessDueDate(calculateExpiryFromInterval(currentDate, 730));
     setFitnessCertNumber(
       "FIT-THANE-" +
         new Date(currentDate).getFullYear() +
@@ -299,7 +300,7 @@ export const AssetsView: React.FC = () => {
     setPucNumber(m.pucNumber || "PUC-MH04-881290");
 
     setLastFitnessDate(m.lastFitnessDate || currentDate);
-    setFitnessIntervalDays(m.fitnessIntervalDays || 365);
+    setFitnessIntervalDays(m.fitnessIntervalDays || 730);
     setFitnessDueDate(m.nextFitnessDueDate);
     setFitnessCertNumber(m.fitnessCertificateNumber || "FIT-THANE-2026-8812");
 
@@ -404,7 +405,7 @@ export const AssetsView: React.FC = () => {
           "PUC-MH04-" + Math.floor(100000 + Math.random() * 900000),
       );
     } else if (cat === "fitness") {
-      interval = m.fitnessIntervalDays || 365;
+      interval = m.fitnessIntervalDays || 730;
       setRenewDocNo(
         m.fitnessCertificateNumber ||
           "FIT-THANE-" +
@@ -813,7 +814,7 @@ export const AssetsView: React.FC = () => {
                         {renderComplianceCell(
                           "Fitness due",
                           m.nextFitnessDueDate,
-                          `${m.fitnessIntervalDays || 365}d`,
+                          `${m.fitnessIntervalDays || 730}d`,
                           fitnessAlert,
                         )}
                       </div>
@@ -1219,7 +1220,8 @@ export const AssetsView: React.FC = () => {
                           value={serviceFreqValue}
                           onChange={(e) =>
                             setServiceFreqValue(
-                              parseInt(e.target.value, 10) || 60,
+                              parseInt(e.target.value, 10) ||
+                                (serviceFreqUnit === "hours" ? 500 : 60),
                             )
                           }
                           className="form-input min-w-0 flex-1"
