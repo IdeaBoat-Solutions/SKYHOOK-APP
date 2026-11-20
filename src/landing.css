@@ -402,7 +402,7 @@
 .landing-steps {
   display: grid;
   gap: 0.875rem;
-  margin: 0;
+  margin-block: 0;
   padding: 0;
   list-style: none;
 }
