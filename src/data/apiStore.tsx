@@ -11,23 +11,50 @@ import type {
 import { api, getToken, setToken, ApiFailure } from '../api/client';
 import {
   mapUser, mapCompany, mapProject, mapEmployee, mapMachine, mapAttendance, mapAdvance,
-  mapPayrollRun, mapExpense, mapEmiLoan, mapWorkingLog, mapAudit, mapNotification, rupeesToPaise,
+  mapPayrollRun, mapExpense, mapEmiLoan, mapWorkingLog, mapAudit, mapNotification,
+  mapServiceRecord, mapPayrollAdjustment, mapPersonalRecord, rupeesToPaise,
 } from '../api/mappers';
 import { evaluateReminderStatus, evaluateServiceHours, sumOperatingHours, formatServiceInterval } from '../utils/calculations';
 import {
-  applyMachineServiceConfig,
-  getMachineServiceConfig,
-  saveMachineServiceConfig,
-  getPayrollAdjustments,
-  savePayrollAdjustment,
-  removePayrollAdjustment as removeStoredAdjustment,
-  payrollAdjustmentKey,
   getPinHash,
   setPinHash,
   verifyPin,
-  getPersonalRecords,
-  savePersonalRecords,
+  payrollAdjustmentKey,
+  withPayrollAdjustments,
 } from './localExtras';
+import type { PayrollAdjustmentSet } from './localExtras';
+
+export { withPayrollAdjustments };
+
+type StoredAdjustment = PayrollAdjustment & {
+  month: string;
+  employeeCode: string;
+  type: 'pay' | 'deduction';
+};
+
+/** Map an API row to the shape the UI's adjustment helpers consume. */
+function toStoredAdjustment(r: any): StoredAdjustment {
+  return {
+    ...mapPayrollAdjustment(r),
+    month: r.month,
+    employeeCode: r.employeeCode ?? r.employee_code,
+    type: r.kind ?? r.type,
+  };
+}
+
+/** Group API adjustments into the month:employeeCode shape the UI consumes. */
+function groupAdjustments(items: any[]): Record<string, PayrollAdjustmentSet> {
+  const out: Record<string, PayrollAdjustmentSet> = {};
+  for (const raw of items) {
+    const item = toStoredAdjustment(raw);
+    const key = payrollAdjustmentKey(item.month, item.employeeCode);
+    const set = out[key] ?? { pay: [], deductions: [] };
+    if (item.type === 'pay') set.pay.push(item);
+    else set.deductions.push(item);
+    out[key] = set;
+  }
+  return out;
+}
 
 export interface RegisterInput {
   companyName: string;
@@ -168,12 +195,12 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [machineWorkingLogs, setMachineWorkingLogs] = useState<MachineWorkingLog[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
-  const [payrollAdjustments, setPayrollAdjustments] = useState(() => getPayrollAdjustments());
-  const [personalRecords, setPersonalRecords] = useState(() => getPersonalRecords());
+  const [payrollAdjustments, setPayrollAdjustments] = useState<Record<string, PayrollAdjustmentSet>>({});
+  const [personalRecords, setPersonalRecords] = useState<PersonalRecord[]>([]);
   const [personalPinSet, setPersonalPinSet] = useState(() => Boolean(getPinHash()));
 
   const loadAll = useCallback(async () => {
-    const [company, users, prj, emp, mach, loans, att, adv, runs, exp, logs, aud, notif] = await Promise.all([
+    const [company, users, prj, emp, mach, loans, att, adv, runs, exp, logs, aud, notif, adj, personal] = await Promise.all([
       safeGet<any>('/company', null),
       safeGet<{ items: any[] }>('/auth/profiles', { items: [] }),
       safeGet<{ items: any[] }>('/projects', { items: [] }),
@@ -187,6 +214,8 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       safeGet<{ items: any[] }>('/machine-working-logs', { items: [] }),
       safeGet<{ items: any[] }>('/audit-logs?limit=200', { items: [] }),
       safeGet<{ items: any[] }>('/notifications', { items: [] }),
+      safeGet<{ items: any[] }>('/payroll-adjustments', { items: [] }),
+      safeGet<{ items: any[] }>('/personal-records', { items: [] }),
     ]);
     if (company) setCompanySettings(mapCompany(company));
     const mappedUsers = users.items.map(mapUser);
@@ -196,15 +225,34 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setProjects(prj.items.map(mapProject));
     setEmployees(emp.items.map(mapEmployee));
-    setMachines(mach.items.map((m) => applyMachineServiceConfig(mapMachine(m))));
+    // Service history lives on its own endpoint; keep a machine usable if that
+    // endpoint is unavailable. lastServiceHours comes from the machine mapper.
+    setMachines(await Promise.all(mach.items.map(async (m) => {
+      const machine = mapMachine(m);
+      const history = await safeGet<{ items: any[] }>(
+        `/machines/${encodeURIComponent(m.id)}/service-history`,
+        { items: [] },
+      ).catch(() => ({ items: [] as any[] }));
+      return { ...machine, serviceHistory: history.items.map(mapServiceRecord) };
+    })));
     setEmiLoans(loans.items.map(mapEmiLoan));
     setAttendance(att.items.map(mapAttendance));
     setAdvances(adv.items.map(mapAdvance));
-    setPayrollRuns(runs.items.map(mapPayrollRun));
+    // The list endpoint returns runs without their entries — fetch each detail
+    // so payroll rows (and custom pay/deductions) are actually visible.
+    setPayrollRuns(await Promise.all(runs.items.map(async (r) => {
+      try {
+        return mapPayrollRun(await api.get<any>(`/payroll/runs/${r.id}`));
+      } catch {
+        return mapPayrollRun(r);
+      }
+    })));
     setExpenses(exp.items.map(mapExpense));
     setMachineWorkingLogs(logs.items.map(mapWorkingLog));
     setAuditLogs(aud.items.map(mapAudit));
     setNotifications(notif.items.map(mapNotification));
+    setPayrollAdjustments(groupAdjustments(adj.items));
+    setPersonalRecords(personal.items.map(mapPersonalRecord));
   }, []);
 
   useEffect(() => {
@@ -331,16 +379,14 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
 
     addMachine: async (m) => {
-      // The API's frequency enum does not have "hours" yet. Persist hours-based
-      // servicing locally and send a harmless day-based value to the server.
-      const hoursBased = m.serviceFrequencyUnit === 'hours';
       const r = await api.post<any>('/machines', {
         assetCode: m.assetId, machineType: m.machineType, make: m.make, model: m.model,
         registrationNumber: m.registrationNumber, serialNumber: m.serialNumber,
         tonnageCapacity: m.tonnageCapacity, purchaseDate: m.purchaseDate,
         purchaseCostPaise: rupeesToPaise(m.purchaseCost),
-        serviceFrequencyValue: hoursBased ? 60 : m.serviceFrequencyValue,
-        serviceFrequencyUnit: hoursBased ? 'days' : m.serviceFrequencyUnit,
+        serviceFrequencyValue: m.serviceFrequencyValue,
+        serviceFrequencyUnit: m.serviceFrequencyUnit,
+        serviceReminderLeadHours: m.serviceReminderLeadHours ?? 50,
         lastServiceDate: m.lastServiceDate, insuranceProvider: m.insuranceProvider,
         insurancePolicyNumber: m.insurancePolicyNumber, insuranceExpiryDate: m.insuranceExpiryDate,
         insuranceIntervalDays: m.insuranceIntervalDays, pucNumber: m.pucNumber,
@@ -349,57 +395,33 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         nextFitnessDueDate: m.nextFitnessDueDate, fitnessIntervalDays: m.fitnessIntervalDays,
         status: m.status,
       });
-      const created = mapMachine(r);
-      if (hoursBased) {
-        saveMachineServiceConfig(created.id, {
-          serviceFrequencyUnit: 'hours',
-          serviceFrequencyValue: m.serviceFrequencyValue,
-          lastServiceHours: m.lastServiceHours ?? 0,
-        });
-      }
       await refresh();
-      return applyMachineServiceConfig(created);
+      return mapMachine(r);
     },
     updateMachine: async (id, m) => {
       const payload: any = {};
       if (m.status) payload.status = m.status;
       if (m.currentProjectId) payload.currentProjectId = m.currentProjectId;
       if (m.assignedOperatorId) payload.assignedOperatorId = m.assignedOperatorId;
-      // Servicing settings are stored locally so hours-based intervals survive.
-      const servicePatch: Record<string, any> = {};
-      if (m.serviceFrequencyUnit) servicePatch.serviceFrequencyUnit = m.serviceFrequencyUnit;
-      if (m.serviceFrequencyValue !== undefined) servicePatch.serviceFrequencyValue = m.serviceFrequencyValue;
-      if (m.lastServiceHours !== undefined) servicePatch.lastServiceHours = m.lastServiceHours;
-      if (m.serviceReminderLeadHours !== undefined) servicePatch.serviceReminderLeadHours = m.serviceReminderLeadHours;
-      if (Object.keys(servicePatch).length) saveMachineServiceConfig(id, servicePatch);
+      // Service interval — including 'hours' — is now persisted server-side.
+      if (m.serviceFrequencyUnit) payload.serviceFrequencyUnit = m.serviceFrequencyUnit;
+      if (m.serviceFrequencyValue !== undefined) payload.serviceFrequencyValue = m.serviceFrequencyValue;
+      if (m.serviceReminderLeadHours !== undefined) payload.serviceReminderLeadHours = m.serviceReminderLeadHours;
       await api.patch(`/machines/${id}`, payload);
       await refresh();
     },
     updateMachineServiceConfig: async (machineId, patch) => {
-      saveMachineServiceConfig(machineId, patch);
+      const serverPatch: any = {};
+      if (patch.serviceFrequencyUnit) serverPatch.serviceFrequencyUnit = patch.serviceFrequencyUnit;
+      if (patch.serviceFrequencyValue !== undefined) serverPatch.serviceFrequencyValue = patch.serviceFrequencyValue;
+      if (patch.serviceReminderLeadHours !== undefined) serverPatch.serviceReminderLeadHours = patch.serviceReminderLeadHours;
+      if (Object.keys(serverPatch).length) await api.patch(`/machines/${machineId}`, serverPatch);
       await refresh();
     },
     recordServiceCompleted: async (machineId, serviceDate, cost, notes, provider, operatingHours) => {
       await api.post(`/machines/${machineId}/service`, {
         serviceDate, costPaise: rupeesToPaise(cost), notes, serviceProvider: provider,
         odometerOrHours: operatingHours,
-      });
-      const current = getMachineServiceConfig(machineId, machines.find((m) => m.id === machineId));
-      saveMachineServiceConfig(machineId, {
-        lastServiceHours: operatingHours ?? current.lastServiceHours ?? 0,
-        serviceHistory: [
-          {
-            id: `SR-${Date.now()}`,
-            serviceDate,
-            serviceType: 'Periodic Maintenance',
-            serviceProvider: provider ?? '',
-            cost,
-            odometerOrHours: operatingHours,
-            notes,
-            completedBy: currentUser.name,
-          },
-          ...current.serviceHistory,
-        ],
       });
       await refresh();
     },
@@ -573,19 +595,33 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
 
     addPayrollAdjustment: async (month, employeeCode, type, label, amount, remarks) => {
-      const key = payrollAdjustmentKey(month, employeeCode);
-      savePayrollAdjustment(key, type, {
-        id: crypto.randomUUID(),
-        label,
-        amount,
-        remarks,
-        createdAt: new Date().toISOString(),
+      const created = await api.post<any>('/payroll-adjustments', {
+        month, employeeCode, kind: type, label, amountPaise: rupeesToPaise(amount), remarks,
       });
-      setPayrollAdjustments(getPayrollAdjustments());
+      const item: StoredAdjustment = {
+        ...mapPayrollAdjustment(created),
+        month, employeeCode, type,
+      };
+      setPayrollAdjustments((prev) => {
+        const key = payrollAdjustmentKey(month, employeeCode);
+        const set = prev[key] ?? { pay: [], deductions: [] };
+        if (type === 'pay') set.pay = [...set.pay, item];
+        else set.deductions = [...set.deductions, item];
+        return { ...prev, [key]: set };
+      });
     },
-    removePayrollAdjustment: async (month, employeeCode, type, id) => {
-      removeStoredAdjustment(payrollAdjustmentKey(month, employeeCode), type, id);
-      setPayrollAdjustments(getPayrollAdjustments());
+    removePayrollAdjustment: async (_month, _employeeCode, _type, id) => {
+      await api.delete(`/payroll-adjustments/${encodeURIComponent(id)}`);
+      setPayrollAdjustments((prev) => {
+        const next: Record<string, PayrollAdjustmentSet> = {};
+        for (const [key, set] of Object.entries(prev)) {
+          next[key] = {
+            pay: set.pay.filter((a) => a.id !== id),
+            deductions: set.deductions.filter((a) => a.id !== id),
+          };
+        }
+        return next;
+      });
     },
 
     setPersonalPin: async (pin) => {
@@ -594,25 +630,36 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
     verifyPersonalPin: (pin) => verifyPin(pin),
     addPersonalRecord: async (record) => {
-      const created: PersonalRecord = {
-        ...record,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-      };
-      const next = [...getPersonalRecords(), created];
-      savePersonalRecords(next);
-      setPersonalRecords(next);
-      return created;
+      const created = await api.post<any>('/personal-records', {
+        kind: record.kind, title: record.title, provider: record.provider,
+        referenceNumber: record.referenceNumber,
+        amountPaise: rupeesToPaise(record.amount),
+        periodicAmountPaise: rupeesToPaise(record.periodicAmount),
+        startDate: record.startDate, dueDate: record.dueDate, notes: record.notes,
+      });
+      const mapped = mapPersonalRecord(created);
+      setPersonalRecords((prev) => [...prev, mapped]);
+      return mapped;
     },
     updatePersonalRecord: async (id, patch) => {
-      const next = getPersonalRecords().map((r) => (r.id === id ? { ...r, ...patch } : r));
-      savePersonalRecords(next);
-      setPersonalRecords(next);
+      const payload: any = { ...patch };
+      delete payload.id;
+      delete payload.createdAt;
+      if (patch.amount !== undefined) {
+        payload.amountPaise = rupeesToPaise(patch.amount);
+        delete payload.amount;
+      }
+      if (patch.periodicAmount !== undefined) {
+        payload.periodicAmountPaise = rupeesToPaise(patch.periodicAmount);
+        delete payload.periodicAmount;
+      }
+      const updated = await api.patch<any>(`/personal-records/${encodeURIComponent(id)}`, payload);
+      const mapped = mapPersonalRecord(updated);
+      setPersonalRecords((prev) => prev.map((r) => (r.id === id ? mapped : r)));
     },
     deletePersonalRecord: async (id) => {
-      const next = getPersonalRecords().filter((r) => r.id !== id);
-      savePersonalRecords(next);
-      setPersonalRecords(next);
+      await api.delete(`/personal-records/${encodeURIComponent(id)}`);
+      setPersonalRecords((prev) => prev.filter((r) => r.id !== id));
     },
 
     getEmiAlerts: () => buildReminderAlerts(emiLoans.flatMap((l) => l.installments.filter((i) => i.status !== 'paid').map((i) => ({
@@ -634,12 +681,11 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const hourAlerts: ReminderAlertItem[] = machines
         .filter((m) => m.serviceFrequencyUnit === 'hours')
         .flatMap((m) => {
-          const cfg = getMachineServiceConfig(m.id, m);
           const logged = sumOperatingHours(machineWorkingLogs, m.id, m.lastServiceDate);
           const status = evaluateServiceHours(
             logged,
             m.serviceFrequencyValue,
-            cfg.serviceReminderLeadHours ?? m.serviceReminderLeadHours ?? 50,
+            m.serviceReminderLeadHours ?? 50,
           );
           if (status.status === 'none') return [];
           return [{

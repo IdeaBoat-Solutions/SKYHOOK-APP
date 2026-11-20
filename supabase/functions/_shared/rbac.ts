@@ -7,7 +7,7 @@ export const ALL_PERMISSIONS = [
   'employee:read', 'employee:write',
   'project:read', 'project:write',
   'attendance:read', 'attendance:write', 'attendance:approve',
-  'payroll:read', 'payroll:generate', 'payroll:approve', 'payroll:pay',
+  'payroll:read', 'payroll:generate', 'payroll:approve', 'payroll:pay', 'payroll:adjust',
   'advance:read', 'advance:write',
   'emi:read', 'emi:write',
   'expense:read', 'expense:write', 'expense:approve',

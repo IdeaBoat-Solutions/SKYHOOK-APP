@@ -38,6 +38,7 @@ export const PayrollView: React.FC = () => {
     currentUser,
     companySettings,
     payrollRuns,
+    payrollAdjustments,
     generatePayrollForMonth,
     approvePayrollRun,
     markPayrollEntryPaid,
@@ -58,13 +59,15 @@ export const PayrollView: React.FC = () => {
     payrollRuns[0];
   // Server totals stay authoritative; custom lines are layered on for display,
   // salary slips, KPIs and exports.
-  const adjustedRun = currentRun ? withPayrollAdjustments(currentRun) : undefined;
+  const adjustedRun = currentRun ? withPayrollAdjustments(currentRun, payrollAdjustments) : undefined;
   const rawAdjustmentEntry = currentRun?.entries.find(
     (e) => e.employeeCode === adjustmentEntryCode,
   );
   const adjustedAdjustmentEntry = adjustedRun?.entries.find(
     (e) => e.employeeCode === adjustmentEntryCode,
   );
+  // Custom lines are owner-managed and cannot change an approved/locked run.
+  const canAdjust = currentUser.role === 'owner' && !currentRun?.locked;
 
   const handleGenerate = () => {
     generatePayrollForMonth(selectedMonth);
@@ -88,7 +91,16 @@ export const PayrollView: React.FC = () => {
   const handleConfirmPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentModalEntry || !currentRun) return;
-    markPayrollEntryPaid(currentRun.id, paymentModalEntry.id, payMode, payRef);
+    const serverMode = (
+      {
+        'NEFT Bank Transfer': 'bank_transfer',
+        'IMPS Instant Transfer': 'bank_transfer',
+        'Company UPI Account': 'upi',
+        'Account Payee Cheque': 'cheque',
+        'Cash Voucher': 'cash',
+      } as Record<string, string>
+    )[payMode] ?? 'bank_transfer';
+    markPayrollEntryPaid(currentRun.id, paymentModalEntry.id, serverMode, payRef);
     setPaymentModalEntry(null);
     setPayRef('');
   };
@@ -315,7 +327,7 @@ export const PayrollView: React.FC = () => {
 
           <PayrollStatCard
             label="Net Disbursal"
-            value={<Currency value={currentRun.totalNetSalary} size="lg" />}
+            value={<Currency value={adjustedRun?.totalNetSalary ?? currentRun.totalNetSalary} size="lg" />}
             hint="Due 15/11/2026"
             icon={Landmark}
             accent="success"
@@ -349,6 +361,8 @@ export const PayrollView: React.FC = () => {
                 <th className="px-3.5 py-3">Base Pay</th>
                 <th className="px-3.5 py-3">Overtime (hrs / amt)</th>
                 <th className="px-3.5 py-3">Gross Pay</th>
+                <th className="px-3.5 py-3">Custom Pay</th>
+                <th className="px-3.5 py-3">Custom Deduction</th>
                 <th className="px-3.5 py-3">Advance Deduction</th>
                 <th className="px-3.5 py-3">Net Payable</th>
                 <th className="px-3.5 py-3 text-center">Status</th>
@@ -401,6 +415,24 @@ export const PayrollView: React.FC = () => {
                   <td className="px-3.5 py-3 font-bold text-ink-900">
                     <Currency value={entry.grossSalary} />
                   </td>
+                  <td className="px-3.5 py-3 text-success-700 font-bold">
+                    {entry.customPay?.length ? (
+                      <span title={entry.customPay.map((a) => a.label).join(', ')}>
+                        + <Currency value={entry.customPay.reduce((s, a) => s + a.amount, 0)} />
+                      </span>
+                    ) : (
+                      <span className="text-ink-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-3.5 py-3 text-danger-700 font-bold">
+                    {entry.customDeductions?.length ? (
+                      <span title={entry.customDeductions.map((a) => a.label).join(', ')}>
+                        − <Currency value={entry.customDeductions.reduce((s, a) => s + a.amount, 0)} />
+                      </span>
+                    ) : (
+                      <span className="text-ink-400">—</span>
+                    )}
+                  </td>
                   <td className="px-3.5 py-3 text-warning-700 font-bold">
                     {entry.advanceRecovery > 0 ? (
                       <span className="inline-flex items-center">
@@ -427,6 +459,17 @@ export const PayrollView: React.FC = () => {
                   </td>
                   <td className="px-3.5 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
+                      {canAdjust && (
+                        <button
+                          onClick={() => setAdjustmentEntryCode(entry.employeeCode)}
+                          className="btn btn-secondary btn-sm"
+                          title="Add custom pay or deduction"
+                        >
+                          <BadgeIndianRupee className="w-3.5 h-3.5 text-warning-600" />
+                          Custom
+                        </button>
+                      )}
+
                       <button
                         onClick={() => setSelectedEntryForSlip(entry)}
                         className="btn btn-secondary btn-sm"
@@ -462,6 +505,16 @@ export const PayrollView: React.FC = () => {
           payrollMonth={selectedMonth}
           paymentDueDate={currentRun?.paymentDueDate || '2026-11-15'}
           onClose={() => setSelectedEntryForSlip(null)}
+        />
+      )}
+
+      {/* Custom Pay & Deductions Modal */}
+      {rawAdjustmentEntry && adjustedAdjustmentEntry && currentRun && (
+        <CustomPayDeductionModal
+          month={currentRun.month}
+          entry={rawAdjustmentEntry}
+          adjustedEntry={adjustedAdjustmentEntry}
+          onClose={() => setAdjustmentEntryCode(null)}
         />
       )}
 

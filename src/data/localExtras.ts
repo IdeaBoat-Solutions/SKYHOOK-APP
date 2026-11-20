@@ -1,8 +1,7 @@
 /**
- * Browser-persisted extensions for features that the current API does not model:
- * machine servicing in operating hours, custom payroll pay/deductions and the
- * owner's private Personal vault. Kept in one place so every view reads the
- * same values and data survives reloads without a backend migration.
+ * Pure helpers that do not persist business data in the browser.
+ * Payroll adjustments, personal records and machine servicing now come from
+ * the API; only the owner's local PIN lock remains in localStorage.
  */
 import type {
   MachineAsset,
@@ -14,77 +13,8 @@ import type {
 
 const PREFIX = 'skyhook:extras:';
 
-function read<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(PREFIX + key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function write<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(PREFIX + key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable — keep running with in-memory values */
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Machine servicing (operating hours)                                         */
-/* -------------------------------------------------------------------------- */
-
-export interface MachineServiceConfig {
-  serviceFrequencyUnit: 'days' | 'months' | 'hours';
-  serviceFrequencyValue: number;
-  /** Cumulative operating-hour reading at the last service. */
-  lastServiceHours: number;
-  serviceReminderLeadHours: number;
-  serviceHistory: ServiceRecord[];
-}
-
-const SERVICE_KEY = 'machine_service_configs';
-
-export function getMachineServiceConfigs(): Record<string, MachineServiceConfig> {
-  return read<Record<string, MachineServiceConfig>>(SERVICE_KEY, {});
-}
-
-export function getMachineServiceConfig(
-  machineId: string,
-  machine?: MachineAsset,
-): MachineServiceConfig {
-  const defaults: MachineServiceConfig = {
-    serviceFrequencyUnit: machine?.serviceFrequencyUnit ?? 'days',
-    serviceFrequencyValue: machine?.serviceFrequencyValue ?? 60,
-    lastServiceHours: machine?.lastServiceHours ?? 0,
-    serviceReminderLeadHours: machine?.serviceReminderLeadHours ?? 50,
-    serviceHistory: machine?.serviceHistory ?? [],
-  };
-  return { ...defaults, ...(getMachineServiceConfigs()[machineId] ?? {}) };
-}
-
-export function saveMachineServiceConfig(
-  machineId: string,
-  patch: Partial<MachineServiceConfig>,
-): void {
-  const all = getMachineServiceConfigs();
-  all[machineId] = { ...(all[machineId] ?? {}), ...patch } as MachineServiceConfig;
-  write(SERVICE_KEY, all);
-}
-
-/** Merge locally saved servicing settings onto an API-mapped machine. */
-export function applyMachineServiceConfig(machine: MachineAsset): MachineAsset {
-  const cfg = getMachineServiceConfig(machine.id, machine);
-  return {
-    ...machine,
-    serviceFrequencyUnit: cfg.serviceFrequencyUnit,
-    serviceFrequencyValue: cfg.serviceFrequencyValue,
-    lastServiceHours: cfg.lastServiceHours,
-    serviceReminderLeadHours: cfg.serviceReminderLeadHours,
-    serviceHistory: cfg.serviceHistory,
-  };
-}
+/** Units offered by the calculator UI. */
+export type CalcUnit = 'currency' | 'number' | 'percent' | 'hours' | 'litres' | 'km' | 'tonnes';
 
 /* -------------------------------------------------------------------------- */
 /* Custom pay & deductions                                                     */
@@ -95,51 +25,21 @@ export interface PayrollAdjustmentSet {
   deductions: PayrollAdjustment[];
 }
 
-const ADJUSTMENTS_KEY = 'payroll_adjustments';
-
-/** Keyed by month + employee code so edits survive a payroll recalculation. */
+/** Keyed by month + employee code so edits line up with a payroll entry. */
 export function payrollAdjustmentKey(month: string, employeeCode: string): string {
   return `${month}:${employeeCode}`;
-}
-
-export function getPayrollAdjustments(): Record<string, PayrollAdjustmentSet> {
-  return read<Record<string, PayrollAdjustmentSet>>(ADJUSTMENTS_KEY, {});
-}
-
-export function savePayrollAdjustment(
-  key: string,
-  type: 'pay' | 'deduction',
-  adjustment: PayrollAdjustment,
-): void {
-  const all = getPayrollAdjustments();
-  const set = all[key] ?? { pay: [], deductions: [] };
-  if (type === 'pay') set.pay = [...set.pay, adjustment];
-  else set.deductions = [...set.deductions, adjustment];
-  all[key] = set;
-  write(ADJUSTMENTS_KEY, all);
-}
-
-export function removePayrollAdjustment(
-  key: string,
-  type: 'pay' | 'deduction',
-  id: string,
-): void {
-  const all = getPayrollAdjustments();
-  const set = all[key] ?? { pay: [], deductions: [] };
-  if (type === 'pay') set.pay = set.pay.filter((a) => a.id !== id);
-  else set.deductions = set.deductions.filter((a) => a.id !== id);
-  all[key] = set;
-  write(ADJUSTMENTS_KEY, all);
 }
 
 const sum = (items: PayrollAdjustment[]) =>
   items.reduce((total, item) => total + (Number(item.amount) || 0), 0);
 
-/** Apply custom lines to a server-generated run for display, slips and export. */
-export function withPayrollAdjustments(run: PayrollRun): PayrollRun {
-  const all = getPayrollAdjustments();
+/** Apply API-backed custom lines to a server-generated run for display, slips and export. */
+export function withPayrollAdjustments(
+  run: PayrollRun,
+  adjustments: Record<string, PayrollAdjustmentSet>,
+): PayrollRun {
   const entries = run.entries.map((entry) => {
-    const set = all[payrollAdjustmentKey(run.month, entry.employeeCode)] ?? {
+    const set = adjustments[payrollAdjustmentKey(run.month, entry.employeeCode)] ?? {
       pay: [],
       deductions: [],
     };
@@ -179,11 +79,10 @@ export function withPayrollAdjustments(run: PayrollRun): PayrollRun {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Owner Personal vault                                                        */
+/* Owner Personal vault PIN lock                                               */
 /* -------------------------------------------------------------------------- */
 
 const PIN_KEY = 'personal_pin_hash';
-const PERSONAL_KEY = 'personal_records';
 
 /** Small non-cryptographic digest — this lock protects the local browser view,
  *  it is not a substitute for the account password or server-side RBAC. */
@@ -216,6 +115,78 @@ export function verifyPin(pin: string): boolean {
   const stored = getPinHash();
   return Boolean(stored && stored === hashPin(pin));
 }
+
+/* -------------------------------------------------------------------------- */
+/* Machine servicing + owner records — still local until their API cutover.    */
+/* -------------------------------------------------------------------------- */
+
+function read<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(PREFIX + key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function write<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(PREFIX + key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable — keep running with in-memory values */
+  }
+}
+
+export interface MachineServiceConfig {
+  serviceFrequencyUnit: 'days' | 'months' | 'hours';
+  serviceFrequencyValue: number;
+  lastServiceHours: number;
+  serviceReminderLeadHours: number;
+  serviceHistory: ServiceRecord[];
+}
+
+const SERVICE_KEY = 'machine_service_configs';
+
+export function getMachineServiceConfigs(): Record<string, MachineServiceConfig> {
+  return read<Record<string, MachineServiceConfig>>(SERVICE_KEY, {});
+}
+
+export function getMachineServiceConfig(
+  machineId: string,
+  machine?: MachineAsset,
+): MachineServiceConfig {
+  const defaults: MachineServiceConfig = {
+    serviceFrequencyUnit: machine?.serviceFrequencyUnit ?? 'days',
+    serviceFrequencyValue: machine?.serviceFrequencyValue ?? 60,
+    lastServiceHours: machine?.lastServiceHours ?? 0,
+    serviceReminderLeadHours: machine?.serviceReminderLeadHours ?? 50,
+    serviceHistory: machine?.serviceHistory ?? [],
+  };
+  return { ...defaults, ...(getMachineServiceConfigs()[machineId] ?? {}) };
+}
+
+export function saveMachineServiceConfig(
+  machineId: string,
+  patch: Partial<MachineServiceConfig>,
+): void {
+  const all = getMachineServiceConfigs();
+  all[machineId] = { ...(all[machineId] ?? {}), ...patch } as MachineServiceConfig;
+  write(SERVICE_KEY, all);
+}
+
+export function applyMachineServiceConfig(machine: MachineAsset): MachineAsset {
+  const cfg = getMachineServiceConfig(machine.id, machine);
+  return {
+    ...machine,
+    serviceFrequencyUnit: cfg.serviceFrequencyUnit,
+    serviceFrequencyValue: cfg.serviceFrequencyValue,
+    lastServiceHours: cfg.lastServiceHours,
+    serviceReminderLeadHours: cfg.serviceReminderLeadHours,
+    serviceHistory: cfg.serviceHistory,
+  };
+}
+
+const PERSONAL_KEY = 'personal_records';
 
 export function getPersonalRecords(): PersonalRecord[] {
   return read<PersonalRecord[]>(PERSONAL_KEY, []);

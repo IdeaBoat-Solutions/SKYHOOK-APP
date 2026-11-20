@@ -318,6 +318,29 @@ async function hash(body: unknown): Promise<string> {
 }
 const PAYMENT_MODES = ['cash', 'bank_transfer', 'upi', 'cheque', 'company_card'];
 
+/** Map a stored adjustment row to the shape the UI works with. */
+function toAdjustment(r: any) {
+  return {
+    id: r.id as string,
+    month: r.month as string,
+    employeeCode: r.employee_code as string,
+    type: r.type as 'pay' | 'deduction',
+    label: r.label as string,
+    amount: Number(r.amount_paise) / 100,
+    remarks: r.remarks ?? undefined,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  };
+}
+
+async function assertUnlocked(c: Queryable, tenantId: string, month: string): Promise<void> {
+  const locked = await c.query(
+    `SELECT 1 FROM payroll_runs
+     WHERE tenant_id=$1 AND to_char(month,'YYYY-MM')=$2 AND locked=true`,
+    [tenantId, month],
+  );
+  if (locked.rows[0]) throw Errors.locked('Payroll run is approved and locked');
+}
+
 export const payrollRoutes: Route[] = [
   {
     method: 'GET', path: '/payroll/runs',
@@ -410,6 +433,100 @@ export const payrollRoutes: Route[] = [
         },
       );
       return json(result.body, result.statusCode);
+    },
+  },
+
+  /* ---- Custom pay & deduction lines ---- */
+  {
+    method: 'GET', path: '/payroll/adjustments',
+    handler: async (ctx) => {
+      requirePermission(ctx.auth!, 'payroll:read');
+      const month = ctx.url.searchParams.get('month');
+      const employeeCode = ctx.url.searchParams.get('employeeCode');
+      if (month && !/^\d{4}-\d{2}$/.test(month)) {
+        throw Errors.validation([{ field: 'month', message: 'Must be YYYY-MM' }]);
+      }
+      return json(await withTenantRead(ctx.auth!.tenantId, async (c) => {
+        const r = await c.query(
+          `SELECT id, month, employee_code, type, label, amount_paise, remarks, created_at
+           FROM payroll_adjustments
+           WHERE tenant_id = $1
+             AND ($2::text IS NULL OR month = $2)
+             AND ($3::text IS NULL OR employee_code = $3)
+           ORDER BY created_at, id`,
+          [ctx.auth!.tenantId, month, employeeCode],
+        );
+        return { items: r.rows.map(toAdjustment) };
+      }));
+    },
+  },
+  {
+    method: 'POST', path: '/payroll/adjustments',
+    handler: async (ctx, req) => {
+      requirePermission(ctx.auth!, 'payroll:adjust');
+      const b = await readJson(req);
+      if (typeof b.month !== 'string' || !/^\d{4}-\d{2}$/.test(b.month)) {
+        throw Errors.validation([{ field: 'month', message: 'Must be YYYY-MM' }]);
+      }
+      if (typeof b.employeeCode !== 'string' || !b.employeeCode.trim()) {
+        throw Errors.validation([{ field: 'employeeCode', message: 'Required' }]);
+      }
+      if (b.type !== 'pay' && b.type !== 'deduction') {
+        throw Errors.validation([{ field: 'type', message: "Must be 'pay' or 'deduction'" }]);
+      }
+      if (typeof b.label !== 'string' || !b.label.trim() || b.label.trim().length > 120) {
+        throw Errors.validation([{ field: 'label', message: 'Must be 1 to 120 characters' }]);
+      }
+      const amount = Number(b.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw Errors.validation([{ field: 'amount', message: 'Must be a positive amount' }]);
+      }
+      const amountPaise = Math.round(amount * 100);
+
+      return json(await withTenant(ctx.auth!.tenantId, async (c) => {
+        await assertUnlocked(c, ctx.auth!.tenantId, b.month);
+        const r = await c.query(
+          `INSERT INTO payroll_adjustments
+             (tenant_id, month, employee_code, type, label, amount_paise, remarks, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           RETURNING id, month, employee_code, type, label, amount_paise, remarks, created_at`,
+          [ctx.auth!.tenantId, b.month, b.employeeCode.trim(), b.type, b.label.trim(),
+            amountPaise, b.remarks?.trim() || null, ctx.auth!.userId],
+        );
+        await writeAudit(c, ctx.auth!, {
+          action: 'PAYROLL_ADJUSTMENT_ADDED',
+          entity: 'PayrollAdjustment',
+          entityId: r.rows[0].id,
+          reason: `${b.type} '${b.label.trim()}' for ${b.employeeCode} · ${b.month}`,
+          requestId: ctx.requestId,
+        });
+        return toAdjustment(r.rows[0]);
+      }), 201);
+    },
+  },
+  {
+    method: 'DELETE', path: '/payroll/adjustments/:id',
+    handler: async (ctx) => {
+      requirePermission(ctx.auth!, 'payroll:adjust');
+      return json(await withTenant(ctx.auth!.tenantId, async (c) => {
+        const existing = await c.query(
+          `SELECT month, employee_code, type, label FROM payroll_adjustments
+           WHERE tenant_id=$1 AND id=$2`,
+          [ctx.auth!.tenantId, ctx.params.id],
+        );
+        if (!existing.rows[0]) throw Errors.notFound('Payroll adjustment');
+        await assertUnlocked(c, ctx.auth!.tenantId, existing.rows[0].month);
+        await c.query('DELETE FROM payroll_adjustments WHERE tenant_id=$1 AND id=$2',
+          [ctx.auth!.tenantId, ctx.params.id]);
+        await writeAudit(c, ctx.auth!, {
+          action: 'PAYROLL_ADJUSTMENT_REMOVED',
+          entity: 'PayrollAdjustment',
+          entityId: ctx.params.id,
+          reason: `Removed ${existing.rows[0].type} '${existing.rows[0].label}'`,
+          requestId: ctx.requestId,
+        });
+        return undefined;
+      }), 204);
     },
   },
 ];

@@ -24,6 +24,7 @@ export const CustomPayDeductionModal: React.FC<Props> = ({
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const key = `${month}:${entry.employeeCode}`;
   const stored = payrollAdjustments[key] ?? { pay: [], deductions: [] };
@@ -36,11 +37,17 @@ export const CustomPayDeductionModal: React.FC<Props> = ({
     const value = Number(amount);
     if (!label.trim() || !value || value <= 0) return;
     setSaving(true);
-    await addPayrollAdjustment(month, entry.employeeCode, type, label.trim(), value, remarks.trim() || undefined);
-    setLabel('');
-    setAmount('');
-    setRemarks('');
-    setSaving(false);
+    setError(null);
+    try {
+      await addPayrollAdjustment(month, entry.employeeCode, type, label.trim(), value, remarks.trim() || undefined);
+      setLabel('');
+      setAmount('');
+      setRemarks('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the line.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -78,9 +85,13 @@ export const CustomPayDeductionModal: React.FC<Props> = ({
           <div className="notice">
             <span className="flex items-start gap-2 text-xs text-ink-600">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Adjusted net payable: <strong className="text-ink-900">{formatINR(adjustedEntry.netSalary)}</strong>. Custom lines are kept with this employee/month and survive a payroll recalculation.
+              Adjusted net payable: <strong className="text-ink-900">{formatINR(adjustedEntry.netSalary)}</strong>. Lines are stored on the server against this employee and month, so they survive a payroll recalculation.
             </span>
           </div>
+
+          {error && (
+            <div className="notice notice--error text-xs text-danger-700" role="alert">{error}</div>
+          )}
 
           <div className="tab-bar">
             <button type="button" className={`tab ${type === 'pay' ? 'tab-active' : ''}`} onClick={() => setType('pay')}>
@@ -106,7 +117,14 @@ export const CustomPayDeductionModal: React.FC<Props> = ({
                     <button
                       type="button"
                       className="icon-btn hover:text-danger-700"
-                      onClick={() => void removePayrollAdjustment(month, entry.employeeCode, type, item.id)}
+                      onClick={async () => {
+                        setError(null);
+                        try {
+                          await removePayrollAdjustment(month, entry.employeeCode, type, item.id);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Could not remove the line.');
+                        }
+                      }}
                       title="Remove line"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
