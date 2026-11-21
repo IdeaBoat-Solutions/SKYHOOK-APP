@@ -84,7 +84,7 @@ export const SettingsView: React.FC = () => {
       setRoles(roleRes.items);
       setPermissionCatalog(permRes.items);
       const manager = roleRes.items.find((r) => r.name === 'manager');
-      if (manager) setManagerPermissions(manager.permissions);
+      if (manager) setManagerPermissions(manager.permissions ?? []);
       setPermissionsDirty(false);
     } catch {
       // The rest of Settings stays usable if the user lacks user:read.

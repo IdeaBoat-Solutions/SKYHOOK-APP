@@ -12,7 +12,9 @@ import { buildExport, type ExportKind } from '../_shared/export.ts';
 import { exportKey, saveObject } from '../_shared/storage.ts';
 
 function businessDate(): string {
-  return config.DEMO_DATE ?? new Date().toISOString().split('T')[0]!;
+  // Today in India (en-CA formats as yyyy-mm-dd). The old DEMO_DATE override is ignored so a
+  // leftover secret can never pin reminders to a past date.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
 function evaluateReminderStatus(dueDateStr: string | null | undefined, leadDays: number, currentDateStr: string) {

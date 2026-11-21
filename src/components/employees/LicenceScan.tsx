@@ -17,6 +17,7 @@ import {
   scanLicenceImage,
 } from '../../utils/licenceOcr';
 
+import { DateInput } from '../common/DateInput';
 const BLOOD_GROUPS = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const COMMON_CLASSES = VEHICLE_CLASS_CODES.filter((c) => !['MC 50CC', 'ROADROLLER', 'ADPVEH', 'TRCTR'].includes(c));
 
@@ -81,22 +82,22 @@ export const LicenceDetailsFields: React.FC<FieldsProps> = ({ value, onChange })
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <div>
           <label className="form-label">Date of first issue:</label>
-          <input type="date" className="form-input" value={value.licenseFirstIssueDate ?? ''}
+          <DateInput className="form-input" value={value.licenseFirstIssueDate ?? ''}
             onChange={(e) => onChange({ licenseFirstIssueDate: e.target.value })} />
         </div>
         <div>
           <label className="form-label">Current issue date:</label>
-          <input type="date" className="form-input" value={value.licenseIssueDate ?? ''}
+          <DateInput className="form-input" value={value.licenseIssueDate ?? ''}
             onChange={(e) => onChange({ licenseIssueDate: e.target.value })} />
         </div>
         <div>
           <label className="form-label">Valid till (non-transport):</label>
-          <input type="date" className="form-input" value={value.licenseValidNt ?? ''}
+          <DateInput className="form-input" value={value.licenseValidNt ?? ''}
             onChange={(e) => onChange({ licenseValidNt: e.target.value })} />
         </div>
         <div>
           <label className="form-label">Valid till (transport):</label>
-          <input type="date" className="form-input font-bold" value={value.licenseValidTr ?? ''}
+          <DateInput className="form-input font-bold" value={value.licenseValidTr ?? ''}
             onChange={(e) => onChange({ licenseValidTr: e.target.value })} />
         </div>
       </div>
@@ -429,7 +430,7 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
                 </div>
                 <div>
                   <label className="form-label">Date of birth:</label>
-                  <input type="date" className="form-input" value={review.dateOfBirth}
+                  <DateInput className="form-input" value={review.dateOfBirth}
                     onChange={(e) => setReview({ ...review, dateOfBirth: e.target.value })} />
                 </div>
                 <div>

@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
+import { ShiftToggle, shiftTimes, type Shift } from '../common/ShiftToggle';
 import {
   formatINR,
   formatDateDDMMYYYY,
@@ -27,6 +28,7 @@ import {
 } from '../../utils/calculations';
 import { AttendanceRecord, AttendanceStatus } from '../../types';
 
+import { DateInput } from '../common/DateInput';
 export const AttendanceView: React.FC = () => {
   const {
     currentUser,
@@ -61,7 +63,7 @@ export const AttendanceView: React.FC = () => {
   const [otDate, setOtDate] = useState(selectedDate);
   const [otHours, setOtHours] = useState<number>(2);
   const [otProjectId, setOtProjectId] = useState(projects[0]?.id || '');
-  const [otRate, setOtRate] = useState<number>(projects[0]?.overtimeRate || 150);
+  const [otRate, setOtRate] = useState<number>(projects[0]?.overtimeRate ?? 0);
   const [otRemarks, setOtRemarks] = useState('');
 
   // Detailed Shift Modal (Legacy / Complex)
@@ -69,6 +71,7 @@ export const AttendanceView: React.FC = () => {
   const [operatorId, setOperatorId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [machineId, setMachineId] = useState('');
+  const [shift, setShift] = useState<Shift>('day');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('18:00');
   const [breakMin, setBreakMin] = useState(0);
@@ -82,7 +85,7 @@ export const AttendanceView: React.FC = () => {
   // Dynamic preview for daily modal
   const durationPreview = calculateWorkingAndOt(startTime, endTime, breakMin, Math.round((companySettings.standardShiftHours || 10) * 60));
   const currentPrj = projects.find((p) => p.id === projectId);
-  const detailedOtRate = currentPrj?.overtimeRate || 150;
+  const detailedOtRate = currentPrj?.overtimeRate ?? 0;
   const otEarnings = Math.round(durationPreview.potentialOtHours * detailedOtRate);
 
   const pendingList = attendance.filter((a) => a.approvalStatus === 'submitted');
@@ -212,7 +215,7 @@ export const AttendanceView: React.FC = () => {
     setOtOperatorId(targetOpId);
     setOtDate(selectedDate);
     setOtProjectId(prjId);
-    setOtRate(prj?.overtimeRate || 150);
+    setOtRate(prj?.overtimeRate ?? 0);
     setOtHours(2);
     setOtRemarks('');
     setModalError('');
@@ -242,6 +245,15 @@ export const AttendanceView: React.FC = () => {
     );
   };
 
+  const pickShift = (kind: Shift) => {
+    setShift(kind);
+    if (kind !== 'custom') {
+      const t = shiftTimes(kind, companySettings.standardShiftHours || 10);
+      setStartTime(t.start);
+      setEndTime(t.end);
+    }
+  };
+
   /** Pre-fill the detailed shift form from live data (it used to be frozen at page load, often empty). */
   const openDetailedModal = (opId?: string) => {
     const op = activeOperators.find((o) => o.id === (opId ?? operatorId)) ?? activeOperators[0];
@@ -249,6 +261,7 @@ export const AttendanceView: React.FC = () => {
     setProjectId(op?.currentProjectId ?? projects[0]?.id ?? '');
     setMachineId(op?.currentMachineId ?? '');
     setModalError('');
+    pickShift('day');
     setShowAddModal(true);
   };
 
@@ -466,9 +479,7 @@ export const AttendanceView: React.FC = () => {
                 </button>
                 <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-logo-900 font-mono">
                   <Calendar className="w-3.5 h-3.5 text-accent" />
-                  <input
-                    type="date"
-                    value={selectedDate}
+                  <DateInput value={selectedDate}
                     onChange={(e) => {
                       setSelectedDate(e.target.value);
                       setOtDate(e.target.value);
@@ -612,7 +623,7 @@ export const AttendanceView: React.FC = () => {
                     const status = rec?.status;
                     const otHoursCurrent = rec?.overtimeHours || 0;
                     const project = projects.find((p) => p.id === (rec?.projectId || op.currentProjectId));
-                    const appliedRate = rec?.appliedOtRate || project?.overtimeRate || 150;
+                    const appliedRate = rec?.appliedOtRate || project?.overtimeRate || 0;
                     const dayOtEarnings = Math.round(otHoursCurrent * appliedRate);
 
                     return (
@@ -926,7 +937,7 @@ export const AttendanceView: React.FC = () => {
                   ) : (
                     <tr>
                       <td colSpan={8} className="px-4 py-6 text-center text-zinc-400">
-                        No timestamp logs recorded for {selectedDate}. Use the Quick Attendance buttons above to mark attendance in 1 click.
+                        No attendance recorded for {formatDateDDMMYYYY(selectedDate)}. Use the Quick Attendance buttons above to mark attendance in 1 click.
                       </td>
                     </tr>
                   )}
@@ -1064,7 +1075,7 @@ export const AttendanceView: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <strong className="text-logo-900 text-sm">{op?.fullName}</strong>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/15 text-accent">
-                          {rec.date}
+                          {formatDateDDMMYYYY(rec.date)}
                         </span>
                       </div>
                       <p className="text-xs text-zinc-500 mt-0.5">
@@ -1161,9 +1172,7 @@ export const AttendanceView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-zinc-700 mb-1">Date of Work:</label>
-                  <input
-                    type="date"
-                    value={otDate}
+                  <DateInput value={otDate}
                     onChange={(e) => setOtDate(e.target.value)}
                     required
                     className="w-full px-3 py-2 border border-zinc-300 rounded-xl font-bold bg-zinc-50 focus:ring-2 focus:ring-accent"
@@ -1388,6 +1397,14 @@ export const AttendanceView: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <span className="block font-bold text-slate-700 mb-1">Shift:</span>
+                <ShiftToggle value={shift} onChange={pickShift} />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Day starts 08:00, night starts 20:00 and runs {companySettings.standardShiftHours} hours. Pick Custom, or edit the times, to set your own.
+                </p>
+              </div>
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Start Time:</label>
@@ -1395,7 +1412,7 @@ export const AttendanceView: React.FC = () => {
                     type="time"
                     required
                     value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    onChange={(e) => { setStartTime(e.target.value); setShift('custom'); }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   />
                 </div>
@@ -1405,7 +1422,7 @@ export const AttendanceView: React.FC = () => {
                     type="time"
                     required
                     value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
+                    onChange={(e) => { setEndTime(e.target.value); setShift('custom'); }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   />
                 </div>

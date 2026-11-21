@@ -18,6 +18,7 @@ import { useSkyhook } from '../../data/apiStore';
 import { formatINR, formatDateDDMMYYYY, calculateExpiryFromInterval, sumOperatingHours, formatServiceInterval } from '../../utils/calculations';
 import { ReminderAlertItem } from '../../types';
 
+import { DateInput } from '../common/DateInput';
 type AlertType = 'emi' | 'service' | 'insurance' | 'puc' | 'fitness' | 'license';
 
 interface CategoryGroup {
@@ -493,9 +494,7 @@ export const RemindersView: React.FC = () => {
                   <>
                     <div>
                       <label htmlFor="service-date" className="form-label">Completed Service Date:</label>
-                      <input
-                        id="service-date"
-                        type="date"
+                      <DateInput id="service-date"
                         required
                         value={serviceDate}
                         onChange={(e) => setServiceDate(e.target.value)}
@@ -596,9 +595,7 @@ export const RemindersView: React.FC = () => {
                         <label htmlFor="renewal-date" className="form-label">
                           {activeDialog.type === 'fitness' ? 'Fitness Test Passed Date:' : 'Renewal Date:'}
                         </label>
-                        <input
-                          id="renewal-date"
-                          type="date"
+                        <DateInput id="renewal-date"
                           required
                           value={renewalDate}
                           onChange={(e) => handleRenewalDateChange(e.target.value)}
@@ -642,12 +639,10 @@ export const RemindersView: React.FC = () => {
                         <label htmlFor="renewal-expiry" className="form-label mb-0">Auto-Set New Expiry / Next Due Date:</label>
                         <span className="badge badge-success">
                           <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                          Auto-calculated ({renewalDate} + {renewalIntervalDays}d)
+                          Auto-calculated ({formatDateDDMMYYYY(renewalDate)} + {renewalIntervalDays}d)
                         </span>
                       </div>
-                      <input
-                        id="renewal-expiry"
-                        type="date"
+                      <DateInput id="renewal-expiry"
                         required
                         value={renewalExpiry}
                         onChange={(e) => setRenewalExpiry(e.target.value)}

@@ -5,6 +5,8 @@ import { formatDateDDMMYYYY } from '../../utils/calculations';
 import { KpiCard, KpiAccent, SectionHeader, UnitValue, calcIcon, newId } from './calcUi';
 import { evaluateFormula } from './formula';
 
+import { DateInput } from '../common/DateInput';
+import { todayISO } from '../../data/apiStore';
 /** Entry values are stored by field id so renaming a field keeps old entries intact. */
 export function computeOutputs(
   calc: CustomCalculator,
@@ -27,7 +29,7 @@ export function computeOutputs(
 }
 
 const ACCENTS: KpiAccent[] = ['brand', 'success', 'warning'];
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayISO();
 
 interface Props {
   calc: CustomCalculator;
@@ -181,9 +183,7 @@ export const CustomCalculatorView: React.FC<Props> = ({ calc, onChange, onEdit, 
               placeholder="Entry name"
               aria-label="Entry name"
             />
-            <input
-              type="date"
-              className="form-input"
+            <DateInput className="form-input"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               aria-label="Entry date"

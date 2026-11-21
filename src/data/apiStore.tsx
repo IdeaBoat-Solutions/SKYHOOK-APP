@@ -499,7 +499,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         pucIssueDate: m.pucIssueDate, pucExpiryDate: m.pucExpiryDate, pucIntervalDays: m.pucIntervalDays,
         fitnessCertificateNumber: m.fitnessCertificateNumber, lastFitnessDate: m.lastFitnessDate,
         nextFitnessDueDate: m.nextFitnessDueDate, fitnessIntervalDays: m.fitnessIntervalDays,
-        status: m.status, rcDetails: m.rcDetails,
+        status: m.status, rcDetails: m.rcDetails, insuranceStartDate: m.insuranceStartDate || undefined,
       });
       await refresh();
       return mapMachine(r);
@@ -523,8 +523,9 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     updateMachine: async (id, m) => {
       const payload: any = {};
       if (m.status) payload.status = m.status;
-      if (m.currentProjectId) payload.currentProjectId = m.currentProjectId;
-      if (m.assignedOperatorId) payload.assignedOperatorId = m.assignedOperatorId;
+      // An explicit empty value means "unassign" (it used to be ignored, so a machine could never leave a site).
+      if ('currentProjectId' in m) payload.currentProjectId = m.currentProjectId || null;
+      if ('assignedOperatorId' in m) payload.assignedOperatorId = m.assignedOperatorId || null;
       // Service interval — including 'hours' — is now persisted server-side.
       if (m.serviceFrequencyUnit) payload.serviceFrequencyUnit = m.serviceFrequencyUnit;
       if (m.serviceFrequencyValue !== undefined) payload.serviceFrequencyValue = m.serviceFrequencyValue;
@@ -537,6 +538,15 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (m.serialNumber !== undefined) payload.serialNumber = m.serialNumber || null;
       if (m.tonnageCapacity !== undefined) payload.tonnageCapacity = m.tonnageCapacity;
       if (m.rcDetails) payload.rcDetails = m.rcDetails;
+      // Servicing and statutory details shown in the Edit form.
+      if (m.purchaseCost !== undefined) payload.purchaseCostPaise = rupeesToPaise(m.purchaseCost);
+      for (const key of [
+        'lastServiceDate', 'nextServiceDueDate', 'insuranceProvider', 'insurancePolicyNumber', 'insuranceStartDate',
+        'insuranceExpiryDate', 'insuranceIntervalDays', 'pucNumber', 'pucIssueDate', 'pucExpiryDate', 'pucIntervalDays',
+        'fitnessCertificateNumber', 'lastFitnessDate', 'nextFitnessDueDate', 'fitnessIntervalDays',
+      ] as const) {
+        if (m[key] !== undefined) payload[key] = m[key] === '' ? null : m[key];
+      }
       await api.patch(`/machines/${id}`, payload);
       await refresh();
     },

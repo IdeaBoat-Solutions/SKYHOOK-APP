@@ -31,7 +31,10 @@ import {
   ParsedImportRow,
 } from '../../utils/excelAndPdf';
 import { MachineWorkingLog } from '../../types';
+import { ShiftToggle, shiftTimes, type Shift } from '../common/ShiftToggle';
 
+import { DateInput } from '../common/DateInput';
+import { PeriodFilter, inPeriod, defaultPeriod, type PeriodState } from '../common/PeriodFilter';
 export const MachineWorkingView: React.FC = () => {
   const {
     currentUser,
@@ -48,9 +51,9 @@ export const MachineWorkingView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMachine, setFilterMachine] = useState('all');
   const [filterProject, setFilterProject] = useState('all');
+  const [period, setPeriod] = useState<PeriodState>(defaultPeriod('month'));
 
   // Manual Log Entry Modal
-  type Shift = 'day' | 'night' | 'custom';
   const shiftHours = companySettings.standardShiftHours || 10;
   const activeOperators = employees.filter((e) => e.employeeType === 'operator' && e.status === 'active');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -65,18 +68,12 @@ export const MachineWorkingView: React.FC = () => {
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  /** Day shift starts 08:00, night shift 20:00; both run for the company's shift length. */
-  const shiftTimes = (kind: Exclude<Shift, 'custom'>) => {
-    const startH = kind === 'day' ? 8 : 20;
-    const endMin = (startH * 60 + Math.round(shiftHours * 60)) % 1440;
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return { start: `${pad(startH)}:00`, end: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}` };
-  };
+  const shiftTimesFor = (kind: Exclude<Shift, 'custom'>) => shiftTimes(kind, shiftHours);
 
   const pickShift = (kind: Shift) => {
     setShift(kind);
     if (kind !== 'custom') {
-      const t = shiftTimes(kind);
+      const t = shiftTimesFor(kind);
       setStartTime(t.start);
       setEndTime(t.end);
     }
@@ -98,7 +95,7 @@ export const MachineWorkingView: React.FC = () => {
   };
 
   const openAddModal = () => {
-    const t = shiftTimes('day');
+    const t = shiftTimesFor('day');
     setDate(currentDate);
     setMachineId(machines[0]?.id ?? '');
     setProjectId(projects[0]?.id ?? '');
@@ -213,6 +210,7 @@ export const MachineWorkingView: React.FC = () => {
   const filteredLogs = machineWorkingLogs.filter((log) => {
     const matchMachine = filterMachine === 'all' || log.machineId === filterMachine;
     const matchProject = filterProject === 'all' || log.projectId === filterProject;
+    const matchPeriod = inPeriod(log.date, period, currentDate);
     const term = searchTerm.toLowerCase();
     const code = machines.find((m) => m.id === log.machineId)?.assetId ?? '';
     const matchSearch =
@@ -220,7 +218,7 @@ export const MachineWorkingView: React.FC = () => {
       code.toLowerCase().includes(term) ||
       operatorName(log.operatorId).toLowerCase().includes(term) ||
       (log.remarks && log.remarks.toLowerCase().includes(term));
-    return matchMachine && matchProject && matchSearch;
+    return matchMachine && matchProject && matchPeriod && matchSearch;
   });
 
   const totalWorkingHours = Math.round(filteredLogs.reduce((s, l) => s + l.workingHours, 0) * 100) / 100;
@@ -357,6 +355,8 @@ export const MachineWorkingView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <PeriodFilter value={period} onChange={setPeriod} />
 
       {/* Filters Bar */}
       <div className="filter-bar filter-bar--split">
@@ -502,9 +502,7 @@ export const MachineWorkingView: React.FC = () => {
               <div className="stat-grid">
                 <div>
                   <label className="form-label">Date:</label>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     className="form-input"
@@ -565,22 +563,7 @@ export const MachineWorkingView: React.FC = () => {
 
               <div>
                 <span className="form-label">Shift:</span>
-                <div className="inline-flex rounded-lg border border-line bg-surface-muted p-0.5" role="group" aria-label="Shift">
-                  {([['day', 'Day', Sun], ['night', 'Night', Moon], ['custom', 'Custom', Clock]] as const).map(([id, label, Icon]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      aria-pressed={shift === id}
-                      onClick={() => pickShift(id)}
-                      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        shift === id ? 'bg-logo-700 text-white' : 'text-ink-600 hover:bg-surface'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <ShiftToggle value={shift} onChange={pickShift} />
                 <p className="mt-1 text-[11px] text-ink-500">
                   Day starts 08:00, night starts 20:00, each {shiftHours} hours (set in Company Settings). Edit the times to override.
                 </p>
@@ -779,7 +762,7 @@ export const MachineWorkingView: React.FC = () => {
                           {parsedRows.map((row) => (
                             <tr key={row.rowNumber}>
                               <td>#{row.rowNumber}</td>
-                              <td>{row.date}</td>
+                              <td>{formatDateDDMMYYYY(row.date)}</td>
                               <td className="font-bold text-ink-900">{row.machineId}</td>
                               <td>{row.projectId}</td>
                               <td className="font-bold text-success-700">

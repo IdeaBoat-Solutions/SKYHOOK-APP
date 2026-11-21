@@ -21,9 +21,11 @@ import { useSkyhook } from '../../data/apiStore';
 import { formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
 import { Project, ProjectStatus } from '../../types';
 
+import { DateInput } from '../common/DateInput';
 export const ProjectsView: React.FC = () => {
   const {
     currentUser,
+    currentDate,
     projects,
     machines,
     employees,
@@ -47,10 +49,16 @@ export const ProjectsView: React.FC = () => {
   const [clientPhone, setClientPhone] = useState('');
   const [location, setLocation] = useState('');
   const [siteAddress, setSiteAddress] = useState('');
-  const [startDate, setStartDate] = useState('2026-11-01');
-  const [expectedEndDate, setExpectedEndDate] = useState('2027-10-31');
-  const [overtimeRate, setOvertimeRate] = useState('200');
-  const [contractValue, setContractValue] = useState('50000000');
+  const oneYearAfter = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCFullYear(d.getUTCFullYear() + 1);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  };
+  const [startDate, setStartDate] = useState(currentDate);
+  const [expectedEndDate, setExpectedEndDate] = useState(oneYearAfter(currentDate));
+  const [overtimeRate, setOvertimeRate] = useState('');
+  const [contractValue, setContractValue] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('active');
   const [description, setDescription] = useState('');
 
@@ -61,8 +69,10 @@ export const ProjectsView: React.FC = () => {
     setClientPhone('');
     setLocation('');
     setSiteAddress('');
-    setOvertimeRate('200');
-    setContractValue('50000000');
+    setStartDate(currentDate);
+    setExpectedEndDate(oneYearAfter(currentDate));
+    setOvertimeRate('');
+    setContractValue('');
     setStatus('active');
     setDescription('');
     setShowModal(true);
@@ -389,9 +399,7 @@ export const ProjectsView: React.FC = () => {
               <div className="stat-grid">
                 <div>
                   <label className="form-label">Start Date:</label>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     className="form-input"
@@ -399,9 +407,7 @@ export const ProjectsView: React.FC = () => {
                 </div>
                 <div>
                   <label className="form-label">Expected End Date:</label>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={expectedEndDate}
                     onChange={(e) => setExpectedEndDate(e.target.value)}
                     className="form-input"

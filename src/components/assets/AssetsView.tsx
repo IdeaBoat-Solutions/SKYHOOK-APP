@@ -48,6 +48,7 @@ import { RcDetailsFields, RcScanModal, RcScanOutcome } from "./RcScan";
 import { MachineDocumentsList, RcDetailsSummary } from "./MachineRcPanels";
 import { AgeingBar } from "../common/Ageing";
 
+import { DateInput } from '../common/DateInput';
 const RC_DOC_TYPE = "Registration Certificate (RC)";
 
 /** Consistent visual language for every asset status. Red stays reserved for critical alerts. */
@@ -138,12 +139,12 @@ export const AssetsView: React.FC = () => {
 
   const [machineType, setMachineType] =
     useState<MachineType>("Hydraulic Crane");
-  const [make, setMake] = useState("Liebherr");
-  const [model, setModel] = useState("LTM 1100-4.2");
-  const [regNo, setRegNo] = useState("MH-04-AZ-4512");
-  const [serialNo, setSerialNo] = useState("LH-1100-88219");
-  const [tonnage, setTonnage] = useState("100");
-  const [purchaseCost, setPurchaseCost] = useState("24500000");
+  const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [regNo, setRegNo] = useState("");
+  const [serialNo, setSerialNo] = useState("");
+  const [tonnage, setTonnage] = useState("");
+  const [purchaseCost, setPurchaseCost] = useState("");
   const [status, setStatus] = useState<AssetStatus>("assigned");
   const [currentProject, setCurrentProject] = useState("PRJ-001");
 
@@ -250,44 +251,38 @@ export const AssetsView: React.FC = () => {
     setSaveError("");
     setShowRcScan(scanRc);
     setMachineType("Hydraulic Crane");
-    setMake("ACE");
-    setModel("FX 250");
-    setRegNo("MH-04-NEW-1122");
-    setSerialNo("SN-ACE-8812");
-    setTonnage("25");
-    setPurchaseCost("9500000");
+    // A new asset starts empty: nothing here is invented, so nothing fake can be saved.
+    setMake("");
+    setModel("");
+    setRegNo("");
+    setSerialNo("");
+    setTonnage("");
+    setPurchaseCost("");
     setStatus("available");
     setCurrentProject("");
-    setLastServiceDate("2026-09-01");
+    setLastServiceDate(currentDate);
     // New machines are serviced by operating hours by default.
     setServiceFreqValue(500);
     setServiceFreqUnit("hours");
     setLastServiceHours(0);
-    setNextServiceDueDate("2026-10-31");
+    setNextServiceDueDate(currentDate);
 
     // Auto-calculate statutory renewal dates from intervals
     setInsuranceStartDate(currentDate);
     setInsuranceIntervalDays(365);
     setInsuranceExpiry(calculateExpiryFromInterval(currentDate, 365));
-    setInsuranceProvider("ICICI Lombard");
-    setInsurancePolicyNumber(
-      "POL-ICICI-" + Math.floor(1000 + Math.random() * 9000),
-    );
+    setInsuranceProvider("");
+    setInsurancePolicyNumber("");
 
     setPucIssueDate(currentDate);
     setPucIntervalDays(180);
     setPucExpiry(calculateExpiryFromInterval(currentDate, 180));
-    setPucNumber("PUC-MH04-" + Math.floor(100000 + Math.random() * 900000));
+    setPucNumber("");
 
     setLastFitnessDate(currentDate);
     setFitnessIntervalDays(730); // fitness certificate: 2 years
     setFitnessDueDate(calculateExpiryFromInterval(currentDate, 730));
-    setFitnessCertNumber(
-      "FIT-THANE-" +
-        new Date(currentDate).getFullYear() +
-        "-" +
-        Math.floor(1000 + Math.random() * 9000),
-    );
+    setFitnessCertNumber("");
 
     setShowModal(true);
   };
@@ -313,18 +308,18 @@ export const AssetsView: React.FC = () => {
     setInsuranceStartDate(m.insuranceStartDate || currentDate);
     setInsuranceIntervalDays(m.insuranceIntervalDays || 365);
     setInsuranceExpiry(m.insuranceExpiryDate);
-    setInsuranceProvider(m.insuranceProvider || "New India Assurance");
-    setInsurancePolicyNumber(m.insurancePolicyNumber || "POL-COMM-8812");
+    setInsuranceProvider(m.insuranceProvider || "");
+    setInsurancePolicyNumber(m.insurancePolicyNumber || "");
 
     setPucIssueDate(m.pucIssueDate || currentDate);
     setPucIntervalDays(m.pucIntervalDays || 180);
     setPucExpiry(m.pucExpiryDate);
-    setPucNumber(m.pucNumber || "PUC-MH04-881290");
+    setPucNumber(m.pucNumber || "");
 
     setLastFitnessDate(m.lastFitnessDate || currentDate);
     setFitnessIntervalDays(m.fitnessIntervalDays || 730);
     setFitnessDueDate(m.nextFitnessDueDate);
-    setFitnessCertNumber(m.fitnessCertificateNumber || "FIT-THANE-2026-8812");
+    setFitnessCertNumber(m.fitnessCertificateNumber || "");
 
     setRcDetails(m.rcDetails ?? {});
     setRcFiles([]);
@@ -1298,9 +1293,7 @@ export const AssetsView: React.FC = () => {
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <label className="form-label">Last service date</label>
-                      <input
-                        type="date"
-                        value={lastServiceDate}
+                      <DateInput value={lastServiceDate}
                         onChange={(e) => setLastServiceDate(e.target.value)}
                         className="form-input"
                       />
@@ -1355,9 +1348,7 @@ export const AssetsView: React.FC = () => {
                           className="form-input"
                         />
                       ) : (
-                        <input
-                          type="date"
-                          value={nextServiceDueDate}
+                        <DateInput value={nextServiceDueDate}
                           onChange={(e) => setNextServiceDueDate(e.target.value)}
                           className="form-input font-semibold"
                         />
@@ -1409,7 +1400,7 @@ export const AssetsView: React.FC = () => {
                         1. Machine insurance policy
                       </span>
                       <span className="text-[11px] text-ink-500">
-                        Expiry = {insuranceStartDate} + {insuranceIntervalDays}{" "}
+                        Expiry = {formatDateDDMMYYYY(insuranceStartDate)} + {insuranceIntervalDays}{" "}
                         days
                       </span>
                     </div>
@@ -1438,9 +1429,7 @@ export const AssetsView: React.FC = () => {
                       </div>
                       <div>
                         <label className="form-label">Policy start date</label>
-                        <input
-                          type="date"
-                          required
+                        <DateInput required
                           value={insuranceStartDate}
                           onChange={(e) =>
                             handleInsuranceStartDateChange(e.target.value)
@@ -1496,9 +1485,7 @@ export const AssetsView: React.FC = () => {
                           </label>
                           <span className="badge badge-success">Auto</span>
                         </div>
-                        <input
-                          type="date"
-                          required
+                        <DateInput required
                           value={insuranceExpiry}
                           onChange={(e) => setInsuranceExpiry(e.target.value)}
                           className="form-input font-semibold"
@@ -1516,7 +1503,7 @@ export const AssetsView: React.FC = () => {
                         2. Pollution Under Control (PUC)
                       </span>
                       <span className="text-[11px] text-ink-500">
-                        Expiry = {pucIssueDate} + {pucIntervalDays} days
+                        Expiry = {formatDateDDMMYYYY(pucIssueDate)} + {pucIntervalDays} days
                       </span>
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1534,9 +1521,7 @@ export const AssetsView: React.FC = () => {
                       </div>
                       <div>
                         <label className="form-label">Issue / test date</label>
-                        <input
-                          type="date"
-                          required
+                        <DateInput required
                           value={pucIssueDate}
                           onChange={(e) =>
                             handlePucIssueDateChange(e.target.value)
@@ -1590,9 +1575,7 @@ export const AssetsView: React.FC = () => {
                           </label>
                           <span className="badge badge-success">Auto</span>
                         </div>
-                        <input
-                          type="date"
-                          required
+                        <DateInput required
                           value={pucExpiry}
                           onChange={(e) => setPucExpiry(e.target.value)}
                           className="form-input font-semibold"
@@ -1610,7 +1593,7 @@ export const AssetsView: React.FC = () => {
                         3. RTO fitness certificate &amp; test passed
                       </span>
                       <span className="text-[11px] text-ink-500">
-                        Due = {lastFitnessDate} + {fitnessIntervalDays} days
+                        Due = {formatDateDDMMYYYY(lastFitnessDate)} + {fitnessIntervalDays} days
                       </span>
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1630,9 +1613,7 @@ export const AssetsView: React.FC = () => {
                         <label className="form-label">
                           Last test passed date
                         </label>
-                        <input
-                          type="date"
-                          required
+                        <DateInput required
                           value={lastFitnessDate}
                           onChange={(e) =>
                             handleFitnessDateChange(e.target.value)
@@ -1688,9 +1669,7 @@ export const AssetsView: React.FC = () => {
                           </label>
                           <span className="badge badge-success">Auto</span>
                         </div>
-                        <input
-                          type="date"
-                          required
+                        <DateInput required
                           value={fitnessDueDate}
                           onChange={(e) => setFitnessDueDate(e.target.value)}
                           className="form-input font-semibold"
@@ -2019,7 +1998,7 @@ export const AssetsView: React.FC = () => {
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-ink-500">
                     The new expiry date is calculated from the renewal / test
-                    date ({renewDate}) plus the configured interval (
+                    date ({formatDateDDMMYYYY(renewDate)}) plus the configured interval (
                     {renewIntervalDays} days).
                   </p>
                 </div>
@@ -2031,9 +2010,7 @@ export const AssetsView: React.FC = () => {
                         ? "Test passed date"
                         : "Renewal date"}
                     </label>
-                    <input
-                      type="date"
-                      required
+                    <DateInput required
                       value={renewDate}
                       onChange={(e) => handleRenewDateChange(e.target.value)}
                       className="form-input font-semibold"
@@ -2086,12 +2063,10 @@ export const AssetsView: React.FC = () => {
                       Auto-set new expiry / next due date
                     </label>
                     <span className="badge badge-success">
-                      {renewDate} + {renewIntervalDays}d
+                      {formatDateDDMMYYYY(renewDate)} + {renewIntervalDays}d
                     </span>
                   </div>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={renewCalculatedExpiry}
                     onChange={(e) => setRenewCalculatedExpiry(e.target.value)}
                     className="form-input font-semibold"

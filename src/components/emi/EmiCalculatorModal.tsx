@@ -3,7 +3,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { X, Calculator, Plus } from 'lucide-react';
 import { MachineAsset, MachineEmiLoan, EmiInstallment } from '../../types';
 import { Currency } from '../common/Currency';
+import { useSkyhook } from '../../data/apiStore';
 
+import { DateInput } from '../common/DateInput';
+import { formatDateDDMMYYYY } from '../../utils/calculations';
 interface EmiCalculatorModalProps {
   machines: MachineAsset[];
   onClose: () => void;
@@ -15,15 +18,14 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
   onClose,
   onSaveLoan,
 }) => {
-  const [selectedAssetId, setSelectedAssetId] = useState(machines[0]?.assetId || 'CR-001');
-  const [lenderName, setLenderName] = useState('HDFC Bank Equipment Finance');
-  const [loanAccountNumber, setLoanAccountNumber] = useState(
-    'HDFC-EQ-' + Math.floor(100000 + Math.random() * 900000)
-  );
-  const [principalAmount, setPrincipalAmount] = useState<number>(4500000);
+  const { currentDate } = useSkyhook();
+  const [selectedAssetId, setSelectedAssetId] = useState(machines[0]?.assetId ?? '');
+  const [lenderName, setLenderName] = useState('');
+  const [loanAccountNumber, setLoanAccountNumber] = useState('');
+  const [principalAmount, setPrincipalAmount] = useState<number>(0);
   const [annualInterestRate, setAnnualInterestRate] = useState<number>(9.5);
   const [tenureMonths, setTenureMonths] = useState<number>(48);
-  const [disbursalDate, setDisbursalDate] = useState('2026-10-01');
+  const [disbursalDate, setDisbursalDate] = useState(currentDate);
   const [dueDayOfMonth, setDueDayOfMonth] = useState<number>(10);
   const [leadReminderDays, setLeadReminderDays] = useState<number>(15);
 
@@ -54,9 +56,9 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
       dueDate.setDate(dueDayOfMonth);
       const dateStr = dueDate.toISOString().split('T')[0];
 
-      // Relative to business date 2026-10-24
-      const isPast = dateStr < '2026-10-24';
-      const isToday = dateStr === '2026-10-24';
+      // Relative to today's business date
+      const isPast = dateStr < currentDate;
+      const isToday = dateStr === currentDate;
 
       installments.push({
         id: `INST-${loanId}-${i}`,
@@ -195,9 +197,7 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
 
               <div>
                 <label className="form-label">Disbursal / start date</label>
-                <input
-                  type="date"
-                  required
+                <DateInput required
                   value={disbursalDate}
                   onChange={(e) => setDisbursalDate(e.target.value)}
                   className="form-input"
@@ -323,7 +323,7 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                   >
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span className="badge badge-neutral">{inst.installmentNumber}</span>
-                      <span className="truncate font-semibold text-ink-900">{inst.dueDate}</span>
+                      <span className="truncate font-semibold text-ink-900">{formatDateDDMMYYYY(inst.dueDate)}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
                       <Currency value={inst.amountDue} size="sm" className="font-semibold text-ink-900" />

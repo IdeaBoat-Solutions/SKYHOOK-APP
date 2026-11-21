@@ -18,6 +18,8 @@ import { useSkyhook } from '../../data/apiStore';
 import { formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
 import { SalaryAdvance } from '../../types';
 
+import { DateInput } from '../common/DateInput';
+import { PeriodFilter, inPeriod, defaultPeriod, type PeriodState } from '../common/PeriodFilter';
 export const AdvancesView: React.FC = () => {
   const {
     advances,
@@ -28,11 +30,14 @@ export const AdvancesView: React.FC = () => {
   } = useSkyhook();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [period, setPeriod] = useState<PeriodState>(defaultPeriod('month'));
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Form Fields
   const [employeeId, setEmployeeId] = useState(employees[0]?.id || '');
-  const [amount, setAmount] = useState('5000');
+  const [amount, setAmount] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(currentDate);
   const [paymentMode, setPaymentMode] = useState<'cash' | 'bank_transfer' | 'upi' | 'cheque'>('bank_transfer');
   const [paymentReference, setPaymentReference] = useState('');
@@ -40,20 +45,40 @@ export const AdvancesView: React.FC = () => {
 
   const operators = employees.filter((e) => e.employeeType === 'operator' && e.status === 'active');
 
-  const handleCreateAdvance = (e: React.FormEvent) => {
-    e.preventDefault();
-    addAdvance({
-      employeeId,
-      date,
-      amount: parseFloat(amount) || 0,
-      paymentMode,
-      paymentReference,
-      remarks,
-      approvedBy: currentUser.name,
-    });
-    setShowAddModal(false);
+  const openAddModal = () => {
+    setEmployeeId(operators[0]?.id ?? '');
+    setAmount('');
+    setDate(currentDate);
     setRemarks('');
     setPaymentReference('');
+    setFormError('');
+    setShowAddModal(true);
+  };
+
+  const handleCreateAdvance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    const value = parseFloat(amount);
+    if (!employeeId) return setFormError('Choose an operator.');
+    if (!Number.isFinite(value) || value <= 0) return setFormError('Enter the advance amount.');
+    setSaving(true);
+    setFormError('');
+    try {
+      await addAdvance({
+        employeeId,
+        date,
+        amount: value,
+        paymentMode,
+        paymentReference,
+        remarks,
+        approvedBy: currentUser.name,
+      });
+      setShowAddModal(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not save the advance.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const totalDisbursed = advances.reduce((s, a) => s + a.amount, 0);
@@ -62,6 +87,7 @@ export const AdvancesView: React.FC = () => {
 
   const filteredAdvances = advances.filter((adv) => {
     const emp = employees.find((e) => e.id === adv.employeeId || e.employeeId === adv.employeeId);
+    if (!inPeriod(adv.date, period, currentDate)) return false;
     return (
       !searchTerm ||
       emp?.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -84,7 +110,7 @@ export const AdvancesView: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={openAddModal}
           className="btn btn-primary"
         >
           <Plus className="w-4 h-4" />
@@ -112,6 +138,8 @@ export const AdvancesView: React.FC = () => {
           <span className="stat-hint text-warning-700">To be recovered in future payouts</span>
         </div>
       </div>
+
+      <PeriodFilter value={period} onChange={setPeriod} />
 
       {/* Advance Records Table */}
       <div className="table-card">
@@ -211,6 +239,11 @@ export const AdvancesView: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateAdvance} className="modal-body space-y-4 text-xs">
+              {formError && (
+                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800" role="alert">
+                  <span className="font-semibold">{formError}</span>
+                </div>
+              )}
               <div>
                 <label className="form-label">Select Operator:</label>
                 <Select value={employeeId} onValueChange={setEmployeeId}>
@@ -242,9 +275,7 @@ export const AdvancesView: React.FC = () => {
 
                 <div>
                   <label className="form-label">Disbursal Date:</label>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     className="form-input"
@@ -302,9 +333,10 @@ export const AdvancesView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={saving}
                   className="btn btn-primary"
                 >
-                  Disburse Advance
+                  {saving ? 'Saving…' : 'Disburse Advance'}
                 </button>
               </div>
             </form>

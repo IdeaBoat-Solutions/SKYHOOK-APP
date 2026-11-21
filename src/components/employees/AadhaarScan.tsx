@@ -14,6 +14,7 @@ import {
 import { ParsedAadhaar, maskAadhaar, scanAadhaarDocuments } from '../../utils/aadhaarOcr';
 import { isPdf } from '../../utils/ocrEngine';
 
+import { DateInput } from '../common/DateInput';
 const MAX_FILES = 3;
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -220,7 +221,7 @@ export const AadhaarScanModal: React.FC<Props> = ({ onClose, onApply }) => {
                   <label className="form-label" htmlFor="aad-dob">
                     Date of birth{parsed.yearOfBirth && !parsed.dateOfBirth ? ` (card shows year ${parsed.yearOfBirth} only)` : ''}
                   </label>
-                  <input id="aad-dob" type="date" className="form-input" value={dob} onChange={(e) => setDob(e.target.value)} />
+                  <DateInput id="aad-dob" className="form-input" value={dob} onChange={(e) => setDob(e.target.value)} />
                 </div>
                 <div className="md:col-span-2">
                   <label className="form-label" htmlFor="aad-addr">Address</label>

@@ -68,7 +68,16 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
   app.get('/roles', { preHandler: requirePermission('user:read') }, async (request) => {
     return withTenantRead(request.auth.tenantId, async (c) => {
       const r = await c.query('SELECT id, name, label FROM roles WHERE tenant_id=$1 ORDER BY name', [request.auth.tenantId]);
-      return { items: r.rows };
+      const items = [];
+      for (const role of r.rows) {
+        const p = await c.query(
+          `SELECT p.code FROM permissions p JOIN role_permissions rp ON rp.permission_id = p.id
+           WHERE rp.role_id = $1 ORDER BY p.code`,
+          [role.id],
+        );
+        items.push({ ...role, permissions: p.rows.map((row: any) => row.code) });
+      }
+      return { items };
     });
   });
 
@@ -147,6 +156,32 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       }
       await writeAudit(c, request.auth, { action: 'USER_UPDATED', entity: 'User', entityId: id, requestId: request.id });
       return r.rows[0];
+    });
+  });
+
+  // Edit which permissions the Site Manager role has (owner always has everything).
+  app.put('/roles/:role/permissions', { preHandler: requirePermission('role:write') }, async (request) => {
+    const { role: roleName } = request.params as { role: string };
+    if (roleName !== 'manager') throw Errors.badRequest('Only the manager role can be edited');
+    const { permissions } = z.object({ permissions: z.array(z.string()) }).parse(request.body);
+    const requested = [...new Set(permissions)];
+    const unknown = requested.filter((p) => !(ALL_PERMISSIONS as readonly string[]).includes(p));
+    if (unknown.length) throw Errors.badRequest(`Unknown permissions: ${unknown.join(', ')}`);
+    const blocked = requested.filter((p) => p === 'role:write' || p === 'user:write');
+    if (blocked.length) throw Errors.forbidden(`Cannot grant access-management permissions: ${blocked.join(', ')}`);
+    return withTenant(request.auth.tenantId, async (c) => {
+      const role = await c.query('SELECT id FROM roles WHERE tenant_id=$1 AND name=$2', [request.auth.tenantId, roleName]);
+      if (!role.rows[0]) throw Errors.notFound('Role');
+      const roleId = role.rows[0].id as string;
+      await c.query('DELETE FROM role_permissions WHERE role_id=$1', [roleId]);
+      for (const code of requested) {
+        await c.query(
+          `INSERT INTO role_permissions (role_id, permission_id) SELECT $1, id FROM permissions WHERE code=$2 ON CONFLICT DO NOTHING`,
+          [roleId, code],
+        );
+      }
+      await writeAudit(c, request.auth, { action: 'ROLE_PERMISSIONS_UPDATED', entity: 'Role', entityId: roleId, updatedValue: requested, requestId: request.id });
+      return { role: roleName, permissions: requested };
     });
   });
 

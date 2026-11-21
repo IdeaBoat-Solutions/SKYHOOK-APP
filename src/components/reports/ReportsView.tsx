@@ -122,7 +122,7 @@ export const ReportsView: React.FC = () => {
     {
       id: 'payroll',
       title: 'Monthly Payroll & Wage Master',
-      subtitle: 'October 2026 Payout Period',
+      subtitle: `${new Date(`${currentDate.slice(0, 7)}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' })} Payout Period`,
       description:
         'Complete breakdown of payable working days, base pay, site overtime rates, advance recoveries, and net payable.',
       summary: (

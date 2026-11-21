@@ -19,6 +19,10 @@ const rcDetailsSchema = z.object({
   cubicCapacityCc: rcNumber, horsePower: rcNumber, wheelBaseMm: rcNumber,
 });
 
+/** A yyyy-mm-dd date, or empty/null to clear it. */
+const clearableDate = z.preprocess((v) => (v === '' ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional());
+const clearableText = z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional());
+
 const MACHINE_TYPES = ['hydraulic_crane', 'mobile_crane', 'crawler_crane', 'tower_crane', 'hydra', 'all_terrain_crane', 'rough_terrain_crane', 'other'] as const;
 
 const createSchema = z.object({
@@ -48,6 +52,7 @@ const createSchema = z.object({
   nextFitnessDueDate: z.string().optional(),
   fitnessIntervalDays: z.number().int().positive().default(730),
   status: z.enum(['available', 'assigned', 'under_maintenance', 'inactive', 'sold']).default('available'),
+  insuranceStartDate: z.string().optional(),
   rcDetails: rcDetailsSchema.optional(),
 });
 
@@ -95,9 +100,9 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
           last_service_date,next_service_due_date,insurance_provider,insurance_policy_number,
           insurance_expiry_date,insurance_interval_days,puc_number,puc_issue_date,puc_expiry_date,
           puc_interval_days,fitness_certificate_number,last_fitness_date,next_fitness_due_date,
-          fitness_interval_days,status,created_by,service_reminder_lead_hours,rc_details)
+          fitness_interval_days,status,created_by,service_reminder_lead_hours,rc_details,insurance_start_date)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13::date,$14::date,$15,$16,$17::date,$18,
-           $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29,$30::jsonb) RETURNING *`,
+           $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29,$30::jsonb,$31::date) RETURNING *`,
         [request.auth.tenantId, code, b.machineType, b.make, b.model, b.registrationNumber, b.serialNumber ?? null,
           b.tonnageCapacity ?? null, b.purchaseDate ?? null, b.purchaseCostPaise ?? null,
           b.serviceFrequencyValue, b.serviceFrequencyUnit, b.lastServiceDate ?? null,
@@ -107,7 +112,7 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
           b.pucNumber ?? null, b.pucIssueDate ?? null, b.pucExpiryDate ?? null, b.pucIntervalDays,
           b.fitnessCertificateNumber ?? null, b.lastFitnessDate ?? null, b.nextFitnessDueDate ?? null,
           b.fitnessIntervalDays, b.status, request.auth.userId, b.serviceReminderLeadHours,
-          JSON.stringify(b.rcDetails ?? {})],
+          JSON.stringify(b.rcDetails ?? {}), b.insuranceStartDate ?? null],
       );
       await writeAudit(c, request.auth, { action: 'ASSET_CREATED', entity: 'MachineAsset', entityId: r.rows[0].id, reason: `Registered ${b.make} ${b.model}`, requestId: request.id });
       return reply.code(201).send(r.rows[0]);
@@ -129,10 +134,16 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
       registrationNumber: z.string().min(1).optional(),
       serialNumber: z.string().optional().nullable(),
       tonnageCapacity: z.number().nonnegative().optional(),
+      purchaseDate: clearableDate, purchaseCostPaise: z.number().int().nonnegative().optional(),
+      lastServiceDate: clearableDate, nextServiceDueDate: clearableDate,
+      insuranceProvider: clearableText, insurancePolicyNumber: clearableText,
+      insuranceStartDate: clearableDate, insuranceExpiryDate: clearableDate, insuranceIntervalDays: z.number().int().positive().optional(),
+      pucNumber: clearableText, pucIssueDate: clearableDate, pucExpiryDate: clearableDate, pucIntervalDays: z.number().int().positive().optional(),
+      fitnessCertificateNumber: clearableText, lastFitnessDate: clearableDate, nextFitnessDueDate: clearableDate, fitnessIntervalDays: z.number().int().positive().optional(),
       rcDetails: rcDetailsSchema.optional(),
     }).parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
-      const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
+      const map: Record<string, string> = { purchaseDate: 'purchase_date', purchaseCostPaise: 'purchase_cost_paise', lastServiceDate: 'last_service_date', nextServiceDueDate: 'next_service_due_date', insuranceProvider: 'insurance_provider', insurancePolicyNumber: 'insurance_policy_number', insuranceStartDate: 'insurance_start_date', insuranceExpiryDate: 'insurance_expiry_date', insuranceIntervalDays: 'insurance_interval_days', pucNumber: 'puc_number', pucIssueDate: 'puc_issue_date', pucExpiryDate: 'puc_expiry_date', pucIntervalDays: 'puc_interval_days', fitnessCertificateNumber: 'fitness_certificate_number', lastFitnessDate: 'last_fitness_date', nextFitnessDueDate: 'next_fitness_due_date', fitnessIntervalDays: 'fitness_interval_days', status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
       const entries = Object.entries(b)
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => [k, k === 'rcDetails' ? JSON.stringify(v) : v] as const);

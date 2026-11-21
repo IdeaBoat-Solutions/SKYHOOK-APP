@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Sun, Moon, Clock, Copy, Check, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Copy, Check, RotateCcw } from 'lucide-react';
+import { ShiftToggle, shiftTimes, type Shift } from '../common/ShiftToggle';
 import { useSkyhook } from '../../data/apiStore';
 import { calculateWorkingAndOt, formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
 
-type Shift = 'day' | 'night' | 'custom';
-
+import { DateInput } from '../common/DateInput';
 interface Row {
   id: string;
   date: string;
@@ -38,12 +38,7 @@ export const LogsheetCalculator: React.FC = () => {
   const { currentDate, companySettings } = useSkyhook();
   const shiftHours = companySettings.standardShiftHours || 10;
 
-  const presetTimes = (kind: Exclude<Shift, 'custom'>) => {
-    const startH = kind === 'day' ? 8 : 20;
-    const endMin = (startH * 60 + Math.round(shiftHours * 60)) % 1440;
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return { start: `${pad(startH)}:00`, end: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}` };
-  };
+  const presetTimes = (kind: Exclude<Shift, 'custom'>) => shiftTimes(kind, shiftHours);
 
   const blankRow = (date = currentDate, shift: Shift = 'day'): Row => {
     const t = presetTimes(shift === 'custom' ? 'day' : shift);
@@ -198,31 +193,14 @@ export const LogsheetCalculator: React.FC = () => {
               {computed.map((r) => (
                 <tr key={r.id}>
                   <td>
-                    <input
-                      type="date"
-                      className="form-input"
+                    <DateInput className="form-input"
                       value={r.date}
                       onChange={(e) => patchRow(r.id, { date: e.target.value })}
                       aria-label="Date"
                     />
                   </td>
                   <td>
-                    <div className="inline-flex rounded-lg border border-line bg-surface-muted p-0.5" role="group" aria-label="Shift">
-                      {([['day', 'Day', Sun], ['night', 'Night', Moon], ['custom', 'Custom', Clock]] as const).map(([id, label, Icon]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          aria-pressed={r.shift === id}
-                          onClick={() => setRowShift(r.id, id)}
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
-                            r.shift === id ? 'bg-logo-700 text-white' : 'text-ink-600 hover:bg-surface'
-                          }`}
-                        >
-                          <Icon className="h-3 w-3" />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                    <ShiftToggle size="sm" value={r.shift} onChange={(k) => setRowShift(r.id, k)} />
                   </td>
                   <td>
                     <input
