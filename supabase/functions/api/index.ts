@@ -12,6 +12,7 @@ import type { Route } from '../_shared/types.ts';
 import { identityRoutes } from './identity.ts';
 import { companyRoutes } from './company.ts';
 import { workforceRoutes } from './workforce.ts';
+import { contractorRoutes } from './contractors.ts';
 import { usersRoutes } from './users.ts';
 import { projectsRoutes } from './projects.ts';
 import { attendanceRoutes } from './attendance.ts';
@@ -30,6 +31,7 @@ const routes: Route[] = [
   ...identityRoutes,
   ...companyRoutes,
   ...workforceRoutes,
+  ...contractorRoutes,
   ...usersRoutes,
   ...projectsRoutes,
   ...attendanceRoutes,

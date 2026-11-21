@@ -3,6 +3,7 @@ import {
   Search,
   UsersRound,
   Phone,
+  MessageCircle,
   Mail,
   IdCard,
   MapPin,
@@ -21,6 +22,7 @@ import { Employee } from '../../types';
 import { formatDateDDMMYYYY, formatINR } from '../../utils/calculations';
 import { Currency } from '../common/Currency';
 import { formatPerDay } from '../../lib/wage';
+import { contactActions } from '../../utils/contact';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
@@ -177,9 +179,17 @@ export const OperatorDirectoryView: React.FC = () => {
                     <span className="text-ink-500"> · {machineName(op.currentMachineId) || 'No machine assigned'}</span>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <a href={`tel:${op.mobile.replace(/\s/g, '')}`} className="btn btn-primary flex-1">
+                <div className="flex flex-wrap gap-2">
+                  <a href={contactActions(op.mobile).call} className="btn btn-primary flex-1">
                     <Phone className="h-4 w-4" /> Call
+                  </a>
+                  <a
+                    href={contactActions(op.mobile).whatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-secondary flex-1"
+                  >
+                    <MessageCircle className="h-4 w-4" /> WhatsApp
                   </a>
                   <button onClick={() => setSelected(op)} className="btn btn-secondary flex-1">
                     Profile <ChevronRight className="h-3.5 w-3.5" />
@@ -224,9 +234,19 @@ export const OperatorDirectoryView: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-3.5 py-3 text-xs">
-                      <a href={`tel:${op.mobile}`} className="flex items-center gap-1.5 text-ink-700 hover:text-brand-700">
+                      <a href={contactActions(op.mobile).call} className="flex items-center gap-1.5 text-ink-700 hover:text-brand-700">
                         <Phone className="h-3 w-3 text-ink-400" />
                         {op.mobile}
+                      </a>
+                      <a
+                        href={contactActions(op.mobile).whatsapp}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-500 hover:text-brand-700"
+                        title="Chat on WhatsApp"
+                      >
+                        <MessageCircle className="h-3 w-3 text-ink-400" />
+                        WhatsApp
                       </a>
                       {op.email && (
                         <a href={`mailto:${op.email}`} className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-500 hover:text-brand-700">
@@ -365,9 +385,18 @@ export const OperatorDirectoryView: React.FC = () => {
             </div>
 
             <div className="modal-footer flex flex-wrap gap-2">
-              <a href={`tel:${selected.mobile.replace(/\s/g, '')}`} className="btn btn-primary">
+              <a href={contactActions(selected.mobile).call} className="btn btn-primary">
                 <Phone className="h-4 w-4" />
                 Call operator
+              </a>
+              <a
+                href={contactActions(selected.mobile).whatsapp}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary"
+              >
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp
               </a>
               {selected.email && (
                 <a href={`mailto:${selected.email}`} className="btn btn-secondary">

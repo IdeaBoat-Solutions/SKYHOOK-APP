@@ -11,6 +11,7 @@ import { rateLimitPlugin } from './common/rate-limit.js';
 import { identityRoutes } from './modules/identity/identity.routes.js';
 import { companyRoutes } from './modules/company/company.routes.js';
 import { workforceRoutes } from './modules/workforce/workforce.routes.js';
+import { contractorRoutes } from './modules/contractors/contractors.routes.js';
 import { projectRoutes } from './modules/projects/projects.routes.js';
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js';
 import { payrollRoutes } from './modules/payroll/payroll.routes.js';
@@ -86,6 +87,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(identityRoutes);
   await app.register(companyRoutes);
   await app.register(workforceRoutes);
+  await app.register(contractorRoutes);
   await app.register(projectRoutes);
   await app.register(attendanceRoutes);
   await app.register(payrollRoutes);

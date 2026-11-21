@@ -177,7 +177,7 @@ export function normaliseRegistrationNumber(raw: string): string | undefined {
   return [state, district, series, number].filter(Boolean).join('-');
 }
 
-function findRegistrationNumbers(text: string): string[] {
+export function findRegistrationNumbers(text: string): string[] {
   const found: string[] = [];
   const re = /(?<![A-Z0-9])([A-Z]{2}\s?-?\s?[0-9OSIL]{2}\s?-?\s?[A-Z0-9]{0,3}\s?-?\s?[0-9OSILBZ]{3,4})(?![A-Z0-9])/g;
   for (const m of text.toUpperCase().matchAll(re)) {

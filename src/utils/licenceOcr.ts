@@ -6,7 +6,7 @@
  * returns is meant to be reviewed and corrected by a person before saving.
  */
 
-import { recognizeImages, type ScanProgress } from './ocrEngine';
+import { documentToImages, isPdf, recognizeImages, type ScanProgress } from './ocrEngine';
 
 export type { ScanProgress };
 
@@ -254,16 +254,58 @@ export interface ScanResult {
   parsed: ParsedLicence;
 }
 
+const fieldCount = (p: ParsedLicence) =>
+  Object.values(p).filter((v) => (Array.isArray(v) ? v.length > 0 : v !== undefined)).length;
+
+export interface LicenceFilesResult {
+  parsed: ParsedLicence;
+  confidence: number;
+  /** The file that carries the main details (number, name, dates) and the other side, if any. */
+  front?: File;
+  back?: File;
+}
+
 /**
- * Run OCR on one image. Phone photos are often sideways, so orientation is
- * detected automatically. tesseract.js is loaded on demand so it never weighs
- * down the main bundle.
+ * Read every file together (front, back, or a PDF) and merge what they show. The sides do
+ * not have to be added in order: the page with the most details is treated as the front
+ * and wins any conflict, the other fills gaps (vehicle classes, authority).
+ * All pages are read in parallel on the warm engines.
  */
+export async function scanLicenceFiles(
+  files: File[],
+  onProgress?: (p: ScanProgress) => void,
+): Promise<LicenceFilesResult> {
+  const pages: { blob: Blob; file: File }[] = [];
+  for (const file of files) {
+    for (const blob of await documentToImages(file)) pages.push({ blob, file });
+  }
+  if (!pages.length) throw new Error('No readable pages in the document');
+
+  // PSM 3 (fully automatic) reads the card layout best in testing.
+  const read = await recognizeImages(pages.map((p) => p.blob), ['3'], onProgress, { rotate: files.some((f) => !isPdf(f)) });
+  const parsed = read.map(([pass]) => ({ pass: pass!, fields: parseDrivingLicence(pass!.text) }));
+  const ranked = parsed
+    .map((p, i) => ({ ...p, file: pages[i]!.file, count: fieldCount(p.fields) }))
+    .sort((a, b) => b.count - a.count);
+
+  let merged: ParsedLicence = {};
+  for (const r of [...ranked].reverse()) merged = mergeParsed(r.fields, merged);
+  // mergeParsed lets its first argument win, so fold from the weakest page up to the strongest.
+  const front = ranked[0]?.file;
+  const back = ranked.find((r) => r.file !== front)?.file;
+  return {
+    parsed: merged,
+    confidence: Math.min(...parsed.map((p) => p.pass.confidence)),
+    front,
+    back,
+  };
+}
+
+/** Run OCR on one image (kept for callers that read a single photo). */
 export async function scanLicenceImage(
   file: File,
   onProgress?: (p: ScanProgress) => void,
 ): Promise<ScanResult> {
-  // PSM 3 (fully automatic) reads the card layout best in testing. Shares the warm engine pool.
   const [[pass]] = await recognizeImages([file], ['3'], onProgress, { rotate: true });
   return { text: pass!.text, confidence: pass!.confidence, parsed: parseDrivingLicence(pass!.text) };
 }

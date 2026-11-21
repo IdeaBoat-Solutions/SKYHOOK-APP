@@ -4,6 +4,7 @@ import type {
   SalaryAdvance, PayrollRun, PayrollEntry, ProjectExpense, MachineEmiLoan,
   EmiInstallment, MachineWorkingLog, AuditLog, InAppNotification,
   ServiceRecord, PayrollAdjustment, PersonalRecord, MachineType, RcDetails, DocumentRecord,
+  ContractorRecord,
 } from '../types';
 
 const rupees = (paise: number | null | undefined): number => Math.round((paise ?? 0) / 100);
@@ -105,6 +106,24 @@ export function mapEmployee(r: any): Employee {
     licenseScanned: Boolean(r.license_scanned_at),
     currentProjectId: r.current_project_id ?? undefined, currentMachineId: r.current_machine_id ?? undefined,
     emergencyContacts: r.contacts ?? [], documents: r.documents ?? [],
+  };
+}
+
+export function mapContractor(r: any): ContractorRecord {
+  // Both the Fastify API and the Supabase Edge Function return camelCase for
+  // this module; accept snake_case too so either backend shape maps correctly.
+  return {
+    id: r.id,
+    contractorCode: r.contractor_code ?? r.contractorCode ?? r.id,
+    fullName: r.full_name ?? r.fullName ?? '',
+    mobile: r.mobile,
+    skill: r.skill ?? 'crane_operator',
+    agencyName: r.agency_name ?? r.agencyName ?? undefined,
+    dailyRate: rupees(r.daily_rate_paise ?? r.dailyRatePaise),
+    city: r.city ?? undefined,
+    availability: r.availability ?? 'unknown',
+    notes: r.notes ?? undefined,
+    createdAt: r.created_at ?? r.createdAt ?? '',
   };
 }
 

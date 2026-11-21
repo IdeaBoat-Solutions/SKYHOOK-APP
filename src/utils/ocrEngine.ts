@@ -141,7 +141,7 @@ let idleTimer: ReturnType<typeof setTimeout> | undefined;
 /** Free the engines (~100 MB each) after this much idle time. */
 const IDLE_MS = 4 * 60 * 1000;
 
-const OCR_BASE = `${import.meta.env.BASE_URL}ocr`.replace(/\/{2,}/g, '/');
+const OCR_BASE = `${(import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/'}ocr`.replace(/\/{2,}/g, '/');
 const SELF_HOSTED = {
   workerPath: `${OCR_BASE}/worker.min.js`,
   corePath: `${OCR_BASE}/core`,
