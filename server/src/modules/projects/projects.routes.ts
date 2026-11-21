@@ -5,11 +5,29 @@ import { requirePermission } from '../../auth/rbac.js';
 import { Errors } from '../../common/errors.js';
 import { writeAudit } from '../../common/audit.js';
 
+/** A text field a form may leave blank: '' clears it. */
+const clearText = z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional());
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a date (yyyy-mm-dd)');
+/** An optional date: '' clears it. */
+const clearDate = z.preprocess((v) => (v === '' ? null : v), isoDate.nullable().optional());
+
+const patchSchema = z.object({
+  name: z.string().min(1).optional(),
+  status: z.enum(['upcoming', 'active', 'on_hold', 'completed', 'cancelled']).optional(),
+  clientName: z.string().min(1).optional(),
+  clientPhone: z.string().min(1).optional(),
+  clientEmail: clearText, location: clearText, siteAddress: clearText, city: clearText, state: clearText,
+  startDate: isoDate.optional(), expectedEndDate: isoDate.optional(), actualEndDate: clearDate,
+  otRatePaisePerHour: z.number().int().nonnegative().optional(),
+  contractValuePaise: z.number().int().nonnegative().nullable().optional(),
+  description: clearText,
+});
+
 const createSchema = z.object({
   name: z.string().min(1),
   clientName: z.string().min(1),
   clientPhone: z.string().min(1),
-  clientEmail: z.string().optional(),
+  clientEmail: z.string().nullish().transform((v) => v || undefined),
   location: z.string().optional(),
   siteAddress: z.string().optional(),
   city: z.string().optional(),
@@ -47,7 +65,10 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
   app.post('/projects', { preHandler: requirePermission('project:write') }, async (request, reply) => {
     const body = createSchema.parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
-      const seq = await c.query('SELECT count(*)::int AS n FROM projects WHERE tenant_id=$1', [request.auth.tenantId]);
+      // Highest existing number + 1 (a plain count collides once any code is skipped).
+      const seq = await c.query(
+        `SELECT COALESCE(MAX(NULLIF(regexp_replace(project_code,'\\D','','g'),'')::bigint),0)::int AS n FROM projects WHERE tenant_id=$1`,
+        [request.auth.tenantId]);
       const code = `PRJ-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
       const r = await c.query(
         `INSERT INTO projects (tenant_id,project_code,name,client_name,client_phone,client_email,
@@ -72,24 +93,22 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/projects/:id', { preHandler: requirePermission('project:write') }, async (request) => {
     const { id } = request.params as { id: string };
-    const body = z.object({
-      name: z.string().optional(), status: z.string().optional(),
-      otRatePaisePerHour: z.number().int().nonnegative().optional(),
-      contractValuePaise: z.number().int().nonnegative().optional(),
-      description: z.string().optional(),
-    }).parse(request.body);
+    const body = patchSchema.parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
       const before = await c.query('SELECT * FROM projects WHERE tenant_id=$1 AND id=$2', [request.auth.tenantId, id]);
       if (!before.rows[0]) throw Errors.notFound('Project');
-      const map: Record<string, string> = {
-        name: 'name', status: 'status', otRatePaisePerHour: 'ot_rate_paise_per_hour',
-        contractValuePaise: 'contract_value_paise', description: 'description',
+      const map: Record<string, [string, string?]> = {
+        name: ['name'], status: ['status', '::project_status'], clientName: ['client_name'], clientPhone: ['client_phone'],
+        clientEmail: ['client_email'], location: ['location'], siteAddress: ['site_address'], city: ['city'], state: ['state'],
+        startDate: ['start_date', '::date'], expectedEndDate: ['expected_end_date', '::date'], actualEndDate: ['actual_end_date', '::date'],
+        otRatePaisePerHour: ['ot_rate_paise_per_hour'], contractValuePaise: ['contract_value_paise'], description: ['description'],
       };
-      const entries = Object.entries(body).filter(([, v]) => v !== undefined);
+      const entries = Object.entries(body).filter(([k, v]) => v !== undefined && k in map);
       if (!entries.length) throw Errors.badRequest('No fields to update');
-      const sets = entries.map(([k], i) => `${map[k]!} = $${i + 3}`).join(', ');
+      // $1 tenant, $2 user, $3 project id; values occupy $4..$n.
+      const sets = entries.map(([k], i) => `${map[k]![0]} = $${i + 4}${map[k]![1] ?? ''}`).join(', ');
       const r = await c.query(
-        `UPDATE projects SET ${sets}, updated_by=$2 WHERE tenant_id=$1 AND id=$3 RETURNING *`,
+        `UPDATE projects SET ${sets}, updated_by=$2, updated_at=now() WHERE tenant_id=$1 AND id=$3 RETURNING *`,
         [request.auth.tenantId, request.auth.userId, id, ...entries.map(([, v]) => v)],
       );
       await writeAudit(c, request.auth, {

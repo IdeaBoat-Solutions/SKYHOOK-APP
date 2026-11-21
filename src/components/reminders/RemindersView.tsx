@@ -62,6 +62,15 @@ const CATEGORY_ICONS: Record<AlertType, React.ElementType> = {
   license: Users,
 };
 
+const DIALOG_TITLES: Record<AlertType, string> = {
+  emi: 'Record EMI payment',
+  service: 'Record service',
+  insurance: 'Renew insurance',
+  puc: 'Renew PUC certificate',
+  fitness: 'Record fitness test',
+  license: 'Renew operator licence',
+};
+
 export const RemindersView: React.FC = () => {
   const {
     currentUser,
@@ -98,9 +107,9 @@ export const RemindersView: React.FC = () => {
   const [payMode, setPayMode] = useState('NEFT Bank Transfer');
   const [payRef, setPayRef] = useState('');
   const [serviceDate, setServiceDate] = useState(currentDate);
-  const [serviceCost, setServiceCost] = useState('25000');
+  const [serviceCost, setServiceCost] = useState('');
   const [serviceNotes, setServiceNotes] = useState('');
-  const [serviceProvider, setServiceProvider] = useState('Authorized OEM Service');
+  const [serviceProvider, setServiceProvider] = useState('');
   const [serviceHours, setServiceHours] = useState('');
 
   // Statutory renewal states with interval-based auto calculation
@@ -108,6 +117,8 @@ export const RemindersView: React.FC = () => {
   const [renewalIntervalDays, setRenewalIntervalDays] = useState(365);
   const [renewalExpiry, setRenewalExpiry] = useState('');
   const [renewalCertNo, setRenewalCertNo] = useState('');
+  const [alertError, setAlertError] = useState('');
+  const [savingAlert, setSavingAlert] = useState(false);
 
   const emiAlerts = getEmiAlerts();
   const serviceAlerts = getServiceAlerts();
@@ -145,6 +156,7 @@ export const RemindersView: React.FC = () => {
   const compliantCount = categories.filter((c) => c.alerts.length === 0).length;
 
   const openActionDialog = (type: AlertType, item: ReminderAlertItem) => {
+    setAlertError('');
     const machine = machines.find((m) => m.id === item.targetId || m.assetId === item.targetId);
 
     if (type === 'insurance') {
@@ -152,30 +164,31 @@ export const RemindersView: React.FC = () => {
       setRenewalIntervalDays(interval);
       setRenewalDate(currentDate);
       setRenewalExpiry(calculateExpiryFromInterval(currentDate, interval));
-      setServiceProvider(machine?.insuranceProvider || 'New India Assurance');
-      setRenewalCertNo(machine?.insurancePolicyNumber || 'POL-' + Math.floor(1000 + Math.random() * 9000));
+      setServiceProvider(machine?.insuranceProvider || '');
+      setRenewalCertNo('');
     } else if (type === 'puc') {
       const interval = machine?.pucIntervalDays || 180;
       setRenewalIntervalDays(interval);
       setRenewalDate(currentDate);
       setRenewalExpiry(calculateExpiryFromInterval(currentDate, interval));
-      setRenewalCertNo(machine?.pucNumber || 'PUC-MH04-' + Math.floor(100000 + Math.random() * 900000));
+      setRenewalCertNo('');
     } else if (type === 'fitness') {
       const interval = machine?.fitnessIntervalDays || 365;
       setRenewalIntervalDays(interval);
       setRenewalDate(currentDate);
       setRenewalExpiry(calculateExpiryFromInterval(currentDate, interval));
-      setRenewalCertNo(machine?.fitnessCertificateNumber || 'FIT-THANE-2026-' + Math.floor(1000 + Math.random() * 9000));
+      setRenewalCertNo('');
     } else if (type === 'license') {
       const interval = 365 * 3;
       setRenewalIntervalDays(interval);
       setRenewalDate(currentDate);
       setRenewalExpiry(calculateExpiryFromInterval(currentDate, interval));
-      setRenewalCertNo('MH04-2026-RN-99120');
+      setRenewalCertNo('');
     } else if (type === 'service') {
       setServiceDate(currentDate);
-      setServiceProvider('Authorized OEM Service');
-      setServiceCost('25000');
+      setServiceProvider('');
+      setServiceCost('');
+      setServiceHours('');
       setServiceNotes('');
     } else if (type === 'emi') {
       setPayMode('NEFT Bank Transfer');
@@ -195,55 +208,70 @@ export const RemindersView: React.FC = () => {
     setRenewalExpiry(calculateExpiryFromInterval(renewalDate, newDays));
   };
 
-  const handleResolveAlert = (e: React.FormEvent) => {
+  const handleResolveAlert = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeDialog) return;
+    if (!activeDialog || savingAlert) return;
 
     const { type, item } = activeDialog;
+    // Alerts carry a display code (CR-001) as targetId for machines. The API
+    // only accepts real UUIDs, so always resolve to the machine's own id.
+    const machine = machines.find((m) => m.id === item.targetId || m.assetId === item.targetId);
+    const operator = employees.find((emp) => emp.id === item.targetId || emp.employeeId === item.targetId);
 
-    if (type === 'emi') {
-      // Find loan and installment
-      const loan = emiLoans.find((l) => l.assetId === item.targetId);
-      if (loan) {
-        const nextPending = loan.installments.find((i) => i.status !== 'paid');
-        if (nextPending) {
-          recordEmiPayment(loan.id, nextPending.installmentNumber, payMode, payRef);
+    setSavingAlert(true);
+    setAlertError('');
+    try {
+      if (type === 'emi') {
+        const loan = emiLoans.find((l) => l.assetId === item.targetId || l.id === item.targetId);
+        const nextPending = loan?.installments.find((i) => i.status !== 'paid');
+        if (!loan || !nextPending) throw new Error('Loan or installment not found. Reload and try again.');
+        await recordEmiPayment(loan.id, nextPending.installmentNumber, payMode, payRef);
+      } else if (type === 'service') {
+        if (!machine) throw new Error('Machine not found. Reload and try again.');
+        const reading =
+          machine.serviceFrequencyUnit === 'hours'
+            ? serviceHours !== ''
+              ? parseFloat(serviceHours)
+              : (machine.lastServiceHours || 0) +
+                sumOperatingHours(machineWorkingLogs, machine.id, machine.lastServiceDate)
+            : undefined;
+        await recordServiceCompleted(
+          machine.id,
+          serviceDate,
+          parseFloat(serviceCost) || 0,
+          serviceNotes,
+          serviceProvider,
+          reading,
+        );
+      } else if (type === 'insurance') {
+        if (!machine) throw new Error('Machine not found. Reload and try again.');
+        await renewMachineInsurance(machine.id, renewalExpiry, serviceProvider, renewalCertNo, renewalDate);
+      } else if (type === 'puc') {
+        if (!machine) throw new Error('Machine not found. Reload and try again.');
+        await renewMachinePuc(machine.id, renewalExpiry, renewalCertNo, renewalDate);
+      } else if (type === 'fitness') {
+        if (!machine) throw new Error('Machine not found. Reload and try again.');
+        await renewMachineFitness(machine.id, renewalExpiry, renewalCertNo, renewalDate);
+      } else if (type === 'license') {
+        if (!operator) throw new Error('Operator not found. Reload and try again.');
+        // The API always rewrites the crane expiry, so a transport renewal re-sends the
+        // current crane expiry unchanged, and a crane renewal leaves transport alone.
+        if (item.id.startsWith('LIC-TR-')) {
+          await renewOperatorLicense(operator.id, operator.craneLicenseExpiry, renewalExpiry);
+        } else {
+          await renewOperatorLicense(operator.id, renewalExpiry, undefined);
         }
       }
-    } else if (type === 'service') {
-      const machine = machines.find(
-        (m) => m.id === item.targetId || m.assetId === item.targetId,
-      );
-      const reading =
-        machine?.serviceFrequencyUnit === 'hours'
-          ? serviceHours !== ''
-            ? parseFloat(serviceHours)
-            : (machine.lastServiceHours || 0) +
-              sumOperatingHours(machineWorkingLogs, machine.id, machine.lastServiceDate)
-          : undefined;
-      recordServiceCompleted(
-        machine?.id ?? item.targetId,
-        serviceDate,
-        parseFloat(serviceCost) || 0,
-        serviceNotes,
-        serviceProvider,
-        reading,
-      );
-      setServiceHours('');
-    } else if (type === 'insurance') {
-      renewMachineInsurance(item.targetId, renewalExpiry, serviceProvider, renewalCertNo, renewalDate);
-    } else if (type === 'puc') {
-      renewMachinePuc(item.targetId, renewalExpiry, renewalCertNo, renewalDate);
-    } else if (type === 'fitness') {
-      renewMachineFitness(item.targetId, renewalExpiry, renewalCertNo, renewalDate);
-    } else if (type === 'license') {
-      renewOperatorLicense(item.targetId, renewalExpiry, renewalExpiry);
-    }
 
-    setActiveDialog(null);
-    setPayRef('');
-    setServiceNotes('');
-    setRenewalCertNo('');
+      setActiveDialog(null);
+      setPayRef('');
+      setServiceNotes('');
+      setRenewalCertNo('');
+    } catch (err) {
+      setAlertError(err instanceof Error ? err.message : 'Could not save. Please try again.');
+    } finally {
+      setSavingAlert(false);
+    }
   };
 
   const renderAlertItem = (item: ReminderAlertItem, type: AlertType) => {
@@ -255,7 +283,7 @@ export const RemindersView: React.FC = () => {
     ].filter(Boolean);
 
     return (
-      <div key={item.id} className="alert-row flex-col items-stretch sm:flex-row sm:items-center">
+      <div key={item.id} className="alert-row flex-col items-stretch sm:flex-row sm:items-center" style={{ flexWrap: 'nowrap' }}>
         <span className={`alert-row__icon ${tone.icon}`}>
           <CircleAlert className="h-[18px] w-[18px]" aria-hidden="true" />
         </span>
@@ -428,7 +456,7 @@ export const RemindersView: React.FC = () => {
                   <ActiveCategoryIcon className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <h3 id="reminder-dialog-title" className="modal-title truncate">
-                  Resolve {activeDialog.item.categoryHeading}
+                  {DIALOG_TITLES[activeDialog.type]}
                 </h3>
               </div>
               <button
@@ -442,6 +470,9 @@ export const RemindersView: React.FC = () => {
             </div>
 
             <form onSubmit={handleResolveAlert}>
+              {alertError && (
+                <div className="notice notice--danger mx-5 mt-4 text-xs" role="alert">{alertError}</div>
+              )}
               <div className="modal-body space-y-4">
                 <div className="rounded-lg border border-line bg-surface-muted p-3.5">
                   <div className="text-sm font-semibold text-ink-900">{activeDialog.item.title}</div>
@@ -481,7 +512,7 @@ export const RemindersView: React.FC = () => {
                         id="remit-pay-ref"
                         type="text"
                         required
-                        placeholder="e.g. UTR-HDFC-991208"
+                        placeholder="Bank UTR / reference number"
                         value={payRef}
                         onChange={(e) => setPayRef(e.target.value)}
                         className="form-input"
@@ -526,7 +557,7 @@ export const RemindersView: React.FC = () => {
                             type="number"
                             value={serviceHours}
                             onChange={(e) => setServiceHours(e.target.value)}
-                            placeholder={`Reading at service (e.g. ${Math.round((machine.lastServiceHours || 0) + logged)} h)`}
+                            placeholder={`Hour-meter reading at service (about ${Math.round((machine.lastServiceHours || 0) + logged)} h)`}
                             className="form-input mt-2"
                           />
                         </div>
@@ -549,6 +580,8 @@ export const RemindersView: React.FC = () => {
                       <input
                         id="service-cost"
                         type="number"
+                        min="0"
+                        inputMode="decimal"
                         required
                         value={serviceCost}
                         onChange={(e) => setServiceCost(e.target.value)}
@@ -660,8 +693,8 @@ export const RemindersView: React.FC = () => {
                       <input
                         id="renewal-cert"
                         type="text"
-                        required
-                        placeholder="e.g. MH04-2026-RN-99120"
+                        required={activeDialog.type !== 'license'}
+                        placeholder={activeDialog.type === 'license' ? 'Optional reference' : 'Certificate / policy number'}
                         value={renewalCertNo}
                         onChange={(e) => setRenewalCertNo(e.target.value)}
                         className="form-input"
@@ -694,10 +727,12 @@ export const RemindersView: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={savingAlert}>
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>
-                    {activeDialog.type === 'emi'
+                    {savingAlert
+                      ? 'Saving…'
+                      : activeDialog.type === 'emi'
                       ? 'Record EMI Payment'
                       : activeDialog.type === 'service'
                         ? 'Record Service Completion'

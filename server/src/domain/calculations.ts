@@ -125,7 +125,7 @@ export interface PayrollCalcOutput {
 export function calculatePayrollEntry(input: PayrollCalcInput): PayrollCalcOutput {
   const basePaise = input.salaryType === 'daily'
     ? Math.round(input.payableDays * input.dailyRatePaise)
-    : Math.round((input.monthlySalaryPaise / Math.max(1, input.totalDaysInMonth)) * input.payableDays);
+    : Math.round((input.monthlySalaryPaise * input.payableDays) / Math.max(1, input.totalDaysInMonth));
 
   let totalOtHours = 0;
   let totalOtPaise = 0;
@@ -182,16 +182,22 @@ export function evaluateReminderStatus(
   return { daysRemaining, status: 'none', label: `Scheduled (${daysRemaining} days away)` };
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Add whole days to a yyyy-mm-dd date using UTC arithmetic (no timezone / DST drift). */
 export function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0]!;
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().split('T')[0]!;
 }
 
+/** Add calendar months; a day past the end of the target month clamps to its last day (31 Jan + 1 month = 28/29 Feb). */
 export function addMonths(dateStr: string, months: number): string {
-  const d = new Date(dateStr);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().split('T')[0]!;
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const total = y! * 12 + (m! - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = total % 12;
+  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  return `${String(ny).padStart(4, '0')}-${pad2(nm + 1)}-${pad2(Math.min(d!, lastDay))}`;
 }
 
 export function nextServiceDate(
@@ -258,14 +264,14 @@ export function calculateEmi(principalPaise: number, annualRatePct: number, mont
   let balance = p;
   for (let i = 1; i <= n; i++) {
     const interestPaise = Math.round(balance * r);
-    const principalPart = Math.min(balance, emiPaise - interestPaise);
+    // The last instalment absorbs rounding so the loan closes at exactly zero.
+    const principalPart = i === n ? balance : Math.min(balance, emiPaise - interestPaise);
     balance -= principalPart;
-    const d = new Date(startDate);
-    d.setMonth(d.getMonth() + i);
-    d.setDate(dueDay);
+    // i-th month after the loan start, on the due day (1-28, so it always exists).
+    const first = addMonths(startDate, i);
     schedule.push({
       number: i,
-      dueDate: d.toISOString().split('T')[0]!,
+      dueDate: `${first.slice(0, 8)}${pad2(dueDay)}`,
       principalPaise: principalPart,
       interestPaise,
       amountPaise: principalPart + interestPaise,

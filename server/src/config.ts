@@ -24,9 +24,10 @@ const schema = z.object({
   APP_TIMEZONE: z.string().default('Asia/Kolkata'),
   DEMO_DATE: z.string().optional(),
   STORAGE_DIR: z.string().default('./storage'),
-  RATE_LIMIT_READ: z.coerce.number().int().positive().default(120),
-  RATE_LIMIT_WRITE: z.coerce.number().int().positive().default(30),
-  RATE_LIMIT_AUTH: z.coerce.number().int().positive().default(5),
+  // The SPA reloads the whole dataset (~30 GETs) after each action and bulk actions fire many writes, so these are generous.
+  RATE_LIMIT_READ: z.coerce.number().int().positive().default(3000),
+  RATE_LIMIT_WRITE: z.coerce.number().int().positive().default(600),
+  RATE_LIMIT_AUTH: z.coerce.number().int().positive().default(20),
   // --- Supabase platform (Auth + Storage; Postgres is reached via DATABASE_URL) ---
   SUPABASE_URL: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),

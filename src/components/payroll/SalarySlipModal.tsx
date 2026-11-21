@@ -19,6 +19,10 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
   paymentDueDate,
   onClose,
 }) => {
+  const periodLabel = /^\d{4}-\d{2}$/.test(payrollMonth)
+    ? new Date(`${payrollMonth}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+    : payrollMonth;
+  const prettyMode = (entry.paymentMode ?? '').replace(/_/g, ' ');
   const handlePrint = () => {
     window.print();
   };
@@ -27,11 +31,11 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
     <div className="modal-overlay overflow-y-auto">
       <div className="modal-panel modal-panel-wide">
         {/* Top Modal Bar (Excluded from print) */}
-        <div className="flex items-center justify-between px-6 py-3.5 bg-logo-700 text-white no-print">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm">Official Salary Slip Preview</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-3 bg-logo-700 text-white no-print">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-sm">Salary Slip Preview</span>
             <span className="badge badge-neutral">
-              {payrollMonth}
+              {periodLabel}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -44,7 +48,8 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="icon-btn"
+              className="icon-btn text-white"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -52,9 +57,9 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
         </div>
 
         {/* Printable Official Salary Slip (A4 Portrait format) */}
-        <div className="p-8 sm:p-10 space-y-6 text-ink-800 bg-surface print-page font-sans">
+        <div className="p-4 sm:p-10 space-y-5 sm:space-y-6 text-ink-800 bg-surface print-page font-sans">
           {/* Header */}
-          <div className="flex items-start justify-between border-b border-line pb-5">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-line pb-5">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-lg border border-line p-1 flex items-center justify-center bg-surface">
                 <img
@@ -79,17 +84,17 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
               </div>
             </div>
 
-            <div className="text-right">
+            <div className="sm:text-right">
               <div className="inline-block px-3 py-1 rounded-full bg-logo-700 text-white text-xs font-bold tracking-wider uppercase mb-1">
                 SALARY SLIP
               </div>
-              <p className="text-xs font-semibold text-ink-600">Pay Period: {payrollMonth}</p>
+              <p className="text-xs font-semibold text-ink-600">Pay Period: {periodLabel}</p>
               <p className="text-xs text-ink-500">Payment Date: {formatDateDDMMYYYY(paymentDueDate)}</p>
             </div>
           </div>
 
           {/* Employee & Attendance Grid */}
-          <div className="grid grid-cols-2 gap-4 text-xs border border-line rounded-lg p-4 bg-surface-muted">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs border border-line rounded-lg p-4 bg-surface-muted">
             <div className="space-y-1.5">
               <div className="flex justify-between">
                 <span className="text-ink-500">Employee Code:</span>
@@ -111,7 +116,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
               </div>
             </div>
 
-            <div className="space-y-1.5 border-l border-line pl-4">
+            <div className="space-y-1.5 border-t sm:border-t-0 sm:border-l border-line pt-4 sm:pt-0 sm:pl-4">
               <div className="flex justify-between">
                 <span className="text-ink-500">Standard Daily Shift:</span>
                 <strong className="text-ink-900">{entry.standardShiftHours} Hours</strong>
@@ -133,16 +138,16 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
 
           {/* Earnings & Deductions Breakdown Table */}
           <div className="border border-line rounded-lg overflow-hidden">
-            <div className="grid grid-cols-2 bg-logo-700 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-4">
-              <div>Earnings Description</div>
-              <div className="text-right">Deductions Description</div>
+            <div className="grid grid-cols-2 bg-logo-700 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-4 sm:grid">
+              <div>Earnings</div>
+              <div className="text-right">Deductions</div>
             </div>
 
-            <div className="grid grid-cols-2 divide-x divide-line text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-line text-xs">
               {/* Earnings Column */}
               <div className="p-4 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex flex-wrap items-center gap-1">
                     Base Salary ({entry.payableDays} Days @ <Currency value={entry.appliedDailyRate} size="xs" />/day)
                   </span>
                   <Currency value={entry.baseSalary} />
@@ -185,7 +190,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
               </div>
 
               {/* Deductions Column */}
-              <div className="p-4 space-y-2 bg-surface-muted">
+              <div className="p-4 space-y-2 bg-surface-muted border-t border-line sm:border-t-0">
                 <div className="flex justify-between items-center">
                   <span>Salary Advance Recovery</span>
                   <Currency value={entry.advanceRecovery} className="text-warning-700 font-bold" />
@@ -227,7 +232,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
           </div>
 
           {/* Payment Status & Signatures */}
-          <div className="pt-6 border-t border-line grid grid-cols-2 items-end">
+          <div className="pt-6 border-t border-line grid grid-cols-1 sm:grid-cols-2 gap-6 items-end">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-700">
                 <CheckCircle2 className="w-4 h-4 text-success-600" />
@@ -237,7 +242,7 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
               </div>
               {entry.paymentDate && (
                 <p className="text-[11px] text-ink-500 mt-0.5">
-                  Paid on {formatDateDDMMYYYY(entry.paymentDate)} via {entry.paymentMode} ({entry.paymentReference})
+                  Paid on {formatDateDDMMYYYY(entry.paymentDate)} via {prettyMode}{entry.paymentReference ? ` (${entry.paymentReference})` : ''}
                 </p>
               )}
               <p className="text-[10px] text-ink-400 mt-2">
@@ -245,8 +250,8 @@ export const SalarySlipModal: React.FC<SalarySlipModalProps> = ({
               </p>
             </div>
 
-            <div className="text-right space-y-1">
-              <div className="h-10 border-b border-dashed border-line w-48 ml-auto" />
+            <div className="sm:text-right space-y-1">
+              <div className="h-10 border-b border-dashed border-line w-48 sm:ml-auto" />
               <p className="text-xs font-bold text-ink-800">{settings.authorizedSignatory}</p>
               <p className="text-[11px] text-ink-500">{settings.signatoryTitle}</p>
               <p className="text-[10px] text-ink-400 font-semibold uppercase tracking-wider">

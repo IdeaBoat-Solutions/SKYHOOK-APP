@@ -24,6 +24,16 @@ function optionalStrField(b: any, field: string, max = 2000): string | null {
   return v.trim() || null;
 }
 
+/** Text that may be empty: missing, null and '' all become ''. */
+function optionalText(b: any, field: string, max: number): string {
+  const v = b?.[field];
+  if (v === undefined || v === null) return '';
+  if (typeof v !== 'string' || v.length > max) {
+    throw Errors.validation([{ field, message: `Must be text of at most ${max} characters` }]);
+  }
+  return v.trim();
+}
+
 function paiseField(b: any, field: string, required = false): number | undefined {
   const v = b?.[field];
   if (v === undefined || v === null) {
@@ -176,12 +186,12 @@ export const extrasRoutes: Route[] = [
       const b = await readJson(req);
       const kind = strField(b, 'kind', 1, 60);
       const title = strField(b, 'title', 1, 200);
-      const provider = strField(b, 'provider', 1, 200);
-      const referenceNumber = strField(b, 'referenceNumber', 1, 200);
-      const amountPaise = paiseField(b, 'amountPaise', true)!;
-      const periodicAmountPaise = paiseField(b, 'periodicAmountPaise', true)!;
-      const startDate = strField(b, 'startDate', 1, 32);
-      const dueDate = strField(b, 'dueDate', 1, 32);
+      const provider = optionalText(b, 'provider', 200);
+      const referenceNumber = optionalText(b, 'referenceNumber', 200);
+      const amountPaise = paiseField(b, 'amountPaise') ?? 0;
+      const periodicAmountPaise = paiseField(b, 'periodicAmountPaise') ?? 0;
+      const startDate = optionalText(b, 'startDate', 32) || null;
+      const dueDate = optionalText(b, 'dueDate', 32) || null;
       const notes = optionalStrField(b, 'notes');
 
       const item = await withTenant(auth.tenantId, async (c) => {
@@ -189,7 +199,7 @@ export const extrasRoutes: Route[] = [
           `INSERT INTO personal_records
              (id, tenant_id, user_id, kind, title, provider, reference_number,
               amount_paise, periodic_amount_paise, start_date, due_date, notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::date,$11::date,$12)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
            RETURNING ${PERSONAL_COLUMNS}`,
           [crypto.randomUUID(), auth.tenantId, auth.userId, kind, title, provider,
             referenceNumber, amountPaise, periodicAmountPaise, startDate, dueDate, notes],
@@ -222,6 +232,10 @@ export const extrasRoutes: Route[] = [
         if (v === undefined) continue;
         if (field === 'amountPaise' || field === 'periodicAmountPaise') {
           entries.push([map[field]!, paiseField(raw, field, true)!]);
+        } else if (field === 'provider' || field === 'referenceNumber') {
+          entries.push([map[field]!, optionalText(raw, field, 200)]);
+        } else if (field === 'startDate' || field === 'dueDate') {
+          entries.push([map[field]!, optionalText(raw, field, 32) || null]);
         } else if (v === null) {
           if (field === 'notes') entries.push([map[field]!, null]);
           else throw Errors.validation([{ field, message: 'Required' }]);

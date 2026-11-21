@@ -36,14 +36,14 @@ export async function expenseRoutes(app: FastifyInstance): Promise<void> {
     const b = createSchema.parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
       const auto = hasPermission(request.auth, 'expense:approve');
-      const seq = await c.query('SELECT count(*)::int n FROM project_expenses WHERE tenant_id=$1', [request.auth.tenantId]);
+      const seq = await c.query(`SELECT COALESCE(MAX(NULLIF(regexp_replace(expense_code,'\\D','','g'),'')::bigint),0)::int AS n FROM project_expenses WHERE tenant_id=$1`, [request.auth.tenantId]);
       const code = `EXP-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
       const r = await c.query(
         `INSERT INTO project_expenses (tenant_id,expense_code,project_id,expense_date,category,description,
           amount_paise,payment_mode,paid_by,vendor,receipt_number,approval_status,approved_by,approved_at,remarks,created_by)
          VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8::payment_mode,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [request.auth.tenantId, code, b.projectId, b.date, b.category, b.description, b.amountPaise,
-          b.paymentMode, b.paidBy, b.vendor ?? null, b.receiptNumber ?? null, auto ? 'approved' : 'draft',
+          b.paymentMode, b.paidBy, b.vendor || null, b.receiptNumber || null, auto ? 'approved' : 'draft',
           auto ? request.auth.userId : null, auto ? new Date().toISOString() : null, b.remarks ?? null, request.auth.userId],
       );
       await writeAudit(c, request.auth, { action: 'EXPENSE_CREATED', entity: 'ProjectExpense', entityId: r.rows[0].id, reason: `Voucher ${code} for Rs.${(b.amountPaise / 100).toFixed(2)}`, requestId: request.id });

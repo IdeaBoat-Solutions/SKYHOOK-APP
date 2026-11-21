@@ -5,6 +5,7 @@ import { ZodError } from 'zod';
 import { config } from './config.js';
 import { healthCheck } from './db/pool.js';
 import { ApiError, problemBody } from './common/errors.js';
+import { mapPgError } from './common/pg-errors.js';
 import { authPlugin } from './auth/plugin.js';
 import { rateLimitPlugin } from './common/rate-limit.js';
 import { identityRoutes } from './modules/identity/identity.routes.js';
@@ -30,6 +31,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       level: config.LOG_LEVEL,
       redact: ['req.headers.authorization', 'body.password'],
     },
+    bodyLimit: 8 * 1024 * 1024, // logo images (data URLs) and document uploads
     requestIdHeader: 'x-request-id',
     genReqId: () => randomUUID(),
   });
@@ -58,10 +60,18 @@ export async function buildApp(): Promise<FastifyInstance> {
       );
       return reply.code(422).send(problemBody(problem, request.id, request.url));
     }
-    // PostgreSQL unique violation
-    if ((err as any).code === '23505') {
-      const problem = new ApiError(409, 'conflict', 'Conflict', 'A record with this code already exists');
-      return reply.code(409).send(problemBody(problem, request.id, request.url));
+    // PostgreSQL data errors (duplicate, bad reference, bad date...) become readable 409/422s
+    const pgProblem = mapPgError(err);
+    if (pgProblem) {
+      request.log.warn({ err }, 'Database constraint error');
+      return reply.code(pgProblem.status).send(problemBody(pgProblem, request.id, request.url));
+    }
+    // Client mistakes raised by Fastify itself (malformed JSON, oversized body, ...)
+    const fastifyStatus = (err as any).statusCode;
+    if (typeof fastifyStatus === 'number' && fastifyStatus >= 400 && fastifyStatus < 500) {
+      const problem = new ApiError(fastifyStatus, 'bad-request', 'Bad request',
+        fastifyStatus === 400 ? 'The request could not be read. Check the values and try again' : (err as Error).message);
+      return reply.code(fastifyStatus).send(problemBody(problem, request.id, request.url));
     }
     request.log.error({ err }, 'Unhandled error');
     const problem = new ApiError(500, 'internal-error', 'Internal server error');

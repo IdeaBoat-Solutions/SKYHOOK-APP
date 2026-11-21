@@ -25,7 +25,18 @@ const clearableText = z.preprocess((v) => (v === '' ? null : v), z.string().null
 
 const MACHINE_TYPES = ['hydraulic_crane', 'mobile_crane', 'crawler_crane', 'tower_crane', 'hydra', 'all_terrain_crane', 'rough_terrain_crane', 'other'] as const;
 
-const createSchema = z.object({
+/** Forms send '' for fields left empty; treat those (and null) as "not provided". */
+const stripBlank = (v: unknown) =>
+  v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== '' && x !== null))
+    : v;
+
+/** Registration numbers are compared ignoring case, spaces and dashes. */
+const normalizeReg = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+const REG_KEY_SQL = `upper(regexp_replace(registration_number,'[\\s-]','','g'))`;
+const regKey = (s: string) => s.toUpperCase().replace(/[\s-]/g, '');
+
+const createObject = z.object({
   assetCode: z.string().optional(),
   machineType: z.enum(MACHINE_TYPES),
   make: z.string().min(1),
@@ -55,6 +66,7 @@ const createSchema = z.object({
   insuranceStartDate: z.string().optional(),
   rcDetails: rcDetailsSchema.optional(),
 });
+const createSchema = z.preprocess(stripBlank, createObject);
 
 export async function machineRoutes(app: FastifyInstance): Promise<void> {
   app.get('/machines', { preHandler: requirePermission('machine:read') }, async (request) => {
@@ -91,9 +103,28 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/machines', { preHandler: requirePermission('machine:write') }, async (request, reply) => {
-    const b = createSchema.parse(request.body);
+    const b = createSchema.parse(request.body) as z.infer<typeof createObject>;
+    b.registrationNumber = normalizeReg(b.registrationNumber);
     return withTenant(request.auth.tenantId, async (c) => {
-      const code = b.assetCode ?? `CR-${String((await c.query('SELECT count(*)::int n FROM machines WHERE tenant_id=$1', [request.auth.tenantId])).rows[0].n + 1).padStart(3, '0')}`;
+      const dup = await c.query(
+        `SELECT asset_code FROM machines WHERE tenant_id=$1 AND ${REG_KEY_SQL} = $2 LIMIT 1`,
+        [request.auth.tenantId, regKey(b.registrationNumber)],
+      );
+      if (dup.rows[0]) {
+        throw Errors.conflict(`A machine with registration number ${b.registrationNumber} already exists (${dup.rows[0].asset_code})`);
+      }
+      // A suggested asset code that is already taken is replaced by the next free one.
+      let code = b.assetCode;
+      if (code) {
+        const taken = await c.query('SELECT 1 FROM machines WHERE tenant_id=$1 AND asset_code=$2', [request.auth.tenantId, code]);
+        if (taken.rows[0]) code = undefined;
+      }
+      if (!code) {
+        const seq = await c.query(
+          `SELECT COALESCE(MAX(NULLIF(regexp_replace(asset_code,'\\D','','g'),'')::bigint),0)::int AS n FROM machines WHERE tenant_id=$1`,
+          [request.auth.tenantId]);
+        code = `CR-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
+      }
       const r = await c.query(
         `INSERT INTO machines (tenant_id,asset_code,machine_type,make,model,registration_number,serial_number,
           tonnage_capacity,purchase_date,purchase_cost_paise,service_frequency_value,service_frequency_unit,
@@ -122,7 +153,7 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/machines/:id', { preHandler: requirePermission('machine:write') }, async (request) => {
     const { id } = request.params as { id: string };
     const b = z.object({
-      status: z.string().optional(), currentProjectId: z.string().uuid().optional().nullable(),
+      status: z.enum(['available', 'assigned', 'under_maintenance', 'inactive', 'sold']).optional(), currentProjectId: z.string().uuid().optional().nullable(),
       assignedOperatorId: z.string().uuid().optional().nullable(),
       serviceFrequencyValue: z.number().int().positive().optional(),
       serviceFrequencyUnit: z.enum(['days', 'months', 'hours']).optional(),
@@ -142,7 +173,17 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
       fitnessCertificateNumber: clearableText, lastFitnessDate: clearableDate, nextFitnessDueDate: clearableDate, fitnessIntervalDays: z.number().int().positive().optional(),
       rcDetails: rcDetailsSchema.optional(),
     }).parse(request.body);
+    if (b.registrationNumber) b.registrationNumber = normalizeReg(b.registrationNumber);
     return withTenant(request.auth.tenantId, async (c) => {
+      if (b.registrationNumber) {
+        const dup = await c.query(
+          `SELECT asset_code FROM machines WHERE tenant_id=$1 AND id<>$2 AND ${REG_KEY_SQL} = $3 LIMIT 1`,
+          [request.auth.tenantId, id, regKey(b.registrationNumber)],
+        );
+        if (dup.rows[0]) {
+          throw Errors.conflict(`A machine with registration number ${b.registrationNumber} already exists (${dup.rows[0].asset_code})`);
+        }
+      }
       const map: Record<string, string> = { purchaseDate: 'purchase_date', purchaseCostPaise: 'purchase_cost_paise', lastServiceDate: 'last_service_date', nextServiceDueDate: 'next_service_due_date', insuranceProvider: 'insurance_provider', insurancePolicyNumber: 'insurance_policy_number', insuranceStartDate: 'insurance_start_date', insuranceExpiryDate: 'insurance_expiry_date', insuranceIntervalDays: 'insurance_interval_days', pucNumber: 'puc_number', pucIssueDate: 'puc_issue_date', pucExpiryDate: 'puc_expiry_date', pucIntervalDays: 'puc_interval_days', fitnessCertificateNumber: 'fitness_certificate_number', lastFitnessDate: 'last_fitness_date', nextFitnessDueDate: 'next_fitness_due_date', fitnessIntervalDays: 'fitness_interval_days', status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
       const entries = Object.entries(b)
         .filter(([, v]) => v !== undefined)
@@ -179,7 +220,7 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
       await c.query(
         `INSERT INTO service_records (tenant_id,machine_id,service_date,service_type,service_provider,cost_paise,odometer_or_hours,notes,completed_by)
          VALUES ($1,$2,$3::date,'Periodic Maintenance',$4,$5,$6,$7,$8)`,
-        [request.auth.tenantId, id, b.serviceDate, b.serviceProvider ?? 'Authorized Service Agency', b.costPaise, b.odometerOrHours ?? null, b.notes ?? null, request.auth.userId],
+        [request.auth.tenantId, id, b.serviceDate, b.serviceProvider || null, b.costPaise, b.odometerOrHours ?? null, b.notes ?? null, request.auth.userId],
       );
       const r = await c.query('UPDATE machines SET last_service_date=$3::date, next_service_due_date=$4::date, updated_by=$5 WHERE tenant_id=$1 AND id=$2 RETURNING *',
         [request.auth.tenantId, id, b.serviceDate, next, request.auth.userId]);

@@ -141,20 +141,24 @@ export const projectsRoutes: Route[] = [
         name: requiredStr(b.name, 'name'),
         clientName: requiredStr(b.clientName, 'clientName'),
         clientPhone: requiredStr(b.clientPhone, 'clientPhone'),
-        clientEmail: optionalStr(b.clientEmail, 'clientEmail'),
-        location: optionalStr(b.location, 'location'),
-        siteAddress: optionalStr(b.siteAddress, 'siteAddress'),
-        city: optionalStr(b.city, 'city'),
-        state: optionalStr(b.state, 'state'),
+        clientEmail: optionalStr(b.clientEmail ?? undefined, 'clientEmail') || undefined,
+        location: optionalStr(b.location ?? undefined, 'location'),
+        siteAddress: optionalStr(b.siteAddress ?? undefined, 'siteAddress'),
+        city: optionalStr(b.city ?? undefined, 'city'),
+        state: optionalStr(b.state ?? undefined, 'state'),
         startDate: requiredStr(b.startDate, 'startDate'),
         expectedEndDate: requiredStr(b.expectedEndDate, 'expectedEndDate'),
         otRatePaisePerHour: intNonnegative(b.otRatePaisePerHour, 'otRatePaisePerHour', 0),
-        contractValuePaise: intNonnegative(b.contractValuePaise, 'contractValuePaise'),
-        description: optionalStr(b.description, 'description'),
+        contractValuePaise: b.contractValuePaise === undefined || b.contractValuePaise === null
+          ? undefined : intNonnegative(b.contractValuePaise, 'contractValuePaise'),
+        description: optionalStr(b.description ?? undefined, 'description'),
         status: oneOf(b.status, 'status', PROJECT_STATUSES, 'upcoming'),
       };
       const row = await withTenant(auth.tenantId, async (c) => {
-        const seq = await c.query('SELECT count(*)::int AS n FROM projects WHERE tenant_id=$1', [auth.tenantId]);
+        // Highest existing number + 1 (a plain count collides once any code is skipped).
+        const seq = await c.query(
+          `SELECT COALESCE(MAX(NULLIF(regexp_replace(project_code,'\\D','','g'),'')::bigint),0)::int AS n FROM projects WHERE tenant_id=$1`,
+          [auth.tenantId]);
         const code = `PRJ-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
         const r = await c.query(
           `INSERT INTO projects (tenant_id,project_code,name,client_name,client_phone,client_email,
@@ -185,26 +189,51 @@ export const projectsRoutes: Route[] = [
       requirePermission(auth, 'project:write');
       const id = pathParam(ctx);
       const b = await readJson(req);
-      const parsed: Record<string, string | number | undefined> = {
+      /** Optional text: '' or null clears it. */
+      const clearText = (f: string): string | null | undefined => {
+        const v = b[f];
+        if (v === undefined) return undefined;
+        if (v === null || v === '') return null;
+        return requiredStr(v, f);
+      };
+      const isoDate = (f: string, clearable: boolean): string | null | undefined => {
+        const v = b[f];
+        if (v === undefined) return undefined;
+        if (clearable && (v === null || v === '')) return null;
+        if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          throw Errors.validation([{ field: f, message: 'Must be a date (yyyy-mm-dd)' }]);
+        }
+        return v;
+      };
+      const parsed: Record<string, string | number | null | undefined> = {
         name: b.name === undefined ? undefined : requiredStr(b.name, 'name'),
-        status: b.status === undefined ? undefined : requiredStr(b.status, 'status'),
+        status: b.status === undefined ? undefined : oneOf(b.status, 'status', PROJECT_STATUSES),
+        clientName: b.clientName === undefined ? undefined : requiredStr(b.clientName, 'clientName'),
+        clientPhone: b.clientPhone === undefined ? undefined : requiredStr(b.clientPhone, 'clientPhone'),
+        clientEmail: clearText('clientEmail'), location: clearText('location'), siteAddress: clearText('siteAddress'),
+        city: clearText('city'), state: clearText('state'),
+        startDate: isoDate('startDate', false), expectedEndDate: isoDate('expectedEndDate', false),
+        actualEndDate: isoDate('actualEndDate', true),
         otRatePaisePerHour: b.otRatePaisePerHour === undefined ? undefined : intNonnegative(b.otRatePaisePerHour, 'otRatePaisePerHour'),
-        contractValuePaise: b.contractValuePaise === undefined ? undefined : intNonnegative(b.contractValuePaise, 'contractValuePaise'),
-        description: b.description === undefined ? undefined : optionalStr(b.description, 'description'),
+        contractValuePaise: b.contractValuePaise === undefined ? undefined
+          : b.contractValuePaise === null ? null : intNonnegative(b.contractValuePaise, 'contractValuePaise'),
+        description: clearText('description'),
       };
       const row = await withTenant(auth.tenantId, async (c) => {
         const before = await c.query('SELECT * FROM projects WHERE tenant_id=$1 AND id=$2', [auth.tenantId, id]);
         if (!before.rows[0]) throw Errors.notFound('Project');
-        const map: Record<string, string> = {
-          name: 'name', status: 'status', otRatePaisePerHour: 'ot_rate_paise_per_hour',
-          contractValuePaise: 'contract_value_paise', description: 'description',
+        const map: Record<string, [string, string?]> = {
+          name: ['name'], status: ['status', '::project_status'], clientName: ['client_name'], clientPhone: ['client_phone'],
+          clientEmail: ['client_email'], location: ['location'], siteAddress: ['site_address'], city: ['city'], state: ['state'],
+          startDate: ['start_date', '::date'], expectedEndDate: ['expected_end_date', '::date'], actualEndDate: ['actual_end_date', '::date'],
+          otRatePaisePerHour: ['ot_rate_paise_per_hour'], contractValuePaise: ['contract_value_paise'], description: ['description'],
         };
         const entries = Object.entries(parsed).filter(([, v]) => v !== undefined);
         if (!entries.length) throw Errors.badRequest('No fields to update');
-        // Fixed upstream off-by-one: values occupy $4..$n; $3 is the id in WHERE.
-        const sets = entries.map(([k], i) => `${map[k]!} = $${i + 4}`).join(', ');
+        // $1 tenant, $2 user, $3 project id; values occupy $4..$n.
+        const sets = entries.map(([k], i) => `${map[k]![0]} = $${i + 4}${map[k]![1] ?? ''}`).join(', ');
         const r = await c.query(
-          `UPDATE projects SET ${sets}, updated_by=$2 WHERE tenant_id=$1 AND id=$3 RETURNING *`,
+          `UPDATE projects SET ${sets}, updated_by=$2, updated_at=now() WHERE tenant_id=$1 AND id=$3 RETURNING *`,
           [auth.tenantId, auth.userId, id, ...entries.map(([, v]) => v)],
         );
         await writeAudit(c, auth, {

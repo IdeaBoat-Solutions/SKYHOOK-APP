@@ -424,65 +424,194 @@ export function mergeRcPasses(texts: string[]): ParsedRc {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Owner serial: the number printed inside a circle next to "Owner Serial"      */
+/* Fields full-page OCR misses: owner serial, fuel, emission stage, wheel base */
 /* -------------------------------------------------------------------------- */
 
 interface OcrWord { text: string; bbox: { x0: number; y0: number; x1: number; y1: number } }
+interface Box { x0: number; y0: number; x1: number; y1: number }
+
+/** Values read by looking at one spot on the card instead of the whole page. */
+export interface CardExtras {
+  ownerSerial?: number;
+  fuel?: string;
+  /** Roman numeral printed before "(CEV)", e.g. "III". */
+  emissionStage?: string;
+  wheelBaseMm?: number;
+}
+
+/** Crop a box out of a bitmap, upscaled, optionally hard-thresholded (kills thin guilloche lines). */
+async function cropBox(
+  bitmap: ImageBitmap,
+  box: Box,
+  scale: number,
+  threshold?: number,
+): Promise<{ blob: Blob; canvas: HTMLCanvasElement } | null> {
+  const sx = Math.max(0, Math.round(box.x0));
+  const sy = Math.max(0, Math.round(box.y0));
+  const sw = Math.min(bitmap.width, Math.round(box.x1)) - sx;
+  const sh = Math.min(bitmap.height, Math.round(box.y1)) - sy;
+  if (sw < 8 || sh < 8) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = sw * scale;
+  canvas.height = sh * scale;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  if (threshold !== undefined) {
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = img.data[i]! < threshold ? 0 : 255;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+  return blob ? { blob, canvas } : null;
+}
 
 /**
- * Full-page OCR drops a lone digit inside a circle, so the serial is read separately:
- * find the "Owner" label of "Owner Serial" by position, crop the circle to its right
- * and read just that crop with a digits-only whitelist. Returns undefined when the
- * page has no such label (e.g. the back of the card).
+ * Count the vertical strokes of a roman numeral made only of I's ("I", "II", "III")
+ * in a thresholded crop. Returns undefined when the glyphs are anything else (V, IV, X
+ * have diagonal strokes, so their columns are not all full height).
  */
-export async function readOwnerSerial(images: Blob[]): Promise<number | undefined> {
+function countBars(canvas: HTMLCanvasElement): number | undefined {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return undefined;
+  const { width, height } = canvas;
+  const d = ctx.getImageData(0, 0, width, height).data;
+  let tallRuns = 0;
+  let inRun = false;
+  let tallCols = 0;
+  let inkCols = 0;
+  for (let x = 0; x < width; x++) {
+    let ink = 0;
+    for (let y = 0; y < height; y++) if (d[(y * width + x) * 4]! < 128) ink += 1;
+    // Columns that are ink from top to bottom are the card edge, not a numeral stroke.
+    const tall = ink >= height * 0.4 && ink < height * 0.92;
+    if (ink > 0) inkCols += 1;
+    if (tall) tallCols += 1;
+    if (tall && !inRun) tallRuns += 1;
+    inRun = tall;
+  }
+  if (tallRuns < 1 || tallRuns > 3) return undefined;
+  // Every inked column must be (almost) a full-height bar column.
+  return tallCols >= inkCols * 0.7 ? tallRuns : undefined;
+}
+
+const FUEL_PATTERNS: [RegExp, string][] = [
+  [/[DB]IES[EC][LI]/, 'DIESEL'],
+  [/PETR[O0]L/, 'PETROL'],
+  [/\bCNG\b/, 'CNG'],
+  [/\bLPG\b/, 'LPG'],
+  [/ELECTR[I1]C/, 'ELECTRIC'],
+  [/HYBR[I1]D/, 'HYBRID'],
+];
+
+/**
+ * Full-page OCR drops a few things on a card: the digit inside the "Owner Serial"
+ * circle, the "Fuel" value (a guilloche swoosh runs through it), the roman numeral
+ * of "BHARAT STAGE III (CEV)", and sometimes mistypes the wheel base. Each is read
+ * from a small crop placed relative to a label found by position, which is far more
+ * reliable than reading the whole page. Anything not found is simply left out.
+ */
+export async function readCardExtras(images: Blob[]): Promise<CardExtras> {
   const { createWorker } = await import('tesseract.js');
   const worker = await createWorker('eng', 1);
+  const extras: CardExtras = {};
+  const read = async (blob: Blob, psm: string, whitelist = '') => {
+    await worker.setParameters({ tessedit_pageseg_mode: psm as never, tessedit_char_whitelist: whitelist });
+    return (await worker.recognize(blob)).data.text;
+  };
   try {
     for (const image of images) {
       const prepared = await preprocess(image);
       await worker.setParameters({ tessedit_pageseg_mode: '11' as never, tessedit_char_whitelist: '' });
       const { data } = await worker.recognize(prepared);
       const words = ((data as unknown as { words?: OcrWord[] }).words ?? []).filter((w) => w.text.trim());
-
-      // "Owner" labels also appear in "Owner Name" and "...Individual Owner)"; the serial's
-      // label is the top-most plain "Owner" that is not followed by "Name".
-      const candidates = words.filter((w, i) => {
-        if (!/^owner$/i.test(w.text.trim())) return false;
-        const h = w.bbox.y1 - w.bbox.y0;
-        return !words.some(
-          (o, j) => j !== i && /^name/i.test(o.text) &&
-            Math.abs(o.bbox.y0 - w.bbox.y0) < h && o.bbox.x0 >= w.bbox.x1 - 5 && o.bbox.x0 - w.bbox.x1 < h * 3,
-        );
-      });
-      const label = candidates.sort((a, b) => a.bbox.y0 - b.bbox.y0)[0];
-      if (!label) continue;
-
-      const h = Math.max(20, label.bbox.y1 - label.bbox.y0);
-      const sx = Math.max(0, Math.round(label.bbox.x1 + 0.3 * h));
-      const sy = Math.max(0, Math.round(label.bbox.y0 - 0.6 * h));
-      const sw = Math.round(4.2 * h);
-      const sh = Math.round(3 * h);
-
       const bitmap = await createImageBitmap(prepared);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.min(sw, bitmap.width - sx) * 2;
-      canvas.height = Math.min(sh, bitmap.height - sy) * 2;
-      const ctx = canvas.getContext('2d');
-      if (!ctx || canvas.width < 10 || canvas.height < 10) continue;
-      ctx.drawImage(bitmap, sx, sy, canvas.width / 2, canvas.height / 2, 0, 0, canvas.width, canvas.height);
-      bitmap.close?.();
-      const crop = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
-      if (!crop) continue;
+      const hOf = (w: OcrWord) => Math.max(14, w.bbox.y1 - w.bbox.y0);
+      try {
+        /* ---- owner serial ------------------------------------------------ */
+        if (extras.ownerSerial === undefined) {
+          // "Owner" labels also appear in "Owner Name" and "...Individual Owner)"; the serial's
+          // label is the top-most plain "Owner" that is not followed by "Name".
+          const candidates = words.filter((w, i) => {
+            if (!/^owner$/i.test(w.text.trim())) return false;
+            const h = hOf(w);
+            return !words.some(
+              (o, j) => j !== i && /^name/i.test(o.text) &&
+                Math.abs(o.bbox.y0 - w.bbox.y0) < h && o.bbox.x0 >= w.bbox.x1 - 5 && o.bbox.x0 - w.bbox.x1 < h * 3,
+            );
+          });
+          const label = candidates.sort((a, b) => a.bbox.y0 - b.bbox.y0)[0];
+          if (label) {
+            const h = hOf(label);
+            const crop = await cropBox(bitmap, {
+              x0: label.bbox.x1 + 0.3 * h, y0: label.bbox.y0 - 0.6 * h,
+              x1: label.bbox.x1 + 0.3 * h + 4.2 * h, y1: label.bbox.y0 - 0.6 * h + 3 * h,
+            }, 2);
+            if (crop) {
+              for (const psm of ['7', '10']) {
+                const value = (await read(crop.blob, psm, '123456789')).replace(/\D/g, '');
+                if (/^[1-9]\d?$/.test(value)) { extras.ownerSerial = Number(value); break; }
+              }
+            }
+          }
+        }
 
-      for (const psm of ['7', '10']) {
-        await worker.setParameters({ tessedit_pageseg_mode: psm as never, tessedit_char_whitelist: '123456789' });
-        const { data: digit } = await worker.recognize(crop);
-        const value = digit.text.replace(/\D/g, '');
-        if (/^[1-9]\d?$/.test(value)) return Number(value);
+        /* ---- fuel (above "Emission Norms / BHARAT STAGE") ----------------- */
+        const bharat = words.find((w) => /^bharat$/i.test(w.text.trim()));
+        if (bharat && !extras.fuel) {
+          const h = hOf(bharat);
+          const box = { x0: bharat.bbox.x0 - 1.2 * h, y0: bharat.bbox.y0 - 4.8 * h, x1: bharat.bbox.x0 + 6 * h, y1: bharat.bbox.y0 - 1.9 * h };
+          for (const threshold of [110, 90, 130]) {
+            const crop = await cropBox(bitmap, box, 2, threshold);
+            if (!crop) break;
+            const text = (await read(crop.blob, '6')).toUpperCase();
+            const hit = FUEL_PATTERNS.find(([re]) => re.test(text));
+            if (hit) { extras.fuel = hit[1]; break; }
+          }
+        }
+
+        /* ---- emission stage numeral before "(CEV)" / "(TREM)" ------------ */
+        const isSuffix = (w: OcrWord) => /^\(?(CEV|TREM)\)?$/i.test(w.text.trim());
+        let suffix = words.find(isSuffix);
+        if (!suffix && bharat && !extras.emissionStage) {
+          // Sparse mode often skips the small "(CEV)" line; column mode keeps it.
+          await worker.setParameters({ tessedit_pageseg_mode: '4' as never, tessedit_char_whitelist: '' });
+          const columns = (await worker.recognize(prepared)).data as unknown as { words?: OcrWord[] };
+          suffix = (columns.words ?? []).find(isSuffix);
+        }
+        if (suffix && !extras.emissionStage) {
+          const h = hOf(suffix);
+          for (const threshold of [110, 90, 130]) {
+            const crop = await cropBox(bitmap, {
+              x0: suffix.bbox.x0 - 3.4 * h, y0: suffix.bbox.y0 - 0.1 * h,
+              x1: suffix.bbox.x0 - 0.15 * h, y1: suffix.bbox.y1 + 0.1 * h,
+            }, 3, threshold);
+            const bars = crop && countBars(crop.canvas);
+            if (bars) { extras.emissionStage = 'I'.repeat(bars); break; }
+          }
+        }
+
+        /* ---- wheel base --------------------------------------------------- */
+        const wheel = words.find((w) => /^wheel$/i.test(w.text.trim()));
+        if (wheel && extras.wheelBaseMm === undefined) {
+          const h = hOf(wheel);
+          const crop = await cropBox(bitmap, {
+            x0: wheel.bbox.x0 - 0.5 * h, y0: wheel.bbox.y1 + 0.2 * h,
+            x1: wheel.bbox.x0 + 9 * h, y1: wheel.bbox.y1 + 2.8 * h,
+          }, 2);
+          if (crop) {
+            const value = (await read(crop.blob, '6')).match(/(?<![\d.])(\d{4})(?![\d.])/)?.[1];
+            if (value && Number(value) >= 1000) extras.wheelBaseMm = Number(value);
+          }
+        }
+      } finally {
+        bitmap.close?.();
       }
     }
-    return undefined;
+    return extras;
   } finally {
     await worker.terminate();
   }
@@ -521,14 +650,20 @@ export async function scanRcDocuments(
   const columnText = pages.map((p) => p[0]!.text).join('\n');
   const sparseText = pages.map((p) => p[1]!.text).join('\n');
   const parsed = mergeRcPasses([columnText, sparseText]);
-  if (parsed.ownerSerial === undefined) {
-    onProgress?.({ status: 'reading owner serial', progress: 1 });
-    try {
-      const serial = await readOwnerSerial(images);
-      if (serial !== undefined) parsed.ownerSerial = serial;
-    } catch {
-      /* the serial is a convenience; the review step lets a person type it */
+  onProgress?.({ status: 'checking details on the card', progress: 1 });
+  try {
+    const extras = await readCardExtras(images);
+    if (parsed.ownerSerial === undefined && extras.ownerSerial !== undefined) parsed.ownerSerial = extras.ownerSerial;
+    if (!parsed.fuel && extras.fuel) parsed.fuel = extras.fuel;
+    if (extras.wheelBaseMm !== undefined) parsed.wheelBaseMm = extras.wheelBaseMm;
+    if (extras.emissionStage) {
+      const norms = parsed.emissionNorms ?? 'BHARAT STAGE';
+      if (!/\b(VI|IV|V|III|II|I)\b/.test(norms)) {
+        parsed.emissionNorms = norms.replace(/^(BHARAT STAGE)(.*)$/, '$1 ' + extras.emissionStage + '$2').replace(/\s+/g, ' ').trim();
+      }
     }
+  } catch {
+    /* these are conveniences; the review step lets a person type them */
   }
   const confidence = Math.min(...pages.map((p) => Math.max(...p.map((x) => x.confidence))));
   return { parsed, confidence, pages: images.length, text: `${columnText}\n${sparseText}` };

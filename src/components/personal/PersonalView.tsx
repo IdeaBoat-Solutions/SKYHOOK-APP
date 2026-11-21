@@ -75,6 +75,9 @@ export const PersonalView: React.FC = () => {
   const [editing, setEditing] = useState<PersonalRecord | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [formError, setFormError] = useState('');
+  const [listError, setListError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -126,7 +129,7 @@ export const PersonalView: React.FC = () => {
     const digits = value.replace(/\D/g, '').slice(0, 4);
     setPin(digits);
     setPinError('');
-    if (digits.length === 4 && (!personalPinSet || cooldown === 0)) submitPin(digits);
+    if (digits.length === 4 && personalPinSet && cooldown === 0) submitPin(digits);
   };
 
   /** Defaults, then the owner's own, then any kind found only on records. */
@@ -145,6 +148,20 @@ export const PersonalView: React.FC = () => {
   const recordsFor = (kind: PersonalRecordKind) =>
     personalRecords.filter((r) => r.kind === kind);
 
+  /** Whole days from today to a due date (negative = overdue); null when there is no valid date. */
+  const daysUntil = (iso?: string): number | null => {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+    return Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${currentDate}T00:00:00Z`)) / 86_400_000);
+  };
+  const dueBadge = (iso?: string) => {
+    const d = daysUntil(iso);
+    if (d === null) return null;
+    if (d < 0) return { cls: 'badge badge-danger', text: `Overdue by ${-d} day${d === -1 ? '' : 's'}` };
+    if (d === 0) return { cls: 'badge badge-warning', text: 'Due today' };
+    if (d <= 30) return { cls: 'badge badge-warning', text: `Due in ${d} day${d === 1 ? '' : 's'}` };
+    return null;
+  };
+
   const totals = useMemo(() => {
     const typeOf = (kind: string) =>
       (categories.find((c) => c.kind === kind) ?? categoryFromKind(kind)).type;
@@ -157,15 +174,12 @@ export const PersonalView: React.FC = () => {
     const annualPremium = personalRecords
       .filter((r) => typeOf(r.kind) === 'policy')
       .reduce((sum, r) => sum + (r.periodicAmount || 0) * 12, 0);
-    const today = new Date(`${currentDate}T00:00:00`);
-    const horizon = new Date(today);
-    horizon.setDate(horizon.getDate() + 30);
-    const upcoming = personalRecords.filter((r) => {
-      if (!r.dueDate) return false;
-      const due = new Date(`${r.dueDate}T00:00:00`);
-      return due >= today && due <= horizon;
-    }).length;
-    return { loans, cover, annualPremium, upcoming };
+    const today = Date.parse(`${currentDate}T00:00:00Z`);
+    const dayCount = (iso: string) => Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - today) / 86_400_000);
+    const dated = personalRecords.filter((r) => /^\d{4}-\d{2}-\d{2}/.test(r.dueDate || ''));
+    const upcoming = dated.filter((r) => dayCount(r.dueDate) >= 0 && dayCount(r.dueDate) <= 30).length;
+    const overdue = dated.filter((r) => dayCount(r.dueDate) < 0).length;
+    return { loans, cover, annualPremium, upcoming, overdue };
   }, [personalRecords, categories, currentDate]);
 
   const openCategoryForm = () => {
@@ -215,6 +229,7 @@ export const PersonalView: React.FC = () => {
   };
 
   const openForm = (kind: PersonalRecordKind, record?: PersonalRecord) => {
+    setFormError('');
     setActiveKind(kind);
     setEditing(record ?? null);
     setForm(
@@ -234,8 +249,26 @@ export const PersonalView: React.FC = () => {
     setShowForm(true);
   };
 
+  const removeRecord = async (record: PersonalRecord) => {
+    if (!window.confirm(`Delete "${record.title}"?`)) return;
+    setListError('');
+    try {
+      await deletePersonalRecord(record.id);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Could not delete the record. Please try again.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setFormError('');
+    if (Number(form.amount) < 0 || Number(form.periodicAmount) < 0) {
+      setFormError('Amounts cannot be negative.');
+      setSaving(false);
+      return;
+    }
     const payload = {
       kind: activeKind,
       title: form.title.trim() || categoryOf(activeKind).label,
@@ -247,10 +280,16 @@ export const PersonalView: React.FC = () => {
       dueDate: form.dueDate,
       notes: form.notes.trim() || undefined,
     };
-    if (editing) await updatePersonalRecord(editing.id, payload);
-    else await addPersonalRecord(payload);
-    setShowForm(false);
-    setEditing(null);
+    try {
+      if (editing) await updatePersonalRecord(editing.id, payload);
+      else await addPersonalRecord(payload);
+      setShowForm(false);
+      setEditing(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not save the record. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* ---------------------------------------------------------------- gates */
@@ -299,6 +338,9 @@ export const PersonalView: React.FC = () => {
                 value={pin}
                 onChange={(e) => handlePinChange(e.target.value)}
                 disabled={cooldown > 0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitPin(pin);
+                }}
                 placeholder="••••"
                 className="form-input text-center text-2xl tracking-[0.6em] font-mono"
               />
@@ -316,6 +358,9 @@ export const PersonalView: React.FC = () => {
                   autoComplete="off"
                   maxLength={4}
                   value={confirmPin}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitPin(pin);
+                  }}
                   onChange={(e) => {
                     setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4));
                     setPinError('');
@@ -366,7 +411,7 @@ export const PersonalView: React.FC = () => {
                   type="button"
                   disabled={cooldown > 0}
                   onClick={() => {
-                    if (pin.length === 4 && !personalPinSet) submitPin(pin);
+                    if (pin.length === 4) submitPin(pin);
                   }}
                   className="btn btn-primary h-11"
                 >
@@ -430,6 +475,10 @@ export const PersonalView: React.FC = () => {
         </button>
       </div>
 
+      {listError && (
+        <div className="notice notice--danger text-xs" role="alert">{listError}</div>
+      )}
+
       <div className="notice notice--success flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 shrink-0 text-success-700" />
         <span className="text-xs font-semibold text-success-800">
@@ -437,13 +486,13 @@ export const PersonalView: React.FC = () => {
         </span>
       </div>
 
-      <div className="stat-grid">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="stat-card">
           <span className="stat-label">Total loan outstanding</span>
           <div className="stat-value">{formatINR(totals.loans)}</div>
-          <span className="stat-hint">Home + auto loans</span>
+          <span className="stat-hint">All loan categories</span>
         </div>
-        <div className="notice notice--success">
+        <div className="notice notice--success flex-col items-start">
           <span className="stat-label text-success-800">Total cover</span>
           <div className="stat-value text-success-900">{formatINR(totals.cover)}</div>
           <span className="stat-hint text-success-700">Insurance &amp; term plans</span>
@@ -453,14 +502,16 @@ export const PersonalView: React.FC = () => {
           <div className="stat-value">{formatINR(totals.annualPremium)}</div>
           <span className="stat-hint">Estimated from monthly premiums</span>
         </div>
-        <div className="notice notice--warning">
-          <span className="stat-label text-warning-800">Due this month</span>
+        <div className="notice notice--warning flex-col items-start">
+          <span className="stat-label text-warning-800">Due in 30 days</span>
           <div className="stat-value text-warning-900">{totals.upcoming}</div>
-          <span className="stat-hint text-warning-700">Payments or renewals</span>
+          <span className="stat-hint text-warning-700">
+            {totals.overdue > 0 ? `${totals.overdue} overdue` : 'Payments or renewals'}
+          </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {categories.map((cat) => {
           const Icon = calcIcon(cat.icon);
           const items = recordsFor(cat.kind);
@@ -482,8 +533,8 @@ export const PersonalView: React.FC = () => {
                   </span>
                   {isActive && <CheckCircle2 className="h-4 w-4 text-brand-700" />}
                 </div>
-                <h3 className="mt-3 text-sm font-bold tracking-tight text-ink-900">{cat.label}</h3>
-                <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-500">{cat.description}</p>
+                <h3 className="mt-3 whitespace-normal break-words text-sm font-bold tracking-tight text-ink-900">{cat.label}</h3>
+                <p className="mt-1 whitespace-normal break-words text-[11px] leading-snug text-ink-500">{cat.description}</p>
                 <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
                   <span className="text-[11px] text-ink-500">{items.length} record{items.length === 1 ? '' : 's'}</span>
                   <span className="text-xs font-bold text-ink-900">{formatINR(total)}</span>
@@ -493,7 +544,7 @@ export const PersonalView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => removeCategory(cat)}
-                  className="icon-btn absolute right-2 top-2 !h-6 !w-6 bg-surface hover:text-danger-700"
+                  className="icon-btn absolute right-1.5 top-1.5 !h-8 !w-8 bg-surface hover:text-danger-700"
                   title={`Remove ${cat.label}`}
                   aria-label={`Remove ${cat.label}`}
                 >
@@ -513,7 +564,7 @@ export const PersonalView: React.FC = () => {
             <Plus className="h-5 w-5" />
           </span>
           <span className="text-sm font-semibold">New category</span>
-          <span className="text-[11px] text-ink-500">Loan, insurance or anything similar</span>
+          <span className="text-center text-[11px] text-ink-500">Loan, insurance or anything similar</span>
         </button>
       </div>
 
@@ -529,7 +580,45 @@ export const PersonalView: React.FC = () => {
           </button>
         </div>
 
-        <div className="table-wrap">
+        <div className="md:hidden">
+          {visibleRecords.map((record) => {
+            const badge = dueBadge(record.dueDate);
+            return (
+              <div key={record.id} className="border-b border-line p-4 last:border-b-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-ink-900">{record.title}</div>
+                    <div className="mt-0.5 text-xs text-ink-600">
+                      {record.provider || '—'}{record.referenceNumber ? ` · ${record.referenceNumber}` : ''}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-bold text-ink-900">{formatINR(record.amount)}</div>
+                    {record.periodicAmount ? (
+                      <div className="text-xs font-semibold text-brand-700">{formatINR(record.periodicAmount)}/mo</div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-600">
+                  <span>Start: {formatDateDDMMYYYY(record.startDate)}</span>
+                  <span>Due: {formatDateDDMMYYYY(record.dueDate)}</span>
+                  {badge && <span className={badge.cls}>{badge.text}</span>}
+                </div>
+                {record.notes && <div className="mt-1.5 text-xs text-ink-500">{record.notes}</div>}
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => openForm(activeKind, record)} className="btn btn-secondary btn-sm flex-1">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  <button onClick={() => removeRecord(record)} className="btn btn-secondary btn-sm flex-1 hover:text-danger-700">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className={visibleRecords.length ? 'table-wrap hidden md:block' : 'table-wrap'}>
           {visibleRecords.length ? (
             <table className="data-table">
               <thead>
@@ -560,18 +649,21 @@ export const PersonalView: React.FC = () => {
                     <td className="px-3.5 py-3 text-[11px] text-ink-600">
                       <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Start: {formatDateDDMMYYYY(record.startDate)}</span>
                       <span className="mt-0.5 flex items-center gap-1"><Landmark className="h-3 w-3" /> Due: {formatDateDDMMYYYY(record.dueDate)}</span>
+                      {(() => {
+                        const badge = dueBadge(record.dueDate);
+                        return badge ? <span className={`${badge.cls} mt-1`}>{badge.text}</span> : null;
+                      })()}
                     </td>
                     <td className="px-3.5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openForm(activeKind, record)} className="icon-btn" title="Edit record">
+                        <button onClick={() => openForm(activeKind, record)} className="icon-btn" title="Edit record" aria-label="Edit record">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(`Delete "${record.title}"?`)) void deletePersonalRecord(record.id);
-                          }}
+                          onClick={() => removeRecord(record)}
                           className="icon-btn hover:text-danger-700"
                           title="Delete record"
+                          aria-label="Delete record"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -734,6 +826,9 @@ export const PersonalView: React.FC = () => {
 
             <form onSubmit={handleSubmit}>
               <div className="modal-body space-y-4">
+                {formError && (
+                  <div className="notice notice--danger text-xs" role="alert">{formError}</div>
+                )}
                 <div>
                   <label className="form-label">Particulars / title</label>
                   <input
@@ -769,6 +864,8 @@ export const PersonalView: React.FC = () => {
                     <label className="form-label">{currentMeta.amountLabel} (₹)</label>
                     <input
                       type="number"
+                      min="0"
+                      inputMode="decimal"
                       value={form.amount}
                       onChange={(e) => setForm({ ...form, amount: e.target.value })}
                       className="form-input"
@@ -778,6 +875,8 @@ export const PersonalView: React.FC = () => {
                     <label className="form-label">{currentCategory.type === 'loan' ? 'Monthly EMI (₹)' : 'Monthly premium (₹)'}</label>
                     <input
                       type="number"
+                      min="0"
+                      inputMode="decimal"
                       value={form.periodicAmount}
                       onChange={(e) => setForm({ ...form, periodicAmount: e.target.value })}
                       className="form-input"
@@ -816,9 +915,9 @@ export const PersonalView: React.FC = () => {
                 <button type="button" onClick={() => setShowForm(false)} className="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={saving}>
                   <CheckCircle2 className="h-4 w-4" />
-                  Save record
+                  {saving ? 'Saving…' : 'Save record'}
                 </button>
               </div>
             </form>

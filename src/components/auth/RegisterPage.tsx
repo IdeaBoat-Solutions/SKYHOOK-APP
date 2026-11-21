@@ -174,12 +174,12 @@ export const RegisterPage: React.FC = () => {
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
                       placeholder="At least 8 characters"
-                      className={`${inputProps('password').className} pr-10`}
+                      className={`${inputProps('password').className} pr-12`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                      className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink-400 hover:text-ink-700"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

@@ -36,7 +36,7 @@ export async function advanceRoutes(app: FastifyInstance): Promise<void> {
     const b = z.object({
       employeeId: z.string().uuid(), date: z.string(), amountPaise: z.number().int().positive(),
       paymentMode: z.enum(['cash', 'bank_transfer', 'upi', 'cheque', 'company_card']),
-      paymentReference: z.string().optional(), projectId: z.string().uuid().optional(),
+      paymentReference: z.string().optional(), projectId: z.preprocess((v) => (v === '' ? undefined : v), z.string().uuid().optional()),
       remarks: z.string().optional(),
     }).parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
@@ -45,7 +45,7 @@ export async function advanceRoutes(app: FastifyInstance): Promise<void> {
         [request.auth.tenantId, b.employeeId],
       );
       if (!emp.rows[0]) throw Errors.validation([{ field: 'employeeId', message: 'Only active operators are eligible' }]);
-      const seq = await c.query('SELECT count(*)::int n FROM salary_advances WHERE tenant_id=$1', [request.auth.tenantId]);
+      const seq = await c.query(`SELECT COALESCE(MAX(NULLIF(regexp_replace(advance_code,'\\D','','g'),'')::bigint),0)::int AS n FROM salary_advances WHERE tenant_id=$1`, [request.auth.tenantId]);
       const code = `ADV-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
       const r = await c.query(
         `INSERT INTO salary_advances (tenant_id,advance_code,employee_id,advance_date,amount_paise,payment_mode,

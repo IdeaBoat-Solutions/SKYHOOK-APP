@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bell,
   Calendar,
@@ -153,6 +153,24 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   } = useSkyhook();
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Click outside / Escape closes the alerts panel.
+  useEffect(() => {
+    if (!showNotifications) return;
+    const onDown = (e: Event) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowNotifications(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showNotifications]);
 
   const isManager = currentUser.role === 'manager';
 
@@ -176,10 +194,14 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     subtitle: 'Crane Business Management ERP',
   };
 
-  const handleResetData = () => {
-    if (window.confirm('Reset all Skyhook ERP demo records back to clean initial state?')) {
-      resetToDemoData();
-      alert('Demo data successfully restored.');
+  // Re-reads everything from the server (it never wipes data).
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefreshData = async () => {
+    setRefreshing(true);
+    try {
+      await resetToDemoData();
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -190,13 +212,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
   return (
     <header className="topbar-accent sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur-md">
-      <div className="flex h-14 items-center justify-between gap-2 px-2">
+      <div className="flex min-h-14 items-center justify-between gap-1 px-2 pt-[env(safe-area-inset-top)] sm:gap-2">
         {/* Left: page context */}
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
           <button
             type="button"
             onClick={onToggleSidebar}
-            className="icon-btn h-8 w-8 lg:hidden"
+            className="icon-btn h-8 w-8 shrink-0 lg:hidden"
             aria-label={isOpen ? 'Close navigation sidebar' : 'Open navigation sidebar'}
           >
             {isOpen ? (
@@ -208,7 +230,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <button
             type="button"
             onClick={onToggleSidebar}
-            className="icon-btn h-8 w-8 hidden lg:inline-flex"
+            className="icon-btn h-8 w-8 hidden shrink-0 lg:inline-flex"
             aria-label="Toggle navigation sidebar"
             title="Toggle sidebar"
           >
@@ -218,10 +240,16 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               <PanelLeftClose className="h-4 w-4 shrink-0" aria-hidden="true" />
             )}
           </button>
-          <span className="h-5 w-px shrink-0 bg-line" aria-hidden="true" />
-          <h1 className="truncate text-base font-semibold tracking-tight text-ink-900">
-            {currentMeta.title}
-          </h1>
+          <span className="hidden h-5 w-px shrink-0 bg-line sm:block" aria-hidden="true" />
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ink-900 sm:text-base">
+              {currentMeta.title}
+            </h1>
+            <p className="flex items-center gap-1 text-[11px] leading-tight text-ink-500 md:hidden">
+              <Calendar className="h-3 w-3 text-ink-400" aria-hidden="true" />
+              {formatDateDDMMYYYY(currentDate)}
+            </p>
+          </div>
         </div>
 
         {/* Right: compact utilities */}
@@ -233,20 +261,21 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
           <button
             type="button"
-            onClick={handleResetData}
-            title="Reset database to demo seed data"
-            className="icon-btn h-8 w-8"
-            aria-label="Reset demo data"
+            onClick={() => void handleRefreshData()}
+            disabled={refreshing}
+            title="Refresh data from the server"
+            className="icon-btn hidden h-8 w-8 sm:inline-flex"
+            aria-label="Refresh data"
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
 
           {/* Notifications */}
-          <div className="relative">
+          <div className="sm:relative" ref={notifRef}>
             <button
               type="button"
               onClick={() => setShowNotifications(!showNotifications)}
-              className="icon-btn relative h-8 w-8"
+              className="icon-btn relative h-8 w-8 shrink-0"
               aria-label="View notifications"
             >
               <Bell className="h-4 w-4" />
@@ -258,7 +287,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-surface shadow-popover">
+              <div className="fixed inset-x-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-lg border border-line bg-surface shadow-popover sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[22rem]">
                 <div className="flex items-center justify-between border-b border-line px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-ink-900">Actionable Alerts</span>
@@ -276,7 +305,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                   </button>
                 </div>
 
-                <div className="max-h-96 space-y-0.5 overflow-y-auto p-2">
+                <div className="max-h-[70dvh] space-y-0.5 overflow-y-auto p-2 sm:max-h-96">
                   {!isManager && emiAlerts.length > 0 && (
                     <NotificationRow
                       iconColor="text-accent-600"
@@ -370,10 +399,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             )}
           </div>
 
-          <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
+          <span className="mx-0.5 hidden h-4 w-px bg-line sm:mx-1 sm:block" aria-hidden="true" />
 
           <div
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-logo-700 text-[10px] font-bold text-white"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-logo-700 text-[10px] font-bold text-white"
             title={`${currentUser.name} · ${currentUser.role === 'owner' ? 'Owner / Admin' : 'Manager'}`}
           >
             {currentUser.name.charAt(0)}
@@ -382,7 +411,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             type="button"
             onClick={logout}
             title="Sign Out / Switch Account"
-            className="icon-btn h-8 w-8"
+            className="icon-btn h-8 w-8 shrink-0"
             aria-label="Sign Out"
           >
             <LogOut className="h-4 w-4" />

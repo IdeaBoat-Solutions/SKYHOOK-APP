@@ -193,7 +193,8 @@ export function calculatePayrollEntry(input: PayrollCalcInput): PayrollCalcOutpu
   } else {
     // Fixed monthly salary prorated by payable days / total days in month
     const totalDays = Math.max(1, input.totalDaysInMonth);
-    baseSalary = Math.round((input.monthlySalary / totalDays) * input.payableDays);
+    // Multiply before dividing so paise are rounded once, at the end.
+    baseSalary = Math.round((input.monthlySalary * input.payableDays) / totalDays);
   }
 
   let totalOtHours = 0;
@@ -242,13 +243,36 @@ export function calculatePayrollEntry(input: PayrollCalcInput): PayrollCalcOutpu
   };
 }
 
+/** Today in the user's own timezone as yyyy-mm-dd (never UTC, which is a day behind in India early morning). */
+export function localToday(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Add whole days to a yyyy-mm-dd date using UTC arithmetic (no timezone / DST drift). */
+export function addDaysISO(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split('T')[0];
+}
+
+/** Add calendar months to a yyyy-mm-dd date; a day past the end of the target month clamps (31 Jan + 1 month = 28/29 Feb). */
+export function addMonthsISO(dateStr: string, months: number): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const total = y * 12 + (m - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = total % 12;
+  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${String(ny).padStart(4, '0')}-${pad(nm + 1)}-${pad(Math.min(d, lastDay))}`;
+}
+
 /**
  * Calculates reminder status and days remaining relative to an evaluation date.
  */
 export function evaluateReminderStatus(
   dueDateStr: string,
   leadDays: number,
-  currentDateStr: string = '2026-10-24'
+  currentDateStr: string = localToday()
 ): {
   daysRemaining: number;
   status: 'overdue' | 'due_today' | 'upcoming' | 'none';
@@ -311,16 +335,10 @@ export function calculateNextServiceDate(
   // Hours-based servicing has no calendar due date — the due point is an
   // operating-hour reading, handled by evaluateServiceHours() below.
   if (frequencyUnit === 'hours') return '';
-  const d = new Date(lastServiceDateStr);
-  if (isNaN(d.getTime())) return lastServiceDateStr;
-
-  if (frequencyUnit === 'days') {
-    d.setDate(d.getDate() + frequencyValue);
-  } else {
-    d.setMonth(d.getMonth() + frequencyValue);
-  }
-
-  return d.toISOString().split('T')[0];
+  if (isNaN(new Date(lastServiceDateStr).getTime())) return lastServiceDateStr;
+  return frequencyUnit === 'days'
+    ? addDaysISO(lastServiceDateStr, frequencyValue)
+    : addMonthsISO(lastServiceDateStr, frequencyValue);
 }
 
 /**

@@ -84,26 +84,44 @@ export const PayrollView: React.FC = () => {
   // Custom lines are owner-managed and cannot change an approved/locked run.
   const canAdjust = currentUser.role === 'owner' && !currentRun?.locked;
 
-  const handleGenerate = () => {
-    generatePayrollForMonth(selectedMonth);
+  const isOwner = currentUser.role === 'owner';
+  const monthLabel = (ym: string) =>
+    new Date(`${ym}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+
+  // Every payroll action reports what really happened instead of failing silently.
+  const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (action: () => Promise<unknown>, okText: string) => {
+    if (busy) return false;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await action();
+      setNotice({ text: okText, kind: 'ok' });
+      return true;
+    } catch (e) {
+      setNotice({ text: e instanceof Error && e.message ? e.message : 'Could not complete that. Please try again.', kind: 'error' });
+      return false;
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const handleGenerate = () =>
+    run(() => generatePayrollForMonth(selectedMonth), `Payroll for ${monthLabel(selectedMonth)} recalculated from approved attendance.`);
 
   const handleApprove = () => {
-    if (!currentRun) return;
-    if (currentUser.role !== 'owner') {
-      alert('Only the Owner / Super Admin has authority to approve and lock finalized payroll.');
-      return;
-    }
+    if (!currentRun || !isOwner) return;
     if (
       window.confirm(
-        `Are you sure you want to approve and lock the ${currentRun.month} payroll? This action will freeze wage rates, lock attendance snapshots, and deduct advance recoveries from operator balances.`
+        `Approve and lock the ${monthLabel(currentRun.month)} payroll? This freezes wage rates and attendance for the month and deducts advance recoveries from operator balances.`
       )
     ) {
-      approvePayrollRun(currentRun.id);
+      void run(() => approvePayrollRun(currentRun.id), `${monthLabel(currentRun.month)} payroll approved and locked.`);
     }
   };
 
-  const handleConfirmPayment = (e: React.FormEvent) => {
+  const handleConfirmPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentModalEntry || !currentRun) return;
     const serverMode = (
@@ -115,9 +133,15 @@ export const PayrollView: React.FC = () => {
         'Cash Voucher': 'cash',
       } as Record<string, string>
     )[payMode] ?? 'bank_transfer';
-    markPayrollEntryPaid(currentRun.id, paymentModalEntry.id, serverMode, payRef);
-    setPaymentModalEntry(null);
-    setPayRef('');
+    const entry = paymentModalEntry;
+    const ok = await run(
+      () => markPayrollEntryPaid(currentRun.id, entry.id, serverMode, payRef.trim()),
+      `Recorded salary payment of ${formatINR(entry.netSalary)} for ${entry.employeeName}.`,
+    );
+    if (ok) {
+      setPaymentModalEntry(null);
+      setPayRef('');
+    }
   };
 
   // Polished KPI card shared by the payroll summary grid. Uses the same
@@ -213,10 +237,10 @@ export const PayrollView: React.FC = () => {
         </div>
 
         <div className="page-header-actions">
-          <div className="flex items-center gap-2">
-            <label className="form-label mb-0">Month:</label>
+          <div className="flex w-full sm:w-auto items-center gap-2">
+            <label className="form-label mb-0 shrink-0">Month:</label>
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="form-input w-auto">
+              <SelectTrigger className="form-input w-full sm:w-auto">
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
               <SelectContent>
@@ -227,25 +251,27 @@ export const PayrollView: React.FC = () => {
             </Select>
           </div>
 
-          <button
-            onClick={handleGenerate}
-            className="btn btn-secondary"
-          >
-            Recalculate
-          </button>
+          {isOwner && !currentRun?.locked && (
+            <button onClick={handleGenerate} disabled={busy} className="btn btn-secondary">
+              {currentRun ? 'Recalculate' : 'Generate Payroll'}
+            </button>
+          )}
 
-          {currentRun && !currentRun.locked ? (
-            <button
-              onClick={handleApprove}
-              className="btn btn-primary"
-            >
+          {currentRun && !currentRun.locked && isOwner && (
+            <button onClick={handleApprove} disabled={busy} className="btn btn-primary">
               <Lock className="w-3.5 h-3.5" />
               <span>Approve & Lock Payroll</span>
             </button>
-          ) : (
+          )}
+          {currentRun?.locked && (
             <div className="badge badge-success">
               <CheckCircle2 className="w-4 h-4 text-success-600" />
               <span>Approved & Locked by Owner</span>
+            </div>
+          )}
+          {currentRun && !currentRun.locked && !isOwner && (
+            <div className="badge badge-warning">
+              <span>Draft &ndash; awaiting owner approval</span>
             </div>
           )}
 
@@ -261,41 +287,36 @@ export const PayrollView: React.FC = () => {
         </div>
       </div>
 
-      {/* Specification Exact Verification Card (Ramesh Patel) */}
-      <div className="card card-pad flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="section-icon shrink-0 mt-0.5">
-            <Calculator className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-ink-900">Specification Calculation Match (Ramesh Patel):</span>
-              <span className="badge badge-success">
-                Verified
-              </span>
-            </div>
-            <p className="text-xs text-ink-600 mt-1">
-              <strong>Base:</strong> 24 Days x ₹900 = <strong>₹21,600</strong> | <strong>Project A OT:</strong> 4h x ₹150 = ₹600 | <strong>Project B OT:</strong> 6h x ₹200 = ₹1,200 | <strong>Gross:</strong> ₹23,400 | <strong>Advance Deduction:</strong> ₹2,500{' '}
-              <ArrowRight
-                size={12}
-                className="inline-block align-middle text-ink-400"
-                aria-hidden="true"
-              />{' '}
-              <strong>NET SALARY: ₹20,900</strong>
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => {
-            const ramesh = currentRun?.entries.find((e) => e.employeeCode === 'OP-001');
-            if (ramesh) setSelectedEntryForSlip(ramesh);
-          }}
-          className="btn btn-primary self-end md:self-center shrink-0"
+      {notice && (
+        <div
+          role={notice.kind === 'error' ? 'alert' : 'status'}
+          className={`notice ${notice.kind === 'error' ? 'notice--danger' : 'notice--success'} flex items-start justify-between gap-3 text-xs font-semibold`}
         >
-          View Ramesh Payslip
-        </button>
-      </div>
+          <span className="break-words min-w-0">{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="shrink-0" aria-label="Dismiss">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {currentRun && !currentRun.locked && (
+        <div className="notice text-xs text-ink-700">
+          <span>
+            <strong>Draft payroll.</strong> Only approved attendance counts. Daily-wage pay is present days x daily rate (half day = 0.5);
+            monthly pay is salary x payable days / days in the month, with absent, unpaid-leave and half days deducted and mid-month
+            joiners prorated. Overtime is paid to OT-eligible staff only. Salaries can be marked paid once the owner approves and locks the run.
+          </span>
+        </div>
+      )}
+
+      {!currentRun && (
+        <div className="card card-pad text-sm text-ink-600">
+          No payroll has been generated for <strong>{monthLabel(selectedMonth)}</strong> yet.
+          {isOwner
+            ? ' Approve the attendance for the month, then press Generate Payroll.'
+            : ' The owner generates and approves payroll once attendance is approved.'}
+        </div>
+      )}
 
       {/* Summary KPI Cards */}
       {currentRun && (
@@ -343,7 +364,7 @@ export const PayrollView: React.FC = () => {
           <PayrollStatCard
             label="Net Disbursal"
             value={<Currency value={adjustedRun?.totalNetSalary ?? currentRun.totalNetSalary} size="lg" />}
-            hint="Due 15/11/2026"
+            hint={currentRun.paymentDueDate ? `Due ${formatDateDDMMYYYY(currentRun.paymentDueDate)}` : 'Net payable'}
             icon={Landmark}
             accent="success"
             featured
@@ -366,7 +387,103 @@ export const PayrollView: React.FC = () => {
           </div>
         </div>
 
-        <div className="table-wrap">
+        {filteredEntries.length === 0 && (
+          <p className="p-6 text-center text-xs text-ink-500">
+            {currentRun ? 'No employees match your search.' : 'Nothing to show until payroll is generated.'}
+          </p>
+        )}
+
+        {/* Phones: one card per employee */}
+        <div className="lg:hidden divide-y divide-line">
+          {filteredEntries.map((entry) => {
+            const customPayTotal = (entry.customPay ?? []).reduce((t, a) => t + a.amount, 0);
+            const customDedTotal = (entry.customDeductions ?? []).reduce((t, a) => t + a.amount, 0);
+            return (
+              <div key={entry.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-bold text-ink-900">{entry.employeeName}</div>
+                    <div className="text-[11px] text-ink-500">{entry.employeeCode} • {entry.designation}</div>
+                  </div>
+                  <span className={`badge shrink-0 ${entry.paymentStatus === 'paid' ? 'badge-success' : 'badge-warning'}`}>
+                    {entry.paymentStatus}
+                  </span>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <div>
+                    <dt className="text-ink-500">Rate ({entry.salaryType})</dt>
+                    <dd className="font-semibold text-ink-800"><Currency value={entry.appliedDailyRate || entry.appliedMonthlyRate} size="xs" /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-500">Payable days</dt>
+                    <dd className="font-semibold text-ink-800">{entry.payableDays}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-500">Base pay</dt>
+                    <dd className="font-semibold text-ink-800"><Currency value={entry.baseSalary} size="sm" /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-500">Overtime ({entry.totalOtHours} h)</dt>
+                    <dd className="font-semibold text-brand-700"><Currency value={entry.otAmount} size="sm" /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-500">Gross pay</dt>
+                    <dd className="font-bold text-ink-900"><Currency value={entry.grossSalary} size="sm" /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-500">Advance recovery</dt>
+                    <dd className="font-semibold text-warning-700">
+                      {entry.advanceRecovery > 0 ? '- ' : ''}<Currency value={entry.advanceRecovery} size="sm" />
+                    </dd>
+                  </div>
+                  {customPayTotal > 0 && (
+                    <div>
+                      <dt className="text-ink-500">Custom pay</dt>
+                      <dd className="font-semibold text-success-700">+ <Currency value={customPayTotal} size="sm" /></dd>
+                    </div>
+                  )}
+                  {customDedTotal > 0 && (
+                    <div>
+                      <dt className="text-ink-500">Custom deduction</dt>
+                      <dd className="font-semibold text-danger-700">- <Currency value={customDedTotal} size="sm" /></dd>
+                    </div>
+                  )}
+                </dl>
+                <div className="flex items-center justify-between rounded-lg bg-success-50 px-3 py-2">
+                  <span className="text-xs font-semibold text-success-800">Net payable</span>
+                  <Currency value={entry.netSalary} size="lg" className="text-success-800 font-bold" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setSelectedEntryForSlip(entry)} className="btn btn-secondary">
+                    <Printer className="w-4 h-4 text-brand-700" />
+                    <span>Salary slip</span>
+                  </button>
+                  {isOwner && entry.paymentStatus !== 'paid' && (
+                    <button
+                      onClick={() => setPaymentModalEntry(entry)}
+                      disabled={!currentRun?.locked}
+                      title={currentRun?.locked ? 'Record payment' : 'Approve and lock the payroll first'}
+                      className="btn btn-primary"
+                    >
+                      Disburse
+                    </button>
+                  )}
+                  {canAdjust && (
+                    <button
+                      onClick={() => setAdjustmentEntryCode(entry.employeeCode)}
+                      className="btn btn-secondary col-span-2"
+                    >
+                      <BadgeIndianRupee className="w-4 h-4 text-warning-600" />
+                      Custom pay / deduction
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="table-wrap hidden lg:block">
           <table className="data-table">
             <thead>
               <tr>
@@ -494,11 +611,12 @@ export const PayrollView: React.FC = () => {
                         <span>Slip</span>
                       </button>
 
-                      {entry.paymentStatus !== 'paid' && (
+                      {isOwner && entry.paymentStatus !== 'paid' && (
                         <button
                           onClick={() => setPaymentModalEntry(entry)}
+                          disabled={!currentRun?.locked}
                           className="btn btn-secondary btn-sm"
-                          title="Record payment disbursal"
+                          title={currentRun?.locked ? 'Record payment disbursal' : 'Approve and lock the payroll first'}
                         >
                           Disburse
                         </button>
@@ -542,12 +660,13 @@ export const PayrollView: React.FC = () => {
               <button
                 onClick={() => setPaymentModalEntry(null)}
                 className="icon-btn"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmPayment} className="modal-body space-y-4">
+            <form id="pay-form" onSubmit={handleConfirmPayment} className="modal-body space-y-4">
               <div>
                 <span className="text-xs text-ink-500">Employee:</span>
                 <p className="font-semibold text-sm text-ink-900">
@@ -583,29 +702,22 @@ export const PayrollView: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. UTR-HDFC-991208821"
+                  placeholder="UTR / cheque / voucher number"
                   value={payRef}
                   onChange={(e) => setPayRef(e.target.value)}
                   className="form-input"
                 />
               </div>
 
-              <div className="form-actions">
-                <button
-                  type="button"
-                  onClick={() => setPaymentModalEntry(null)}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                >
-                  Confirm Disbursal
-                </button>
-              </div>
             </form>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setPaymentModalEntry(null)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button type="submit" form="pay-form" disabled={busy} className="btn btn-primary">
+                {busy ? 'Saving...' : 'Confirm Disbursal'}
+              </button>
+            </div>
           </div>
         </div>
       )}

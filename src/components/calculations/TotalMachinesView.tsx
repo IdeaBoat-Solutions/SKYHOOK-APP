@@ -174,7 +174,7 @@ export const TotalMachinesView: React.FC = () => {
           <SectionHeader
             title="Fleet by Machine Type"
             icon={PieChart}
-            action={<span className="shrink-0 text-xs text-ink-500">{byType.length} types</span>}
+            action={<span className="shrink-0 text-xs text-ink-500">{byType.length} {byType.length === 1 ? 'type' : 'types'}</span>}
           />
           {byType.length === 0 ? (
             <div className="empty-state">
@@ -256,7 +256,32 @@ export const TotalMachinesView: React.FC = () => {
             <p className="text-sm">No machines match this status.</p>
           </div>
         ) : (
-          <div className="table-wrap">
+          <>
+          <div className="space-y-2.5 md:hidden">
+            {rows.map((m) => (
+              <div key={m.id} className="rounded-lg border border-line p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-ink-900">{m.assetId}</div>
+                    <div className="truncate text-xs text-ink-600">{m.make} {m.model} · {m.machineType}</div>
+                  </div>
+                  <span className={`badge shrink-0 ${STATUS_META[m.status]?.badge ?? 'badge-neutral'}`}>
+                    {STATUS_META[m.status]?.label ?? m.status}
+                  </span>
+                </div>
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <div><dt className="text-ink-500">Capacity</dt><dd className="font-semibold text-ink-900">{m.tonnageCapacity} T</dd></div>
+                  <div><dt className="text-ink-500">Cost</dt><dd className="font-semibold text-ink-900"><Currency value={m.purchaseCost || 0} size="xs" /></dd></div>
+                  <div><dt className="text-ink-500">Purchased</dt><dd className="font-semibold text-ink-900">{m.purchaseDate ? `${formatDateDDMMYYYY(m.purchaseDate)} (${ageInYears(m.purchaseDate).toFixed(1)} yrs)` : '—'}</dd></div>
+                  <div><dt className="text-ink-500">Deployment</dt><dd className="truncate font-semibold text-ink-900">{projectName(m.currentProjectId) ?? '—'}</dd></div>
+                  {isOwner && outstandingByAsset[m.assetId] ? (
+                    <div className="col-span-2"><dt className="text-ink-500">EMI outstanding</dt><dd className="font-semibold text-ink-900"><Currency value={outstandingByAsset[m.assetId]} size="xs" /></dd></div>
+                  ) : null}
+                </dl>
+              </div>
+            ))}
+          </div>
+          <div className="table-wrap hidden md:block">
             <table className="data-table text-xs">
               <thead>
                 <tr>
@@ -282,7 +307,7 @@ export const TotalMachinesView: React.FC = () => {
                     </td>
                     <td className="text-right">{m.tonnageCapacity} T</td>
                     <td>{m.purchaseDate ? formatDateDDMMYYYY(m.purchaseDate) : '—'}</td>
-                    <td className="text-right">{ageInYears(m.purchaseDate).toFixed(1)} yrs</td>
+                    <td className="text-right">{m.purchaseDate ? `${ageInYears(m.purchaseDate).toFixed(1)} yrs` : '—'}</td>
                     <td className="text-right">
                       <Currency value={m.purchaseCost || 0} size="xs" />
                     </td>
@@ -306,6 +331,7 @@ export const TotalMachinesView: React.FC = () => {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>

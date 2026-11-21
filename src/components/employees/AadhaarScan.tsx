@@ -105,7 +105,7 @@ export const AadhaarScanModal: React.FC<Props> = ({ onClose, onApply }) => {
           <button type="button" onClick={onClose} className="icon-btn" aria-label="Close"><X className="h-4 w-4" /></button>
         </div>
 
-        <div className="modal-body max-h-[72vh] space-y-4 overflow-y-auto">
+        <div className="modal-body space-y-4 sm:max-h-[72vh]">
           {error && (
             <div className="alert-banner" role="alert">
               <AlertCircle className="h-4 w-4 shrink-0" />

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -171,6 +171,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // Drawer behaviour on phones: Escape closes it and the page behind does not scroll.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseMobile?.();
+    };
+    window.addEventListener('keydown', onKey);
+    const narrow = window.matchMedia('(max-width: 1023px)').matches;
+    const prev = document.body.style.overflow;
+    if (narrow) document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen, onCloseMobile]);
+
   const handleNavClick = (tab: NavTab) => {
     onSelectTab(tab);
     if (onCloseMobile) onCloseMobile();
@@ -188,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         type="button"
         onClick={() => handleNavClick(item.id)}
         aria-current={isActive ? 'page' : undefined}
-        className={`group relative flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+        className={`group relative flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition-colors lg:py-2 ${
           isActive
             ? 'bg-white/10 text-white ring-1 ring-inset ring-white/[0.06]'
             : 'text-ink-400 hover:bg-white/5 hover:text-white'
@@ -234,12 +250,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-white/5 bg-logo-700 text-ink-200 transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,86vw)] flex-col lg:w-72 border-r border-white/5 bg-logo-700 text-ink-200 transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } ${isCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
       >
         {/* Brand */}
-        <div className="relative border-b border-white/[0.06] px-5 pb-3 pt-4">
+        <div className="relative border-b border-white/[0.06] px-5 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
           <span
             className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-white/20 via-white/5 to-transparent"
             aria-hidden="true"
@@ -270,7 +286,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation */}
-        <nav className="sidebar-nav flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        <nav className="sidebar-nav flex-1 overflow-y-auto overscroll-contain px-2 pb-4 pt-2" aria-label="Main navigation">
           {NAV_SECTIONS.map((section) => {
             const items = section.items.filter((item) => !(isManager && item.ownerOnly));
             if (items.length === 0) return null;
@@ -283,7 +299,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Footer: one consolidated alert summary, the role switch and user */}
-        <div className="border-t border-white/[0.06] px-5 py-3">
+        <div className="border-t border-white/[0.06] px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {totalRemindersCount > 0 && (
             <button
               type="button"

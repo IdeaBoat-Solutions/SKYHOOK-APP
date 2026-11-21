@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, Copy, Check, RotateCcw } from 'lucide-react';
-import { ShiftToggle, shiftTimes, type Shift } from '../common/ShiftToggle';
+import { ShiftToggle, shiftTimes, detectShift, type Shift } from '../common/ShiftToggle';
 import { useSkyhook } from '../../data/apiStore';
 import { calculateWorkingAndOt, formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
 
@@ -57,7 +57,7 @@ export const LogsheetCalculator: React.FC = () => {
     }
     return { title: '', rate: '', rows: [] };
   });
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'ok' | 'failed' | null>(null);
 
   // Seed the first row once the shift length is known.
   useEffect(() => {
@@ -75,6 +75,16 @@ export const LogsheetCalculator: React.FC = () => {
 
   const patchRow = (id: string, patch: Partial<Row>) =>
     setState((s) => ({ ...s, rows: s.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+
+  const setRowTime = (id: string, field: 'start' | 'end', value: string) =>
+    setState((s) => ({
+      ...s,
+      rows: s.rows.map((r) => {
+        if (r.id !== id) return r;
+        const next = { ...r, [field]: value };
+        return { ...next, shift: detectShift(next.start, next.end, shiftHours) };
+      }),
+    }));
 
   const setRowShift = (id: string, shift: Shift) => {
     if (shift === 'custom') return patchRow(id, { shift });
@@ -99,7 +109,10 @@ export const LogsheetCalculator: React.FC = () => {
   const removeRow = (id: string) =>
     setState((s) => ({ ...s, rows: s.rows.length > 1 ? s.rows.filter((r) => r.id !== id) : s.rows }));
 
-  const reset = () => setState({ title: '', rate: '', rows: [blankRow()] });
+  const reset = () => {
+    if (!window.confirm('Clear this logsheet and start again?')) return;
+    setState({ title: '', rate: '', rows: [blankRow()] });
+  };
 
   const computed = useMemo(
     () => state.rows.map((r) => ({ ...r, hours: calculateWorkingAndOt(r.start, r.end, 0, 1440).netWorkingHours })),
@@ -120,18 +133,33 @@ export const LogsheetCalculator: React.FC = () => {
       `Total: ${hoursLabel(totalHours)} (${totalHours} hrs)`,
       ...(rate ? [`Amount @ ${formatINR(rate)}/hr: ${formatINR(amount)}`] : []),
     ];
+    const text = lines.join('\n');
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(text);
+      ok = true;
     } catch {
-      /* clipboard unavailable; ignore */
+      // Clipboard API blocked (insecure origin or permissions): fall back to a hidden textarea.
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {
+        ok = false;
+      }
     }
+    setCopied(ok ? 'ok' : 'failed');
+    setTimeout(() => setCopied(null), 2500);
   };
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <div className="stat-card stat-card-accent">
           <span className="stat-label">Total hours</span>
           <div className="stat-value">{totalHours} hrs</div>
@@ -168,6 +196,7 @@ export const LogsheetCalculator: React.FC = () => {
             id="logsheet-rate"
             type="number"
             min={0}
+            inputMode="decimal"
             className="form-input"
             placeholder="0"
             value={state.rate}
@@ -176,7 +205,49 @@ export const LogsheetCalculator: React.FC = () => {
         </div>
       </div>
 
-      <div className="table-card">
+      <div className="space-y-3 md:hidden">
+        {computed.map((r, i) => (
+          <div key={r.id} className="card card-pad space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-ink-500">Day {i + 1}</span>
+              <button
+                type="button"
+                className="icon-btn h-11 w-11"
+                onClick={() => removeRow(r.id)}
+                disabled={computed.length === 1}
+                aria-label="Remove row"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+            <div>
+              <label className="form-label">Date</label>
+              <DateInput className="form-input" value={r.date} onChange={(e) => patchRow(r.id, { date: e.target.value })} aria-label="Date" />
+            </div>
+            <ShiftToggle value={r.shift} onChange={(k) => setRowShift(r.id, k)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Start</label>
+                <input type="time" className="form-input" value={r.start} onChange={(e) => setRowTime(r.id, 'start', e.target.value)} aria-label="Start time" />
+              </div>
+              <div>
+                <label className="form-label">End</label>
+                <input type="time" className="form-input" value={r.end} onChange={(e) => setRowTime(r.id, 'end', e.target.value)} aria-label="End time" />
+              </div>
+            </div>
+            <div className="flex items-baseline justify-between border-t border-line pt-2.5">
+              <span className="text-xs font-semibold text-ink-500">Total hours</span>
+              <span className="text-base font-extrabold text-ink-900">{r.hours} hrs <span className="text-[11px] font-medium text-ink-500">({hoursLabel(r.hours)})</span></span>
+            </div>
+          </div>
+        ))}
+        <div className="flex items-baseline justify-between rounded-lg border border-line bg-surface-muted px-4 py-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">Grand total</span>
+          <span className="text-lg font-extrabold text-ink-900">{totalHours} hrs</span>
+        </div>
+      </div>
+
+      <div className="table-card hidden md:block">
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -207,7 +278,7 @@ export const LogsheetCalculator: React.FC = () => {
                       type="time"
                       className="form-input"
                       value={r.start}
-                      onChange={(e) => patchRow(r.id, { start: e.target.value, shift: 'custom' })}
+                      onChange={(e) => setRowTime(r.id, 'start', e.target.value)}
                       aria-label="Start time"
                     />
                   </td>
@@ -216,7 +287,7 @@ export const LogsheetCalculator: React.FC = () => {
                       type="time"
                       className="form-input"
                       value={r.end}
-                      onChange={(e) => patchRow(r.id, { end: e.target.value, shift: 'custom' })}
+                      onChange={(e) => setRowTime(r.id, 'end', e.target.value)}
                       aria-label="End time"
                     />
                   </td>
@@ -250,17 +321,17 @@ export const LogsheetCalculator: React.FC = () => {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-primary" onClick={addRow}>
+        <button type="button" className="btn btn-primary flex-1 sm:flex-none" onClick={addRow}>
           <Plus className="h-4 w-4" /> Add day
         </button>
         <button type="button" className="btn btn-secondary" onClick={copySummary}>
-          {copied ? <Check className="h-4 w-4 text-success-600" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copied' : 'Copy summary'}
+          {copied === 'ok' ? <Check className="h-4 w-4 text-success-600" /> : <Copy className="h-4 w-4" />}
+          {copied === 'ok' ? 'Copied' : copied === 'failed' ? 'Copy failed' : 'Copy summary'}
         </button>
         <button type="button" className="btn btn-ghost" onClick={reset}>
           <RotateCcw className="h-4 w-4" /> Clear
         </button>
-        <span className="ml-auto text-[11px] text-ink-500">Saved in this browser. Night shifts crossing midnight are counted correctly.</span>
+        <span className="w-full text-[11px] text-ink-500 sm:ml-auto sm:w-auto">Saved in this browser. Night shifts crossing midnight are counted correctly.</span>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  addMonths,
   allocateDailyMultiProjectWork,
   calculateEmi,
   calculatePayrollEntry,
@@ -127,5 +128,39 @@ describe('EMI amortization', () => {
     expect(r.totalInterestPaise).toBeGreaterThan(0);
     expect(r.schedule[0]!.interestPaise).toBe(INR(1000));
     expect(r.schedule[11]!.balancePaise).toBe(0);
+  });
+});
+
+describe('date arithmetic and schedules', () => {
+  it('clamps month-end when adding months (31 Jan + 1 month = 28 Feb)', () => {
+    expect(addMonths('2027-01-31', 1)).toBe('2027-02-28');
+    expect(addMonths('2028-01-31', 1)).toBe('2028-02-29');
+    expect(addMonths('2026-11-30', 3)).toBe('2027-02-28');
+    expect(addMonths('2026-12-15', 1)).toBe('2027-01-15');
+  });
+
+  it('adds days across month and year ends', () => {
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDays('2026-11-21', 100)).toBe('2027-03-01');
+  });
+
+  it('EMI due dates do not skip a month when the loan starts on the 31st', () => {
+    const r = calculateEmi(INR(120000), 0, 12, '2027-01-31', 5);
+    expect(r.schedule[0]!.dueDate).toBe('2027-02-05');
+    expect(r.schedule[11]!.dueDate).toBe('2028-01-05');
+  });
+
+  it('EMI schedule closes at exactly zero and sums to the principal at 0%', () => {
+    const r = calculateEmi(INR(100000) + 7, 0, 12, '2027-01-10', 10);
+    expect(r.schedule[11]!.balancePaise).toBe(0);
+    expect(r.schedule.reduce((s, x) => s + x.principalPaise, 0)).toBe(INR(100000) + 7);
+  });
+
+  it('monthly base pay: 31,000 / 31 days x 27.5 payable days = 27,500', () => {
+    const r = calculatePayrollEntry({
+      salaryType: 'monthly', dailyRatePaise: 0, monthlySalaryPaise: INR(31000), totalDaysInMonth: 31,
+      payableDays: 27.5, otProjectBreakdown: [],
+    });
+    expect(r.basePaise).toBe(INR(27500));
   });
 });

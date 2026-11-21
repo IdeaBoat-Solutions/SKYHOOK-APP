@@ -81,12 +81,12 @@ export const LoginPage: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">
+      <main className="flex flex-1 items-start justify-center px-4 py-6 sm:px-6 sm:py-10 lg:items-center">
         <div className="grid w-full max-w-4xl grid-cols-1 items-center gap-8 lg:grid-cols-12">
           {/* Brand & access information */}
-          <div className="space-y-5 lg:col-span-5">
+          <div className="order-2 space-y-5 lg:order-none lg:col-span-5">
             {/* The mark sits on the left of the sign-in screen as the brand anchor. */}
-            <div className="flex h-28 w-52 max-w-full items-center justify-center overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-sm sm:h-32 sm:w-60">
+            <div className="hidden h-28 w-52 max-w-full items-center lg:flex justify-center overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-sm sm:h-32 sm:w-60">
               <BrandLogo src={companySettings.logoUrl} className="h-full w-full scale-[1.12]" />
             </div>
             <div>
@@ -132,7 +132,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Sign-in card */}
-          <div className="card lg:col-span-7">
+          <div className="card order-1 lg:order-none lg:col-span-7">
             <div className="card-header">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-ink-900">System Sign In</h2>
@@ -158,7 +158,7 @@ export const LoginPage: React.FC = () => {
                     id="login-email"
                     type="email"
                     autoComplete="username"
-                    autoFocus
+                    autoFocus={typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@company.com"
@@ -178,12 +178,12 @@ export const LoginPage: React.FC = () => {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter password"
                       required
-                      className="form-input pr-10"
+                      className="form-input pr-12"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                      className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink-400 hover:text-ink-700"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

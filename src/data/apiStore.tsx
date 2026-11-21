@@ -115,8 +115,11 @@ interface SkyhookStoreContextType {
   bulkAddAttendance: (records: AttendanceRecord[]) => Promise<void>;
   approveAttendanceRecord: (id: string) => Promise<void>;
   rejectAttendanceRecord: (id: string, reason?: string) => Promise<void>;
+  /** params: operatorId, date, status, projectId?, machineId?, overtimeHours?, remarks?, and optional
+   *  startTime / endTime (HH:mm, e.g. from the system clock) and unpaidBreakMinutes. */
   markOperatorAttendanceQuick: (params: any) => Promise<AttendanceRecord>;
-  markAllOperatorsPresent: (params: { date: string; projectId?: string }) => Promise<BulkMarkResult>;
+  /** Optional startTime/endTime (HH:mm) override the default 08:00 shift layout. */
+  markAllOperatorsPresent: (params: { date: string; projectId?: string; startTime?: string; endTime?: string }) => Promise<BulkMarkResult>;
   addOrUpdateOvertimeHours: (params: any) => Promise<AttendanceRecord>;
   advances: SalaryAdvance[];
   addAdvance: (adv: any) => Promise<SalaryAdvance>;
@@ -230,11 +233,25 @@ function withExtraHours(time: string, hours: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+/** Trim a Postgres time ('08:00:00') or an HH:mm string to HH:mm; empty when absent. */
+function hhmm(t?: string | null): string {
+  const m = typeof t === 'string' ? t.match(/^(\d{1,2}):(\d{2})/) : null;
+  return m ? `${m[1]!.padStart(2, '0')}:${m[2]}` : '';
+}
+
 /** Ignore permission-denied reads (manager cannot read audit logs or EMI). */
 async function safeGet<T>(path: string, fallback: T): Promise<T> {
   try { return await api.get<T>(path); } catch (e) {
     if (e instanceof ApiFailure && (e.status === 403 || e.status === 401)) return fallback;
     throw e;
+  }
+}
+
+/** Secondary data (audit trail, notifications, adjustments...): a failure here must not block the whole app. */
+async function softGet<T>(path: string, fallback: T): Promise<T> {
+  try { return await safeGet<T>(path, fallback); } catch (e) {
+    console.warn(`Could not load ${path}`, e);
+    return fallback;
   }
 }
 
@@ -276,10 +293,10 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       safeGet<{ items: any[] }>('/payroll/runs', { items: [] }),
       safeGet<{ items: any[] }>('/expenses', { items: [] }),
       safeGet<{ items: any[] }>('/machine-working-logs', { items: [] }),
-      safeGet<{ items: any[] }>('/audit-logs?limit=200', { items: [] }),
-      safeGet<{ items: any[] }>('/notifications', { items: [] }),
-      safeGet<{ items: any[] }>('/payroll-adjustments', { items: [] }),
-      safeGet<{ items: any[] }>('/personal-records', { items: [] }),
+      softGet<{ items: any[] }>('/audit-logs?limit=200', { items: [] }),
+      softGet<{ items: any[] }>('/notifications', { items: [] }),
+      softGet<{ items: any[] }>('/payroll-adjustments', { items: [] }),
+      softGet<{ items: any[] }>('/personal-records', { items: [] }),
     ]);
     if (company) setCompanySettings(mapCompany(company));
     setAvailableUsers(users.items.map(mapUser));
@@ -317,7 +334,15 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     if (getToken()) {
-      loadAll().catch((e) => { console.error('Failed to load Skyhook data', e); setToken(null); setIsAuthenticated(false); });
+      loadAll().catch((e) => {
+        console.error('Failed to load Skyhook data', e);
+        // Only an invalid/expired token should end the session. A 429, a network
+        // blip or a 5xx must not silently sign the user out mid-save.
+        if (e instanceof ApiFailure && e.status === 401) {
+          setToken(null);
+          setIsAuthenticated(false);
+        }
+      });
     }
   }, [loadAll]);
 
@@ -336,7 +361,13 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       try {
         do {
           rerun.current = false;
-          await loadAll();
+          try {
+            await loadAll();
+          } catch (e) {
+            // The write itself already succeeded. A failed follow-up read must not
+            // reject the save and make it look like the user's edit was lost.
+            console.warn('Refresh after save failed', e);
+          }
         } while (rerun.current);
       } finally {
         loading.current = null;
@@ -585,8 +616,14 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
 
     addEmiLoan: async (loan) => {
+      // The API only accepts a real machine UUID; a display code like CR-001 is
+      // rejected, which used to make the whole "Save loan" action look like a no-op.
+      const assetId = asUuid(loan.assetId ?? (loan as any).assetCode);
+      if (!assetId) throw new Error('Choose a machine from the list.');
+      if (!String(loan.loanProvider ?? '').trim()) throw new Error('Enter the loan provider.');
+      if (!String(loan.loanRefNumber ?? '').trim()) throw new Error('Enter the loan account number.');
       const r = await api.post<any>('/emi-loans', {
-        assetId: loan.assetId ?? (loan as any).assetCode, loanProvider: loan.loanProvider,
+        assetId, loanProvider: loan.loanProvider,
         loanRefNumber: loan.loanRefNumber, loanStartDate: loan.loanStartDate,
         monthlyDueDay: loan.monthlyDueDay, principalPaise: rupeesToPaise((loan as any).principal ?? loan.emiAmount * loan.totalInstallments),
         annualInterestPct: (loan as any).annualInterestPct ?? 0,
@@ -596,8 +633,18 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return mapEmiLoan(r);
     },
     recordEmiPayment: async (loanId, installmentNumber, paymentMode, reference) => {
+      // The API only accepts its own payment-mode enum. Callers pass human labels
+      // like "Net Banking NEFT" / "NEFT Bank Transfer" / "Company Cheque", which
+      // used to be sent verbatim and rejected with a 422.
+      const raw = String(paymentMode ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+      const serverMode =
+        raw.includes('cheque') || raw.includes('check') ? 'cheque'
+        : raw.includes('upi') ? 'upi'
+        : raw.includes('cash') ? 'cash'
+        : raw.includes('card') ? 'company_card'
+        : 'bank_transfer';
       await api.post(`/emi-loans/${loanId}/payments`, {
-        installmentNumber, paymentMode: paymentMode.toLowerCase().replace('_', '_') as any,
+        installmentNumber, paymentMode: serverMode,
         paymentReference: reference,
       });
       await refresh();
@@ -639,9 +686,14 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const overtime = Math.max(0, Number(params.overtimeHours) || 0);
       // The server derives hours and overtime from the shift times, so encode them here.
       const worked = params.status === 'present' ? shift + overtime : params.status === 'half_day' ? shift / 2 + overtime : 0;
+      // Optional real clock times from the caller (system clock). Without them the shift is
+      // laid out from 08:00, as before. A start with no end derives the end from the shift.
+      const startTime = hhmm(params.startTime) || '08:00';
+      const endTime = hhmm(params.endTime) || withExtraHours(startTime, worked);
       const r = await api.post<any>('/attendance', {
         operatorId: t.operatorId, date: params.date, projectId: t.projectId, machineId: t.machineId,
-        startTime: '08:00', endTime: withExtraHours('08:00', worked),
+        startTime, endTime,
+        unpaidBreakMinutes: Math.max(0, Math.round(Number(params.unpaidBreakMinutes) || 0)),
         status: params.status, remarks: params.remarks ?? (overtime ? `${overtime}h OT` : 'Quick attendance'),
       });
       await refresh();
@@ -660,9 +712,10 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
           try {
             const t = resolveAttendanceTarget(employees, projects, op.id, params.projectId, undefined);
+            const startTime = hhmm(params.startTime) || '08:00';
             await api.post('/attendance', {
               operatorId: t.operatorId, date: params.date, projectId: t.projectId, machineId: t.machineId,
-              startTime: '08:00', endTime: withExtraHours('08:00', shift), status: 'present',
+              startTime, endTime: hhmm(params.endTime) || withExtraHours(startTime, shift), status: 'present',
               remarks: 'Marked present via Quick Attendance bulk action',
             });
             result.created += 1;
@@ -676,16 +729,20 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return result;
     },
     addOrUpdateOvertimeHours: async (params) => {
-      const t = resolveAttendanceTarget(employees, projects, params.operatorId, params.projectId, undefined);
+      const operator = employees.find((e) => e.id === params.operatorId || e.employeeId === params.operatorId);
+      const existingRow = attendance.find((a) => a.operatorId === (operator?.id ?? params.operatorId) && a.date === params.date);
+      // Adding overtime to a day that is already booked keeps that day's project, not the operator's current one.
+      const t = resolveAttendanceTarget(employees, projects, params.operatorId, params.projectId ?? existingRow?.projectId, undefined);
       assertNotLocked(attendance, t.operatorId, params.date, t.emp?.fullName);
-      const existing = attendance.find((a) => a.operatorId === t.operatorId && a.date === params.date);
+      const existing = existingRow ?? attendance.find((a) => a.operatorId === t.operatorId && a.date === params.date);
       const shift = companySettings.standardShiftHours || 10;
       const overtime = Math.max(0, Number(params.overtimeHours) || 0);
       const keep = existing && (existing.status === 'present' || existing.status === 'half_day');
       const status = keep ? existing.status : overtime > 0 || !existing ? 'present' : existing.status;
       const base = status === 'present' ? shift : status === 'half_day' ? shift / 2 : 0;
       const breakMin = existing?.unpaidBreakMinutes ?? 0;
-      const startTime = existing?.startTime || '08:00';
+      // Keep the start time already on the record (the server returns HH:mm:ss, the API wants HH:mm).
+      const startTime = hhmm(existing?.startTime) || hhmm(params.startTime) || '08:00';
       const r = await api.post<any>('/attendance', {
         operatorId: t.operatorId, date: params.date, projectId: t.projectId,
         machineId: asUuid(existing?.machineId) ?? t.machineId,
@@ -704,8 +761,8 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const emp = employees.find((e) => e.id === adv.employeeId || e.employeeId === adv.employeeId);
       const r = await api.post<any>('/advances', {
         employeeId: emp?.id ?? adv.employeeId, date: adv.date, amountPaise: rupeesToPaise(adv.amount),
-        paymentMode: adv.paymentMode, paymentReference: adv.paymentReference,
-        projectId: adv.projectId, remarks: adv.remarks,
+        paymentMode: adv.paymentMode, paymentReference: adv.paymentReference || undefined,
+        projectId: asUuid(adv.projectId), remarks: adv.remarks || undefined,
       });
       await refresh();
       return mapAdvance(r);
@@ -779,9 +836,11 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setPayrollAdjustments((prev) => {
         const key = payrollAdjustmentKey(month, employeeCode);
         const set = prev[key] ?? { pay: [], deductions: [] };
-        if (type === 'pay') set.pay = [...set.pay, item];
-        else set.deductions = [...set.deductions, item];
-        return { ...prev, [key]: set };
+        // New object (never mutate the previous state) so memoised consumers re-render.
+        const next = type === 'pay'
+          ? { ...set, pay: [...set.pay, item] }
+          : { ...set, deductions: [...set.deductions, item] };
+        return { ...prev, [key]: next };
       });
     },
     removePayrollAdjustment: async (_month, _employeeCode, _type, id) => {

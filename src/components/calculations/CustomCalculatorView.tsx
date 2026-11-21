@@ -175,7 +175,7 @@ export const CustomCalculatorView: React.FC<Props> = ({ calc, onChange, onEdit, 
             ))}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <input
               className="form-input"
               value={title}

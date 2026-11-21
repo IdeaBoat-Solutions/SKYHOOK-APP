@@ -74,7 +74,7 @@ export const PeriodFilter: React.FC<Props> = ({
           type="button"
           aria-pressed={value.period === p}
           onClick={() => onChange({ ...value, period: p })}
-          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+          className={`shrink-0 rounded-full border px-3.5 py-2.5 text-xs sm:px-3 sm:py-1.5 font-semibold transition-colors ${
             value.period === p
               ? 'border-logo-700 bg-logo-700 text-white'
               : 'border-line bg-surface text-ink-600 hover:border-line-strong hover:text-ink-900'

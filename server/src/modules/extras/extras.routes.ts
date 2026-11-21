@@ -45,6 +45,9 @@ const payrollAdjustmentSchema = z.object({
   remarks: z.string().optional(),
 });
 
+/** A form's empty date means "not set". */
+const blankDate = z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional());
+
 const personalRecordSchema = z.object({
   kind: z.string().min(1),
   title: z.string().min(1),
@@ -52,8 +55,8 @@ const personalRecordSchema = z.object({
   referenceNumber: z.string().default(''),
   amountPaise: z.number().int().nonnegative().default(0),
   periodicAmountPaise: z.number().int().nonnegative().default(0),
-  startDate: z.string().nullable().optional(),
-  dueDate: z.string().nullable().optional(),
+  startDate: blankDate,
+  dueDate: blankDate,
   notes: z.string().nullable().optional(),
 });
 
@@ -64,8 +67,8 @@ const personalRecordPatchSchema = z.object({
   referenceNumber: z.string().optional(),
   amountPaise: z.number().int().nonnegative().optional(),
   periodicAmountPaise: z.number().int().nonnegative().optional(),
-  startDate: z.string().nullable().optional(),
-  dueDate: z.string().nullable().optional(),
+  startDate: blankDate,
+  dueDate: blankDate,
   notes: z.string().nullable().optional(),
 });
 
