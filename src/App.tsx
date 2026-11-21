@@ -18,6 +18,7 @@ import { AdvancesView } from './components/advances/AdvancesView';
 import { ExpensesView } from './components/expenses/ExpensesView';
 import { AssetsView } from './components/assets/AssetsView';
 import { CalculationsView, CalcTab } from './components/calculations/CalculationsView';
+import { PersonalView } from './components/personal/PersonalView';
 import { RemindersView } from './components/reminders/RemindersView';
 import { ReportsView } from './components/reports/ReportsView';
 import { SettingsView } from './components/settings/SettingsView';
@@ -49,6 +50,11 @@ function MainAppShell() {
       }
       setCalcRequest((r) => ({ tab: 'emi', n: r.n + 1 }));
       tab = 'calculations';
+    }
+    // Personal is owner-only; never open it for a site manager (e.g. via a stale link).
+    if (tab === 'personal' && isManager) {
+      setCurrentTab('dashboard');
+      return;
     }
     setCurrentTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -122,6 +128,8 @@ function MainAppShell() {
           {currentTab === 'calculations' && (
             <CalculationsView key={calcRequest.n} initialTab={calcRequest.tab} />
           )}
+
+          {currentTab === 'personal' && !isManager && <PersonalView />}
 
           {currentTab === 'reminders' && <RemindersView />}
 

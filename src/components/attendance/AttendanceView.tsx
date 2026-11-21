@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   CalendarCheck,
   CheckCircle2,
@@ -46,10 +46,13 @@ export const AttendanceView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'daily' | 'monthly' | 'pending'>('daily');
   const [selectedDate, setSelectedDate] = useState(currentDate);
-  const [selectedMonth, setSelectedMonth] = useState('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.slice(0, 7));
   const [selectedProject, setSelectedProject] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [quickFeedback, setQuickFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
+  // Rows with a save in flight, so a double click cannot submit the same change twice.
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [modalError, setModalError] = useState('');
 
   // Day-Wise Overtime Modal State
   const [showOtModal, setShowOtModal] = useState(false);
@@ -62,9 +65,9 @@ export const AttendanceView: React.FC = () => {
 
   // Detailed Shift Modal (Legacy / Complex)
   const [showAddModal, setShowAddModal] = useState(false);
-  const [operatorId, setOperatorId] = useState(employees[0]?.id || '');
-  const [projectId, setProjectId] = useState(projects[0]?.id || '');
-  const [machineId, setMachineId] = useState(machines[0]?.id || '');
+  const [operatorId, setOperatorId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [machineId, setMachineId] = useState('');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('18:00');
   const [breakMin, setBreakMin] = useState(0);
@@ -83,16 +86,53 @@ export const AttendanceView: React.FC = () => {
 
   const pendingList = attendance.filter((a) => a.approvalStatus === 'submitted');
 
-  // Trigger feedback helper
-  const notifyFeedback = (msg: string) => {
-    setQuickFeedback(msg);
-    setTimeout(() => setQuickFeedback(null), 3200);
+  // Feedback banner: green on success, red on failure. It used to announce success before the
+  // server had answered, so a rejected save looked as if it had worked.
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notifyFeedback = (text: string, kind: 'ok' | 'error' = 'ok') => {
+    setFeedback({ text, kind });
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedback(null), kind === 'error' ? 9000 : 3200);
   };
 
-  // Date stepper handlers
+  /**
+   * Run one save: ignore repeat clicks on the same row, report what really happened, and
+   * refresh the month's payroll afterwards. `inModal` shows a failure inside the open dialog,
+   * where the page banner would be hidden behind the overlay.
+   */
+  const runAction = async (
+    key: string,
+    action: () => Promise<string>,
+    payrollMonth?: string,
+    inModal = false,
+  ) => {
+    if (pending.has(key)) return;
+    setPending((prev) => new Set(prev).add(key));
+    try {
+      const message = await action();
+      notifyFeedback(message);
+      // Best effort: a locked or empty payroll month must not make a saved attendance look failed.
+      if (payrollMonth) void generatePayrollForMonth(payrollMonth).catch(() => undefined);
+    } catch (e) {
+      const text = e instanceof Error && e.message ? e.message : 'Could not save. Please try again.';
+      if (inModal) setModalError(text);
+      else notifyFeedback(text, 'error');
+    } finally {
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const findOperator = (ref: string) => employees.find((e) => e.id === ref || e.employeeId === ref);
+  const machineLabel = (id?: string) => machines.find((m) => m.id === id)?.assetId ?? 'Not assigned';
+
+  // Date stepper handlers (UTC arithmetic so the day never shifts with the browser timezone)
   const handleStepDay = (delta: number) => {
-    const current = new Date(selectedDate);
-    current.setDate(current.getDate() + delta);
+    const current = new Date(`${selectedDate}T00:00:00Z`);
+    current.setUTCDate(current.getUTCDate() + delta);
     const nextDate = current.toISOString().slice(0, 10);
     setSelectedDate(nextDate);
     setOtDate(nextDate);
@@ -105,56 +145,66 @@ export const AttendanceView: React.FC = () => {
 
   // Quick Attendance Handler
   const handleQuickStatus = (opId: string, targetStatus: AttendanceStatus, customOt?: number) => {
-    const op = employees.find((e) => e.id === opId || e.employeeId === opId);
-    const assignedPrjId = op?.currentProjectId || projects[0]?.id || 'PRJ-001';
-
-    markOperatorAttendanceQuick({
-      operatorId: opId,
-      date: selectedDate,
-      status: targetStatus,
-      overtimeHours: customOt,
-      projectId: assignedPrjId,
-      machineId: op?.currentMachineId || 'CR-001',
-    });
-
-    // Auto refresh payroll month
-    generatePayrollForMonth(selectedDate.slice(0, 7));
-
+    const op = findOperator(opId);
     const statusLabel = targetStatus === 'present' ? 'PRESENT' : targetStatus === 'absent' ? 'ABSENT' : 'HALF DAY';
-    notifyFeedback(`Marked ${op?.fullName || opId} as ${statusLabel} for ${formatDateDDMMYYYY(selectedDate)}.`);
+    return runAction(
+      opId,
+      async () => {
+        await markOperatorAttendanceQuick({
+          operatorId: opId,
+          date: selectedDate,
+          status: targetStatus,
+          overtimeHours: customOt,
+          projectId: op?.currentProjectId,
+          machineId: op?.currentMachineId,
+        });
+        return `Marked ${op?.fullName || opId} as ${statusLabel} for ${formatDateDDMMYYYY(selectedDate)}.`;
+      },
+      selectedDate.slice(0, 7),
+    );
   };
 
   // Inline Overtime change
   const handleInlineOtChange = (opId: string, newOtHours: number) => {
     const validHours = Math.max(0, Number(newOtHours) || 0);
-    const op = employees.find((e) => e.id === opId || e.employeeId === opId);
-    const assignedPrjId = op?.currentProjectId || projects[0]?.id || 'PRJ-001';
-    const prj = projects.find((p) => p.id === assignedPrjId);
-
-    addOrUpdateOvertimeHours({
-      operatorId: opId,
-      date: selectedDate,
-      overtimeHours: validHours,
-      projectId: assignedPrjId,
-      appliedOtRate: prj?.overtimeRate || 150,
-      remarks: validHours > 0 ? `Inline logged ${validHours}h OT` : undefined,
-    });
-
-    generatePayrollForMonth(selectedDate.slice(0, 7));
-    notifyFeedback(`Updated overtime: ${validHours} hrs for ${op?.fullName || opId}. Payslip recalculated.`);
+    const op = findOperator(opId);
+    return runAction(
+      opId,
+      async () => {
+        await addOrUpdateOvertimeHours({
+          operatorId: opId,
+          date: selectedDate,
+          overtimeHours: validHours,
+          projectId: op?.currentProjectId,
+          remarks: validHours > 0 ? `Inline logged ${validHours}h OT` : undefined,
+        });
+        return `Updated overtime: ${validHours} hrs for ${op?.fullName || opId}. Payslip recalculated.`;
+      },
+      selectedDate.slice(0, 7),
+    );
   };
 
-  // Mark all present
-  const handleMarkAllPresent = () => {
-    markAllOperatorsPresent({ date: selectedDate });
-    generatePayrollForMonth(selectedDate.slice(0, 7));
-    notifyFeedback(`All ${activeOperators.length} active operators marked PRESENT (10h shift) for ${formatDateDDMMYYYY(selectedDate)}.`);
-  };
+  // Mark all present: leaves anyone already marked for the day untouched, and says who failed.
+  const handleMarkAllPresent = () =>
+    runAction(
+      'all',
+      async () => {
+        const r = await markAllOperatorsPresent({ date: selectedDate });
+        const summary = [`${r.created} marked present`];
+        if (r.skipped) summary.push(`${r.skipped} already marked (left unchanged)`);
+        if (r.failed.length) {
+          const who = r.failed.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join(' | ');
+          throw new Error(`${summary.join(', ')}. ${r.failed.length} failed - ${who}`);
+        }
+        return `${summary.join(', ')} for ${formatDateDDMMYYYY(selectedDate)}.`;
+      },
+      selectedDate.slice(0, 7),
+    );
 
   // Open Overtime Modal for specific operator
   const handleOpenOtModal = (opId?: string) => {
     const targetOpId = opId || activeOperators[0]?.id || '';
-    const op = employees.find((e) => e.id === targetOpId || e.employeeId === targetOpId);
+    const op = findOperator(targetOpId);
     const prjId = op?.currentProjectId || projects[0]?.id || '';
     const prj = projects.find((p) => p.id === prjId);
 
@@ -164,6 +214,7 @@ export const AttendanceView: React.FC = () => {
     setOtRate(prj?.overtimeRate || 150);
     setOtHours(2);
     setOtRemarks('');
+    setModalError('');
     setShowOtModal(true);
   };
 
@@ -171,46 +222,88 @@ export const AttendanceView: React.FC = () => {
   const handleSaveDayWiseOt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!otOperatorId) return;
+    const op = findOperator(otOperatorId);
+    return runAction(
+      `ot:${otOperatorId}`,
+      async () => {
+        await addOrUpdateOvertimeHours({
+          operatorId: otOperatorId,
+          date: otDate,
+          overtimeHours: Number(otHours) || 0,
+          projectId: otProjectId,
+          remarks: otRemarks.trim() || undefined,
+        });
+        setShowOtModal(false);
+        return `Overtime of ${otHours}h recorded for ${op?.fullName || otOperatorId} on ${formatDateDDMMYYYY(otDate)}.`;
+      },
+      otDate.slice(0, 7),
+      true,
+    );
+  };
 
-    addOrUpdateOvertimeHours({
-      operatorId: otOperatorId,
-      date: otDate,
-      overtimeHours: Number(otHours) || 0,
-      projectId: otProjectId,
-      appliedOtRate: Number(otRate) || 150,
-      remarks: otRemarks.trim() || undefined,
-    });
-
-    // Automatically recalculate monthly payroll so payslip immediately gets the new OT!
-    generatePayrollForMonth(otDate.slice(0, 7));
-
-    const op = employees.find((x) => x.id === otOperatorId || x.employeeId === otOperatorId);
-    notifyFeedback(`Day-wise overtime of ${otHours}h recorded for ${op?.fullName || otOperatorId}. Payslip updated accurately!`);
-    setShowOtModal(false);
+  /** Pre-fill the detailed shift form from live data (it used to be frozen at page load, often empty). */
+  const openDetailedModal = (opId?: string) => {
+    const op = activeOperators.find((o) => o.id === (opId ?? operatorId)) ?? activeOperators[0];
+    setOperatorId(op?.id ?? '');
+    setProjectId(op?.currentProjectId ?? projects[0]?.id ?? '');
+    setMachineId(op?.currentMachineId ?? '');
+    setModalError('');
+    setShowAddModal(true);
   };
 
   const handleSaveDetailedAttendance = (e: React.FormEvent) => {
     e.preventDefault();
-    addAttendanceRecord({
-      date: selectedDate,
-      operatorId,
-      projectId,
-      machineId,
-      startTime,
-      endTime,
-      unpaidBreakMinutes: Number(breakMin) || 0,
-      appliedOtRate: detailedOtRate,
-      status,
-      approvalStatus: currentUser.role === 'owner' ? 'approved' : 'submitted',
-      remarks,
-      enteredBy: currentUser.name,
-      approvedBy: currentUser.role === 'owner' ? currentUser.name : undefined,
-    });
-    generatePayrollForMonth(selectedDate.slice(0, 7));
-    setShowAddModal(false);
-    setRemarks('');
-    notifyFeedback(`Saved shift log for ${selectedDate}.`);
+    if (!operatorId) {
+      setModalError('Choose an operator first.');
+      return;
+    }
+    return runAction(
+      `detail:${operatorId}`,
+      async () => {
+        await addAttendanceRecord({
+          date: selectedDate,
+          operatorId,
+          projectId,
+          machineId: machineId || undefined,
+          startTime,
+          endTime,
+          unpaidBreakMinutes: Number(breakMin) || 0,
+          status,
+          remarks,
+        });
+        setShowAddModal(false);
+        setRemarks('');
+        return `Saved shift log for ${formatDateDDMMYYYY(selectedDate)}.`;
+      },
+      selectedDate.slice(0, 7),
+      true,
+    );
   };
+
+  const handleApprove = (rec: AttendanceRecord) =>
+    runAction(
+      `approve:${rec.id}`,
+      async () => {
+        await approveAttendanceRecord(rec.id);
+        return `Approved attendance for ${findOperator(rec.operatorId)?.fullName ?? 'operator'}.`;
+      },
+      rec.date.slice(0, 7),
+    );
+
+  const handleReject = (rec: AttendanceRecord) =>
+    runAction(`reject:${rec.id}`, async () => {
+      await rejectAttendanceRecord(rec.id, 'Discrepancy in shift hours');
+      return `Rejected attendance for ${findOperator(rec.operatorId)?.fullName ?? 'operator'}.`;
+    });
+
+  // Last 12 months for the monthly view, counted back from today.
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(Number(currentDate.slice(0, 4)), Number(currentDate.slice(5, 7)) - 1 - i, 1);
+    return {
+      value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      label: d.toLocaleString('en-IN', { month: 'long', year: 'numeric' }),
+    };
+  });
 
   // Filtered daily list
   const filteredDaily = attendance.filter((a) => {
@@ -270,6 +363,7 @@ export const AttendanceView: React.FC = () => {
 
           <button
             onClick={handleMarkAllPresent}
+            disabled={pending.has('all')}
             className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
           >
             <CheckCircle2 className="w-4 h-4" />
@@ -277,7 +371,7 @@ export const AttendanceView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => openDetailedModal()}
             className="px-3.5 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs transition-colors shadow-xs flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5 text-zinc-500" />
@@ -287,13 +381,22 @@ export const AttendanceView: React.FC = () => {
       </div>
 
       {/* Floating Action Feedback Pill */}
-      {quickFeedback && (
-        <div className="p-3 rounded-xl bg-logo-700 text-white text-xs font-bold flex items-center justify-between shadow-lg border border-zinc-800 animate-fadeIn">
+      {feedback && (
+        <div
+          role={feedback.kind === 'error' ? 'alert' : 'status'}
+          className={`p-3 rounded-xl text-white text-xs font-bold flex items-center justify-between shadow-lg border animate-fadeIn ${
+            feedback.kind === 'error' ? 'bg-rose-700 border-rose-900' : 'bg-logo-700 border-zinc-800'
+          }`}
+        >
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-accent" />
-            <span>{quickFeedback}</span>
+            {feedback.kind === 'error' ? (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-accent" />
+            )}
+            <span>{feedback.text}</span>
           </div>
-          <button onClick={() => setQuickFeedback(null)} className="text-zinc-400 hover:text-white">
+          <button onClick={() => setFeedback(null)} className="text-zinc-200 hover:text-white" aria-label="Dismiss">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -539,7 +642,7 @@ export const AttendanceView: React.FC = () => {
                             {project?.name || 'Site Assignment'}
                           </div>
                           <div className="text-[11px] text-zinc-500 font-mono">
-                            Crane: <strong className="text-zinc-700">{op.currentMachineId || 'CR-001'}</strong>
+                            Crane: <strong className="text-zinc-700">{machineLabel(op.currentMachineId)}</strong>
                           </div>
                           <div className="text-[10px] text-accent font-bold">
                             OT Rate: ₹{appliedRate}/hr
@@ -553,6 +656,7 @@ export const AttendanceView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleQuickStatus(op.id, 'present', otHoursCurrent)}
+                              disabled={pending.has(op.id)}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
                                 status === 'present'
                                   ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-400'
@@ -567,6 +671,7 @@ export const AttendanceView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleQuickStatus(op.id, 'absent', 0)}
+                              disabled={pending.has(op.id)}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
                                 status === 'absent'
                                   ? 'bg-rose-600 text-white shadow-xs ring-2 ring-rose-400'
@@ -581,6 +686,7 @@ export const AttendanceView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleQuickStatus(op.id, 'half_day', otHoursCurrent)}
+                              disabled={pending.has(op.id)}
                               className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
                                 status === 'half_day'
                                   ? 'bg-amber-500 text-white shadow-xs ring-2 ring-amber-400'
@@ -806,7 +912,7 @@ export const AttendanceView: React.FC = () => {
                               <span className="text-emerald-600 font-bold">Approved</span>
                             ) : (
                               <button
-                                onClick={() => approveAttendanceRecord(rec.id)}
+                                onClick={() => handleApprove(rec)}
                                 className="px-2 py-1 bg-logo-700 text-logo-50 rounded font-bold text-[10px]"
                               >
                                 Approve
@@ -841,9 +947,9 @@ export const AttendanceView: React.FC = () => {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg"
               >
-                <option value="2026-10">October 2026</option>
-                <option value="2026-09">September 2026</option>
-                <option value="2026-11">November 2026</option>
+                {monthOptions.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
               </select>
             </div>
             <div className="flex items-center gap-3 text-xs">
@@ -961,7 +1067,7 @@ export const AttendanceView: React.FC = () => {
                         </span>
                       </div>
                       <p className="text-xs text-zinc-500 mt-0.5">
-                        {prj?.name} • Machine: {rec.machineId || 'CR-001'} • Shift: {rec.startTime} to {rec.endTime}
+                        {prj?.name} • Machine: {machineLabel(rec.machineId)} • Shift: {rec.startTime} to {rec.endTime}
                       </p>
                       <p className="text-xs text-zinc-700 font-mono mt-1">
                         Working: {rec.netWorkingHours}h | Overtime: <strong className="text-blue-700">{rec.overtimeHours}h</strong> @ ₹{rec.appliedOtRate}/hr
@@ -970,20 +1076,13 @@ export const AttendanceView: React.FC = () => {
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          rejectAttendanceRecord(rec.id, 'Discrepancy in shift hours');
-                          notifyFeedback(`Rejected attendance log for ${op?.fullName}.`);
-                        }}
+                        onClick={() => handleReject(rec)}
                         className="px-3.5 py-1.5 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold transition-colors"
                       >
                         Reject
                       </button>
                       <button
-                        onClick={() => {
-                          approveAttendanceRecord(rec.id);
-                          generatePayrollForMonth(rec.date.slice(0, 7));
-                          notifyFeedback(`Approved attendance log for ${op?.fullName}.`);
-                        }}
+                        onClick={() => handleApprove(rec)}
                         className="px-4 py-1.5 rounded-xl bg-logo-700 hover:bg-logo-800 text-accent text-xs font-bold transition-colors shadow-xs"
                       >
                         Approve Shift
@@ -1025,6 +1124,12 @@ export const AttendanceView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveDayWiseOt} className="p-6 space-y-4 text-xs">
+              {modalError && (
+                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800" role="alert">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="font-semibold">{modalError}</span>
+                </div>
+              )}
               {/* Operator Selector */}
               <div>
                 <label className="block font-bold text-zinc-700 mb-1">Select Crane Operator:</label>
@@ -1210,12 +1315,18 @@ export const AttendanceView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveDetailedAttendance} className="p-6 space-y-4 text-xs">
+              {modalError && (
+                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800" role="alert">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="font-semibold">{modalError}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Operator:</label>
                   <select
                     value={operatorId}
-                    onChange={(e) => setOperatorId(e.target.value)}
+                    onChange={(e) => openDetailedModal(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
                   >
                     {activeOperators.map((e) => (
@@ -1250,8 +1361,9 @@ export const AttendanceView: React.FC = () => {
                     onChange={(e) => setMachineId(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
                   >
+                    <option value="">No machine</option>
                     {machines.map((m) => (
-                      <option key={m.id} value={m.assetId}>
+                      <option key={m.id} value={m.id}>
                         {m.assetId} - {m.model} ({m.tonnageCapacity}T)
                       </option>
                     ))}

@@ -73,6 +73,10 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
     title: 'Calculations',
     subtitle: 'Machine EMI, fleet totals and your own custom calculators in one place.',
   },
+  personal: {
+    title: 'Personal',
+    subtitle: 'Private records, dues and reminders. Owner only, locked behind your PIN.',
+  },
   reminders: {
     title: 'Statutory Compliance & Renewal Alerts',
     subtitle: 'Actionable deadline tracking for Service, Insurance, PUC, Fitness and Operator Licenses.',

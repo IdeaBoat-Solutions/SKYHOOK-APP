@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import { navigate } from '../../lib/nav';
+import { BrandLogo } from '../common/BrandLogo';
 
 /**
  * Credentials-only sign in. The server verifies the email + password against
@@ -58,12 +59,8 @@ export const LoginPage: React.FC = () => {
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
           <a href="/" className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80" aria-label="Skyhook home">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-surface p-1.5">
-              <img
-                src={companySettings.logoUrl || '/assets/image.png'}
-                alt="Skyhook Logo"
-                className="max-h-full max-w-full object-contain"
-              />
+            <div className="flex h-12 w-[4.75rem] items-center justify-center overflow-hidden rounded-lg border border-line bg-surface p-0.5">
+              <BrandLogo src={companySettings.logoUrl} className="h-full w-full scale-[1.18]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -88,6 +85,10 @@ export const LoginPage: React.FC = () => {
         <div className="grid w-full max-w-4xl grid-cols-1 items-center gap-8 lg:grid-cols-12">
           {/* Brand & access information */}
           <div className="space-y-5 lg:col-span-5">
+            {/* The mark sits on the left of the sign-in screen as the brand anchor. */}
+            <div className="flex h-28 w-52 max-w-full items-center justify-center overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-sm sm:h-32 sm:w-60">
+              <BrandLogo src={companySettings.logoUrl} className="h-full w-full scale-[1.12]" />
+            </div>
             <div>
               <span className="eyebrow">
                 <Shield className="h-3.5 w-3.5" />

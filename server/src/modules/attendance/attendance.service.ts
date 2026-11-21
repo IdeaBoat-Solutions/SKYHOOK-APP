@@ -58,7 +58,10 @@ export async function upsertAttendance(
        net_working_minutes=EXCLUDED.net_working_minutes, net_working_hours=EXCLUDED.net_working_hours,
        standard_working_minutes=EXCLUDED.standard_working_minutes,
        overtime_hours=EXCLUDED.overtime_hours, ot_rate_paise_per_hour=EXCLUDED.ot_rate_paise_per_hour,
-       status=EXCLUDED.status, remarks=EXCLUDED.remarks, updated_at=now()
+       status=EXCLUDED.status, remarks=EXCLUDED.remarks, updated_at=now(),
+       -- A corrected row must go back to the approver. Approved rows never reach this
+       -- point (blocked above), so this only revives a rejected one.
+       approval_status='submitted', approved_by=NULL, approved_at=NULL
      RETURNING *`,
     [
       auth.tenantId, input.date, input.operatorId, input.projectId, input.machineId ?? null,

@@ -8,6 +8,7 @@ import {
   Cpu,
   Calculator,
   Sigma,
+  LockKeyhole,
   ReceiptIndianRupee,
   Truck,
   BellRing,
@@ -20,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
+import { BrandLogo } from '../common/BrandLogo';
 
 export type NavTab =
   | 'dashboard'
@@ -34,6 +36,7 @@ export type NavTab =
   | 'assets'
   | 'emi'
   | 'calculations'
+  | 'personal'
   | 'reminders'
   | 'reports'
   | 'settings';
@@ -45,8 +48,6 @@ interface SidebarProps {
   isCollapsed?: boolean;
   onCloseMobile?: () => void;
 }
-
-const DEFAULT_LOGO = '/assets/image.png';
 
 const NAV_BADGE = {
   alert: 'bg-red-500/15 text-red-300 ring-1 ring-inset ring-red-500/20',
@@ -93,7 +94,11 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
   },
   {
     label: 'Calculations',
-    items: [{ id: 'calculations', label: 'Calculations', icon: Sigma, badge: 'emi' }],
+    items: [
+      { id: 'calculations', label: 'Calculations', icon: Sigma, badge: 'emi' },
+      // Owner-only; the page itself is also protected by a 4-digit PIN.
+      { id: 'personal', label: 'Personal', icon: LockKeyhole, ownerOnly: true },
+    ],
   },
   {
     label: 'Alerts & reports',
@@ -247,18 +252,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             {/* The logo already carries the SKYHOOK name, so it is shown as a
                 wordmark tile rather than a square icon with the name repeated. */}
-            <div className="flex h-14 w-[5.75rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-1.5 py-1 ring-1 ring-white/20">
-              <img
-                src={companySettings.logoUrl || DEFAULT_LOGO}
-                alt="Skyhook"
-                className="h-full w-full object-contain"
+            <div className="flex h-[4.25rem] w-[6.75rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-white/20">
+              <BrandLogo
+                src={companySettings.logoUrl}
+                className="h-full w-full scale-[1.18]"
               />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <span className="inline-flex items-center rounded bg-white/10 px-1.5 py-[3px] text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-ink-300 ring-1 ring-inset ring-white/10">
                 ERP
               </span>
-              <p className="mt-1.5 line-clamp-2 text-[11px] leading-tight text-ink-300">
+              <p className="mt-1.5 line-clamp-3 whitespace-normal break-words text-[11px] leading-tight text-ink-300">
                 {companySettings.tagline || 'Elevating Crane Operations.'}
               </p>
             </div>
