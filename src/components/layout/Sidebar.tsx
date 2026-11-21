@@ -4,6 +4,7 @@ import {
   FolderKanban,
   Users,
   ContactRound,
+  BriefcaseBusiness,
   CalendarCheck,
   Cpu,
   Calculator,
@@ -28,6 +29,7 @@ export type NavTab =
   | 'projects'
   | 'employees'
   | 'operator_directory'
+  | 'contractor_directory'
   | 'attendance'
   | 'machine_working'
   | 'payroll'
@@ -79,6 +81,7 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
     items: [
       { id: 'employees', label: 'Employee & Operators', icon: Users, badge: 'license' },
       { id: 'operator_directory', label: 'Operator Directory', icon: ContactRound },
+      { id: 'contractor_directory', label: 'Contractor Directory', icon: BriefcaseBusiness },
       { id: 'attendance', label: 'Operator Attendance', icon: CalendarCheck, badge: 'attendance' },
       { id: 'payroll', label: 'Automated Payroll', icon: Calculator },
       { id: 'advances', label: 'Salary Advances', icon: ReceiptIndianRupee },

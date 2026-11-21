@@ -117,6 +117,25 @@ export interface Employee extends LicenceExtras {
   documents: DocumentRecord[];
 }
 
+/** External/freelancer contacts kept for backup staffing — not workforce employees. */
+export type ContractorSkill =
+  | 'crane_operator' | 'rigger' | 'bankman' | 'electrician' | 'fitter' | 'driver' | 'other';
+export type ContractorAvailability = 'available' | 'busy' | 'unknown';
+
+export interface ContractorRecord {
+  id: string;
+  contractorCode: string;
+  fullName: string;
+  mobile: string;
+  skill: ContractorSkill;
+  agencyName?: string;
+  dailyRate: number; // rupees per day
+  city?: string;
+  availability: ContractorAvailability;
+  notes?: string;
+  createdAt: string;
+}
+
 export type ProjectStatus = 'upcoming' | 'active' | 'on_hold' | 'completed' | 'cancelled';
 
 export interface Project {

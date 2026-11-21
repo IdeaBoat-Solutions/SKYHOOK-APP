@@ -47,6 +47,13 @@ import { Currency } from "../common/Currency";
 import { RcDetailsFields, RcScanModal, RcScanOutcome } from "./RcScan";
 import { MachineDocumentsList, RcDetailsSummary } from "./MachineRcPanels";
 import { AgeingBar } from "../common/Ageing";
+import { CertScanModal, CertOutcome } from "./CertScan";
+import { CERT_LABELS, type CertKind } from "../../utils/certOcr";
+
+const EMPTY_CERT_FILES: Record<CertKind, File[]> = { insurance: [], puc: [], fitness: [] };
+/** Whole days from one ISO date to another (used to set the renewal interval from a scanned certificate). */
+const daysBetween = (a: string, b: string) =>
+  Math.max(1, Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86_400_000));
 
 import { DateInput } from '../common/DateInput';
 const RC_DOC_TYPE = "Registration Certificate (RC)";
@@ -190,6 +197,10 @@ export const AssetsView: React.FC = () => {
   const [rcDetails, setRcDetails] = useState<RcDetails>({});
   const [rcFiles, setRcFiles] = useState<File[]>([]);
   const [showRcScan, setShowRcScan] = useState(false);
+  // Scanned insurance / PUC / fitness certificates: which dialog is open and the files to store on save.
+  const [certModal, setCertModal] = useState<CertKind | "renew" | null>(null);
+  const [certFiles, setCertFiles] = useState<Record<CertKind, File[]>>(EMPTY_CERT_FILES);
+  const [renewFiles, setRenewFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [quickActionError, setQuickActionError] = useState("");
@@ -246,6 +257,7 @@ export const AssetsView: React.FC = () => {
     setEditingMachine(null);
     setRcDetails({});
     setRcFiles([]);
+    setCertFiles(EMPTY_CERT_FILES);
     setSaveError("");
     setShowRcScan(scanRc);
     setMachineType("Hydraulic Crane");
@@ -321,9 +333,46 @@ export const AssetsView: React.FC = () => {
 
     setRcDetails(m.rcDetails ?? {});
     setRcFiles([]);
+    setCertFiles(EMPTY_CERT_FILES);
     setSaveError("");
     setShowRcScan(false);
     setShowModal(true);
+  };
+
+  /** Fill one statutory block of the asset form from a reviewed certificate scan. */
+  const handleApplyCert = (kind: CertKind, o: CertOutcome) => {
+    const interval =
+      o.issueDate && o.expiryDate && o.expiryDate > o.issueDate ? daysBetween(o.issueDate, o.expiryDate) : undefined;
+    if (kind === "insurance") {
+      if (o.provider) setInsuranceProvider(o.provider);
+      if (o.number) setInsurancePolicyNumber(o.number);
+      if (o.issueDate) setInsuranceStartDate(o.issueDate);
+      if (o.expiryDate) setInsuranceExpiry(o.expiryDate);
+      if (interval) setInsuranceIntervalDays(interval);
+    } else if (kind === "puc") {
+      if (o.number) setPucNumber(o.number);
+      if (o.issueDate) setPucIssueDate(o.issueDate);
+      if (o.expiryDate) setPucExpiry(o.expiryDate);
+      if (interval) setPucIntervalDays(interval);
+    } else {
+      if (o.number) setFitnessCertNumber(o.number);
+      if (o.issueDate) setLastFitnessDate(o.issueDate);
+      if (o.expiryDate) setFitnessDueDate(o.expiryDate);
+      if (interval) setFitnessIntervalDays(interval);
+    }
+    if (o.files.length) setCertFiles((prev) => ({ ...prev, [kind]: o.files }));
+    setCertModal(null);
+  };
+
+  /** Fill the Renew dialog from a reviewed certificate scan. */
+  const handleApplyRenewCert = (o: CertOutcome) => {
+    if (o.issueDate) setRenewDate(o.issueDate);
+    if (o.expiryDate) setRenewCalculatedExpiry(o.expiryDate);
+    if (o.issueDate && o.expiryDate && o.expiryDate > o.issueDate) setRenewIntervalDays(daysBetween(o.issueDate, o.expiryDate));
+    if (o.number) setRenewDocNo(o.number);
+    if (o.provider) setRenewProviderName(o.provider);
+    if (o.files.length) setRenewFiles(o.files);
+    setCertModal(null);
   };
 
   /** Fill the asset form from a reviewed RC scan. */
@@ -413,35 +462,49 @@ export const AssetsView: React.FC = () => {
       return;
     }
 
-    // The asset is saved; now store the RC file(s) against it.
-    const failed: File[] = [];
-    for (const [i, file] of rcFiles.entries()) {
-      const label =
-        rcFiles.length > 1 ? `${RC_DOC_TYPE} – ${i + 1}` : RC_DOC_TYPE;
-      try {
-        await attachMachineDocument(
-          saved.id,
+    // The asset is saved; now store the RC and certificate files against it.
+    const expiryOf: Record<CertKind, string> = { insurance: insuranceExpiry, puc: pucExpiry, fitness: fitnessDueDate };
+    const uploads: { kind: "rc" | CertKind; file: File; label: string; expiry?: string }[] = [
+      ...rcFiles.map((file, i) => ({
+        kind: "rc" as const,
+        file,
+        label: rcFiles.length > 1 ? `${RC_DOC_TYPE} – ${i + 1}` : RC_DOC_TYPE,
+        expiry: rcDetails.registrationValidUpto,
+      })),
+      ...(["insurance", "puc", "fitness"] as CertKind[]).flatMap((kind) =>
+        certFiles[kind].map((file, i, all) => ({
+          kind,
           file,
-          label,
-          rcDetails.registrationValidUpto,
-        );
+          label: all.length > 1 ? `${CERT_LABELS[kind].doc} – ${i + 1}` : CERT_LABELS[kind].doc,
+          expiry: expiryOf[kind],
+        })),
+      ),
+    ];
+    const failed: typeof uploads = [];
+    for (const u of uploads) {
+      try {
+        await attachMachineDocument(saved.id, u.file, u.label, u.expiry || undefined);
       } catch {
-        failed.push(file);
+        failed.push(u);
       }
     }
     setSaving(false);
     if (failed.length) {
-      // Stay open in edit mode so "Save" retries only the upload — never a duplicate asset.
+      // Stay open in edit mode so "Save" retries only the uploads, never a duplicate asset.
       setEditingMachine(saved);
-      setRcFiles(failed);
+      setRcFiles(failed.filter((u) => u.kind === "rc").map((u) => u.file));
+      setCertFiles({
+        insurance: failed.filter((u) => u.kind === "insurance").map((u) => u.file),
+        puc: failed.filter((u) => u.kind === "puc").map((u) => u.file),
+        fitness: failed.filter((u) => u.kind === "fitness").map((u) => u.file),
+      });
       setSaveError(
-        `Asset saved, but the RC file could not be uploaded (${failed
-          .map((f) => f.name)
-          .join(", ")}). Press Save to retry.`,
+        `Asset saved, but these files could not be uploaded (${failed.map((u) => u.file.name).join(", ")}). Press Save to retry.`,
       );
       return;
     }
     setRcFiles([]);
+    setCertFiles(EMPTY_CERT_FILES);
     setShowModal(false);
   };
 
@@ -451,6 +514,7 @@ export const AssetsView: React.FC = () => {
     cat: "insurance" | "puc" | "fitness",
   ) => {
     setQuickActionError("");
+    setRenewFiles([]);
     setRenewModalMachine(m);
     setRenewCategory(cat);
     setRenewDate(currentDate);
@@ -514,6 +578,27 @@ export const AssetsView: React.FC = () => {
           renewDate,
         );
       }
+      // The renewal is saved; keep the scanned certificate with the machine. A failed upload is
+      // reported without undoing the renewal.
+      const stored: string[] = [];
+      for (const [i, file] of renewFiles.entries()) {
+        try {
+          await attachMachineDocument(
+            renewModalMachine.id,
+            file,
+            renewFiles.length > 1 ? `${CERT_LABELS[renewCategory].doc} – ${i + 1}` : CERT_LABELS[renewCategory].doc,
+            renewCalculatedExpiry || undefined,
+          );
+        } catch {
+          stored.push(file.name);
+        }
+      }
+      if (stored.length) {
+        setQuickActionError(`Renewed, but the certificate file could not be uploaded (${stored.join(", ")}). Attach it from the asset profile.`);
+        setRenewFiles([]);
+        return;
+      }
+      setRenewFiles([]);
       setRenewModalMachine(null);
     } catch (err) {
       setQuickActionError(err instanceof Error ? err.message : "Could not save the renewal. Please try again.");
@@ -1418,6 +1503,14 @@ export const AssetsView: React.FC = () => {
                         <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-brand-700" />
                         1. Machine insurance policy
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setCertModal("insurance")}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        <ScanLine className="h-3.5 w-3.5" />
+                        {certFiles.insurance.length ? "Rescan" : "Scan certificate"}
+                      </button>
                       <span className="text-[11px] text-ink-500">
                         Expiry = {formatDateDDMMYYYY(insuranceStartDate)} + {insuranceIntervalDays}{" "}
                         days
@@ -1510,6 +1603,12 @@ export const AssetsView: React.FC = () => {
                       </div>
                     </div>
                     <AgeingBar issue={insuranceStartDate} expiry={insuranceExpiry} className="mt-3" />
+                    {certFiles.insurance.length > 0 && (
+                      <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {certFiles.insurance.map((f) => f.name).join(", ")} will be saved with this asset.
+                      </p>
+                    )}
                   </div>
 
                   {/* PUC */}
@@ -1519,6 +1618,14 @@ export const AssetsView: React.FC = () => {
                         <FileCheck2 className="h-3.5 w-3.5 shrink-0 text-brand-700" />
                         2. Pollution Under Control (PUC)
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setCertModal("puc")}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        <ScanLine className="h-3.5 w-3.5" />
+                        {certFiles.puc.length ? "Rescan" : "Scan certificate"}
+                      </button>
                       <span className="text-[11px] text-ink-500">
                         Expiry = {formatDateDDMMYYYY(pucIssueDate)} + {pucIntervalDays} days
                       </span>
@@ -1599,6 +1706,12 @@ export const AssetsView: React.FC = () => {
                       </div>
                     </div>
                     <AgeingBar issue={pucIssueDate} expiry={pucExpiry} className="mt-3" />
+                    {certFiles.puc.length > 0 && (
+                      <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {certFiles.puc.map((f) => f.name).join(", ")} will be saved with this asset.
+                      </p>
+                    )}
                   </div>
 
                   {/* Fitness */}
@@ -1608,6 +1721,14 @@ export const AssetsView: React.FC = () => {
                         <FileBadge className="h-3.5 w-3.5 shrink-0 text-brand-700" />
                         3. RTO fitness certificate &amp; test passed
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setCertModal("fitness")}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        <ScanLine className="h-3.5 w-3.5" />
+                        {certFiles.fitness.length ? "Rescan" : "Scan certificate"}
+                      </button>
                       <span className="text-[11px] text-ink-500">
                         Due = {formatDateDDMMYYYY(lastFitnessDate)} + {fitnessIntervalDays} days
                       </span>
@@ -1692,6 +1813,12 @@ export const AssetsView: React.FC = () => {
                       </div>
                     </div>
                     <AgeingBar issue={lastFitnessDate} expiry={fitnessDueDate} className="mt-3" />
+                    {certFiles.fitness.length > 0 && (
+                      <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        {certFiles.fitness.map((f) => f.name).join(", ")} will be saved with this asset.
+                      </p>
+                    )}
                   </div>
                 </section>
 
@@ -1734,6 +1861,24 @@ export const AssetsView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {showModal && certModal && certModal !== "renew" && (
+        <CertScanModal
+          kind={certModal}
+          machineRegistration={regNo}
+          onClose={() => setCertModal(null)}
+          onApply={(o) => handleApplyCert(certModal, o)}
+        />
+      )}
+
+      {renewModalMachine && certModal === "renew" && (
+        <CertScanModal
+          kind={renewCategory}
+          machineRegistration={renewModalMachine.registrationNumber}
+          onClose={() => setCertModal(null)}
+          onApply={handleApplyRenewCert}
+        />
       )}
 
       {showModal && showRcScan && (
@@ -1999,6 +2144,21 @@ export const AssetsView: React.FC = () => {
                     </button>
                   ))}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCertModal("renew")}
+                  className="btn btn-secondary w-full"
+                >
+                  <ScanLine className="h-4 w-4" />
+                  {renewFiles.length ? "Rescan the new certificate" : "Scan the new certificate to fill this in"}
+                </button>
+                {renewFiles.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    {renewFiles.map((f) => f.name).join(", ")} will be saved with this renewal.
+                  </p>
+                )}
 
                 <div className="rounded-lg border border-line bg-surface-muted p-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">

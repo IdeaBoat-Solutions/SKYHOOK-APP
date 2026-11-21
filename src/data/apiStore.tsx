@@ -7,13 +7,14 @@ import type {
   CompanySettings, User, UserRole, Employee, Project, AttendanceRecord, AttendanceStatus,
   SalaryAdvance, PayrollRun, ProjectExpense, MachineAsset, MachineEmiLoan, MachineWorkingLog,
   AuditLog, ReminderAlertItem, InAppNotification, PayrollAdjustment, PersonalRecord, DocumentRecord,
+  ContractorRecord,
 } from '../types';
 import { api, getToken, setToken, ApiFailure } from '../api/client';
 import {
   mapUser, mapCompany, mapProject, mapEmployee, mapMachine, mapAttendance, mapAdvance,
   mapPayrollRun, mapExpense, mapEmiLoan, mapWorkingLog, mapAudit, mapNotification,
   mapServiceRecord, mapPayrollAdjustment, mapPersonalRecord, rupeesToPaise,
-  mapDocument, machineTypeToApi,
+  mapDocument, machineTypeToApi, mapContractor,
 } from '../api/mappers';
 import { evaluateReminderStatus, evaluateServiceHours, sumOperatingHours, formatServiceInterval } from '../utils/calculations';
 import {
@@ -89,6 +90,11 @@ interface SkyhookStoreContextType {
   updateEmployee: (id: string, e: Partial<Employee>) => Promise<void>;
   deactivateEmployee: (id: string) => Promise<void>;
   renewOperatorLicense: (operatorId: string, newCraneExpiry?: string, newTransportExpiry?: string) => Promise<void>;
+  /** External/freelancer contacts for backup staffing — not workforce employees. */
+  contractors: ContractorRecord[];
+  addContractor: (c: Omit<ContractorRecord, 'id' | 'contractorCode' | 'createdAt'>) => Promise<ContractorRecord>;
+  updateContractor: (id: string, patch: Partial<ContractorRecord>) => Promise<void>;
+  deleteContractor: (id: string) => Promise<void>;
   machines: MachineAsset[];
   addMachine: (m: Omit<MachineAsset, 'id'>) => Promise<MachineAsset>;
   /** Upload a file to storage and register it as a machine document (e.g. the RC). */
@@ -262,6 +268,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [companySettings, setCompanySettings] = useState<CompanySettings>(fallbackSettings);
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [contractors, setContractors] = useState<ContractorRecord[]>([]);
   const [machines, setMachines] = useState<MachineAsset[]>([]);
   const [emiLoans, setEmiLoans] = useState<MachineEmiLoan[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -280,12 +287,13 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const me = await api.get<any>('/auth/me');
     setCurrentUser(mapUser(me));
 
-    const [company, users, prj, emp, mach, loans, att, adv, runs, exp, logs, aud, notif, adj, personal] = await Promise.all([
+    const [company, users, prj, emp, contractorsRaw, mach, loans, att, adv, runs, exp, logs, aud, notif, adj, personal] = await Promise.all([
       safeGet<any>('/company', null),
       // Staff directory for Settings; needs user:read, so managers get an empty list.
       safeGet<{ items: any[] }>('/users', { items: [] }),
       safeGet<{ items: any[] }>('/projects', { items: [] }),
       safeGet<{ items: any[] }>('/employees', { items: [] }),
+      safeGet<{ items: any[] }>('/contractors', { items: [] }),
       safeGet<{ items: any[] }>('/machines', { items: [] }),
       safeGet<{ items: any[] }>('/emi-loans', { items: [] }),
       safeGet<{ items: any[] }>('/attendance?limit=1000', { items: [] }),
@@ -302,6 +310,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAvailableUsers(users.items.map(mapUser));
     setProjects(prj.items.map(mapProject));
     setEmployees(emp.items.map(mapEmployee));
+    setContractors(contractorsRaw.items.map(mapContractor));
     // Service history lives on its own endpoint; keep a machine usable if that
     // endpoint is unavailable. lastServiceHours comes from the machine mapper.
     setMachines(await Promise.all(mach.items.map(async (m) => {
@@ -379,7 +388,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const value = useMemo<SkyhookStoreContextType>(() => ({
     currentUser, isAuthenticated, availableUsers, companySettings,
-    projects, employees, machines, emiLoans, attendance, advances, payrollRuns,
+    projects, employees, contractors, machines, emiLoans, attendance, advances, payrollRuns,
     expenses, machineWorkingLogs, auditLogs, notifications,
     payrollAdjustments, personalRecords, personalPinSet,
     currentDate: todayISO(),
@@ -507,6 +516,29 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await refresh();
     },
     deactivateEmployee: async (id) => { await api.patch(`/employees/${id}`, { status: 'inactive' }); await refresh(); },
+    addContractor: async (c) => {
+      const r = await api.post<any>('/contractors', {
+        fullName: c.fullName, mobile: c.mobile, skill: c.skill,
+        agencyName: c.agencyName || undefined, dailyRatePaise: rupeesToPaise(c.dailyRate),
+        city: c.city || undefined, availability: c.availability, notes: c.notes || undefined,
+      });
+      await refresh();
+      return mapContractor(r);
+    },
+    updateContractor: async (id, patch) => {
+      const payload: any = { ...patch };
+      delete payload.id; delete payload.contractorCode; delete payload.createdAt;
+      if (patch.dailyRate !== undefined) {
+        payload.dailyRatePaise = rupeesToPaise(patch.dailyRate);
+        delete payload.dailyRate;
+      }
+      await api.patch(`/contractors/${encodeURIComponent(id)}`, payload);
+      await refresh();
+    },
+    deleteContractor: async (id) => {
+      await api.delete(`/contractors/${encodeURIComponent(id)}`);
+      await refresh();
+    },
     renewOperatorLicense: async (operatorId, newCraneExpiry, newTransportExpiry) => {
       await api.post(`/employees/${operatorId}/license-renewal`, {
         craneLicenseExpiry: newCraneExpiry, transportLicenseExpiry: newTransportExpiry,
@@ -964,7 +996,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         title: `${e.fullName} (${e.employeeId}) – Transport License`, subtitle: 'Heavy Vehicle Commercial Transport License',
         dueDate: e.transportLicenseExpiry, lead: companySettings.licenseReminderLeadDays, actionLabel: 'Update License', heading: 'OPERATOR LICENSE RENEWAL REMINDERS' },
     ]), companySettings.licenseReminderLeadDays),
-  }), [currentUser, isAuthenticated, availableUsers, companySettings, projects, employees, machines, emiLoans,
+  }), [currentUser, isAuthenticated, availableUsers, companySettings, projects, employees, contractors, machines, emiLoans,
     attendance, advances, payrollRuns, expenses, machineWorkingLogs, auditLogs, notifications,
     payrollAdjustments, personalRecords, personalPinSet, loadAll, refresh]);
 

@@ -41,6 +41,10 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
     title: 'Operator Directory',
     subtitle: 'Searchable contact book for crane operators, licences, deployment and pay details.',
   },
+  contractor_directory: {
+    title: 'Contractor & Freelancer Directory',
+    subtitle: 'External operators and contractors you can call or message on WhatsApp when your own crew is unavailable.',
+  },
   attendance: {
     title: 'Operator Attendance & Overtime',
     subtitle: 'Standard 10-hour daily shift tracking, multi-project overtime allocation and approvals.',

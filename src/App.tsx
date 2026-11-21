@@ -11,6 +11,7 @@ import { DashboardView } from './components/dashboard/DashboardView';
 import { ProjectsView } from './components/projects/ProjectsView';
 import { EmployeesView } from './components/employees/EmployeesView';
 import { OperatorDirectoryView } from './components/employees/OperatorDirectoryView';
+import { ContractorDirectoryView } from './components/contractors/ContractorDirectoryView';
 import { AttendanceView } from './components/attendance/AttendanceView';
 import { MachineWorkingView } from './components/machine_working/MachineWorkingView';
 import { PayrollView } from './components/payroll/PayrollView';
@@ -112,6 +113,8 @@ function MainAppShell() {
           {currentTab === 'employees' && <EmployeesView />}
 
           {currentTab === 'operator_directory' && <OperatorDirectoryView />}
+
+          {currentTab === 'contractor_directory' && <ContractorDirectoryView />}
 
           {currentTab === 'attendance' && <AttendanceView />}
 

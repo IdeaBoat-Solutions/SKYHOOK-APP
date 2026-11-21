@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ScanLine,
   X,
   Upload,
-  ImageIcon,
   AlertCircle,
   CheckCircle2,
   RotateCcw,
@@ -13,9 +12,9 @@ import type { LicenceExtras } from '../../types';
 import {
   ParsedLicence,
   VEHICLE_CLASS_CODES,
-  mergeParsed,
-  scanLicenceImage,
+  scanLicenceFiles,
 } from '../../utils/licenceOcr';
+import { ScanUploader } from '../common/ScanUploader';
 import { warmUp } from '../../utils/ocrEngine';
 
 import { DateInput } from '../common/DateInput';
@@ -204,7 +203,9 @@ interface ModalProps {
 }
 
 export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => {
-  const [files, setFiles] = useState<{ front?: File; back?: File }>({});
+  const [files, setFiles] = useState<File[]>([]);
+  // Which uploaded file is the front and which the back, worked out by the scan.
+  const [sides, setSides] = useState<{ front?: File; back?: File }>({});
   const [phase, setPhase] = useState<'select' | 'scanning' | 'review'>('select');
   const [status, setStatus] = useState('');
   const [progress, setProgress] = useState(0);
@@ -213,41 +214,10 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
   const [review, setReview] = useState<ReviewForm>(toReview({}));
   const [foundCount, setFoundCount] = useState(0);
   const [manual, setManual] = useState(false);
-  const frontInput = useRef<HTMLInputElement>(null);
   // Start the reading engines now so they are ready by the time a file is chosen.
   useEffect(() => {
     warmUp();
   }, []);
-  const backInput = useRef<HTMLInputElement>(null);
-
-  const previews = useMemo(
-    () => ({
-      front: files.front ? URL.createObjectURL(files.front) : '',
-      back: files.back ? URL.createObjectURL(files.back) : '',
-    }),
-    [files.front, files.back],
-  );
-  useEffect(
-    () => () => {
-      if (previews.front) URL.revokeObjectURL(previews.front);
-      if (previews.back) URL.revokeObjectURL(previews.back);
-    },
-    [previews],
-  );
-
-  const pick = (side: Side, file?: File) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setError('Please choose a photo (JPG or PNG).');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('That photo is over 10 MB. Please use a smaller one.');
-      return;
-    }
-    setError('');
-    setFiles((prev) => ({ ...prev, [side]: file }));
-  };
 
   /** Skip the photo and type everything by hand. */
   const enterManually = () => {
@@ -260,34 +230,24 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
   };
 
   const runScan = async () => {
-    if (!files.front && !files.back) {
-      setError('Add at least one photo of the licence.');
+    if (!files.length) {
+      setError('Add a photo of the licence first.');
       return;
     }
     setError('');
     setManual(false);
     setPhase('scanning');
+    setProgress(0);
+    setStatus('Preparing…');
     try {
-      let merged: ParsedLicence = {};
-      let worst = 100;
-      const order: Side[] = ['front', 'back'];
-      for (const side of order) {
-        const file = files[side];
-        if (!file) continue;
-        const label = side === 'front' ? 'front side' : 'back side';
-        setStatus(`Reading ${label}…`);
-        setProgress(0);
-        const result = await scanLicenceImage(file, (p) => {
-          setProgress(p.progress);
-          if (p.status) setStatus(`Reading ${label}… ${p.status}`);
-        });
-        worst = Math.min(worst, result.confidence);
-        // Front is the main source; back fills gaps (classes, authority).
-        merged = side === 'front' ? mergeParsed(result.parsed, merged) : mergeParsed(merged, result.parsed);
-      }
-      setLowConfidence(worst < 60);
-      setFoundCount(Object.values(merged).filter((v) => (Array.isArray(v) ? v.length : v !== undefined)).length);
-      setReview(toReview(merged));
+      const result = await scanLicenceFiles(files, (p) => {
+        setProgress(p.progress);
+        if (p.status) setStatus(p.status.charAt(0).toUpperCase() + p.status.slice(1));
+      });
+      setSides({ front: result.front, back: result.back });
+      setLowConfidence(result.confidence < 60);
+      setFoundCount(Object.values(result.parsed).filter((v) => (Array.isArray(v) ? v.length : v !== undefined)).length);
+      setReview(toReview(result.parsed));
       setPhase('review');
     } catch (e) {
       setError(
@@ -298,43 +258,6 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
       setPhase('select');
     }
   };
-
-  const dropzone = (side: Side, title: string, hint: string, ref: React.RefObject<HTMLInputElement | null>) => (
-    <div>
-      <span className="form-label">{title}</span>
-      <input
-        ref={ref}
-        type="file"
-        accept="image/*"
-        className="sr-only"
-        onChange={(e) => pick(side, e.target.files?.[0])}
-      />
-      <button
-        type="button"
-        onClick={() => ref.current?.click()}
-        className="flex aspect-[1.6] w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-line-strong bg-surface-muted transition-colors hover:border-logo-700"
-      >
-        {previews[side] ? (
-          <img src={previews[side]} alt={`${title} preview`} className="h-full w-full object-contain" />
-        ) : (
-          <span className="flex flex-col items-center gap-1.5 px-3 text-center text-ink-500">
-            <ImageIcon className="h-6 w-6" />
-            <span className="text-xs font-semibold text-ink-700">Tap to add photo</span>
-            <span className="text-[11px]">{hint}</span>
-          </span>
-        )}
-      </button>
-      {files[side] && (
-        <button
-          type="button"
-          onClick={() => setFiles((p) => ({ ...p, [side]: undefined }))}
-          className="mt-1 text-[11px] font-semibold text-ink-500 underline hover:text-danger-700"
-        >
-          Remove
-        </button>
-      )}
-    </div>
-  );
 
   const patchExtras = (patch: Partial<LicenceExtras>) =>
     setReview((r) => ({ ...r, extras: { ...r.extras, ...patch } }));
@@ -367,13 +290,18 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
 
           {phase !== 'review' && (
             <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {dropzone('front', 'Front of licence', 'Name, number, dates, address', frontInput)}
-                {dropzone('back', 'Back of licence (optional)', 'Vehicle classes, authority', backInput)}
-              </div>
+              <ScanUploader
+                files={files}
+                onChange={setFiles}
+                max={3}
+                onError={setError}
+                disabled={phase === 'scanning'}
+                title="Add the licence photos: front and back, or a PDF."
+                hint="Add everything here, in any order, then press Read licence. You can remove a photo with the X."
+              />
               <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-ink-500">
                 <li>Lay the card flat in good light; sideways photos are straightened automatically.</li>
-                <li>The front side gives the most details. You review and correct everything before saving.</li>
+                <li>The front gives the most details and the back adds vehicle classes. You review and correct everything before saving.</li>
                 <li>No photo or hard to read? Use <strong>Enter manually</strong> and type the details yourself.</li>
               </ul>
               {phase === 'scanning' && (
@@ -448,7 +376,7 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
 
               <p className="flex items-center gap-1.5 text-[11px] text-ink-500">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                {files.front || files.back
+                {files.length
                   ? 'The photos are stored with the employee record so they can be checked later.'
                   : 'No photo added. The details are saved without one.'}
               </p>
@@ -465,7 +393,7 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => onApply({ parsed: fromReview(review), files })}
+                onClick={() => onApply({ parsed: fromReview(review), files: sides.front || sides.back ? sides : { front: files[0], back: files[1] } })}
               >
                 <CheckCircle2 className="h-4 w-4" /> Use these details
               </button>
@@ -482,7 +410,7 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
                 type="button"
                 className="btn btn-primary"
                 onClick={runScan}
-                disabled={phase === 'scanning' || (!files.front && !files.back)}
+                disabled={phase === 'scanning' || !files.length}
               >
                 <Upload className="h-4 w-4" />
                 {phase === 'scanning' ? 'Reading…' : 'Read licence'}
