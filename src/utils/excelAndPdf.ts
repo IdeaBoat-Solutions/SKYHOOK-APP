@@ -37,7 +37,6 @@ export function downloadMachineWorkingTemplate() {
       'Operator ID': 'OP-001',
       'Start Time (HH:mm)': '08:00',
       'End Time (HH:mm)': '18:00',
-      'Idle Minutes': 60,
       'Remarks': 'Pier lifting operations',
     },
     {
@@ -47,7 +46,6 @@ export function downloadMachineWorkingTemplate() {
       'Operator ID': 'OP-002',
       'Start Time (HH:mm)': '08:30',
       'End Time (HH:mm)': '17:30',
-      'Idle Minutes': 30,
       'Remarks': 'Rebar unloading duty',
     },
     {
@@ -57,7 +55,6 @@ export function downloadMachineWorkingTemplate() {
       'Operator ID': 'OP-004',
       'Start Time (HH:mm)': '07:30',
       'End Time (HH:mm)': '19:30',
-      'Idle Minutes': 45,
       'Remarks': 'Breakwater placement',
     },
   ];
@@ -104,7 +101,10 @@ export async function parseMachineWorkingExcel(
 
   const validMachineIds = new Set(validMachines.map((m) => m.assetId));
   const validProjectIds = new Set(validProjects.map((p) => p.projectId || p.id));
-  const validOperatorIds = new Set(validEmployees.map((e) => e.employeeId || e.id));
+  // Operators can be given by code (OP-001) or by name.
+  const validOperatorIds = new Set(
+    validEmployees.flatMap((e) => [e.employeeId || e.id, (e.fullName || '').trim().toUpperCase()]).filter(Boolean),
+  );
 
   const validRows: ParsedImportRow[] = [];
   const invalidRows: ParsedImportRow[] = [];
@@ -187,7 +187,13 @@ export async function parseMachineWorkingExcel(
 /**
  * Export machine working logs with calculated totals
  */
-export function exportMachineWorkingLogs(logs: MachineWorkingLog[], machines: MachineAsset[], projects: Project[]) {
+export function exportMachineWorkingLogs(
+  logs: MachineWorkingLog[],
+  machines: MachineAsset[],
+  projects: Project[],
+  employees: Employee[] = [],
+) {
+  const operatorMap = new Map(employees.map((e) => [e.id, e.fullName]));
   const machineMap = new Map(machines.map((m) => [m.id, `${m.assetId} (${m.make} ${m.model})`]));
   const projectMap = new Map(projects.map((p) => [p.id, p.name]));
 
@@ -196,11 +202,10 @@ export function exportMachineWorkingLogs(logs: MachineWorkingLog[], machines: Ma
     'Date': formatDateDDMMYYYY(log.date),
     'Machine': machineMap.get(log.machineId) || log.machineId,
     'Project': projectMap.get(log.projectId) || log.projectId,
-    'Operator Code': log.operatorId,
+    'Operator': operatorMap.get(log.operatorId) || '',
     'Start Time': log.startTime,
     'End Time': log.endTime,
-    'Idle (Min)': log.idleMinutes,
-    'Net Working Hours': log.workingHours,
+    'Total Hours': log.workingHours,
     'Approval Status': log.approvalStatus,
     'Remarks': log.remarks || '',
   }));
@@ -211,11 +216,10 @@ export function exportMachineWorkingLogs(logs: MachineWorkingLog[], machines: Ma
     'Date': '',
     'Machine': '',
     'Project': '',
-    'Operator Code': '',
+    'Operator': '',
     'Start Time': '',
     'End Time': '',
-    'Idle (Min)': logs.reduce((sum, l) => sum + l.idleMinutes, 0),
-    'Net Working Hours': totalHours,
+    'Total Hours': totalHours,
     'Approval Status': '-' as any,
     'Remarks': `Total Hours Recorded: ${totalHours} hrs`,
   });

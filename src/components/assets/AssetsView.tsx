@@ -46,6 +46,7 @@ import {
 import { Currency } from "../common/Currency";
 import { RcDetailsFields, RcScanModal, RcScanOutcome } from "./RcScan";
 import { MachineDocumentsList, RcDetailsSummary } from "./MachineRcPanels";
+import { AgeingBar } from "../common/Ageing";
 
 const RC_DOC_TYPE = "Registration Certificate (RC)";
 
@@ -1504,6 +1505,7 @@ export const AssetsView: React.FC = () => {
                         />
                       </div>
                     </div>
+                    <AgeingBar issue={insuranceStartDate} expiry={insuranceExpiry} className="mt-3" />
                   </div>
 
                   {/* PUC */}
@@ -1597,6 +1599,7 @@ export const AssetsView: React.FC = () => {
                         />
                       </div>
                     </div>
+                    <AgeingBar issue={pucIssueDate} expiry={pucExpiry} className="mt-3" />
                   </div>
 
                   {/* Fitness */}
@@ -1694,6 +1697,7 @@ export const AssetsView: React.FC = () => {
                         />
                       </div>
                     </div>
+                    <AgeingBar issue={lastFitnessDate} expiry={fitnessDueDate} className="mt-3" />
                   </div>
                 </section>
 

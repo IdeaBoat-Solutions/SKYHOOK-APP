@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Truck, FileText } from 'lucide-react';
+import { Plus, Truck, FileText, ClipboardList } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import {
   CustomCalculator,
@@ -8,11 +8,12 @@ import {
 } from '../../data/customCalculators';
 import { EmiView } from '../emi/EmiView';
 import { TotalMachinesView } from './TotalMachinesView';
+import { LogsheetCalculator } from './LogsheetCalculator';
 import { CustomCalculatorView } from './CustomCalculatorView';
 import { CalculatorBuilderModal } from './CalculatorBuilderModal';
 import { calcIcon } from './calcUi';
 
-export type CalcTab = 'emi' | 'total_machines' | `custom:${string}`;
+export type CalcTab = 'emi' | 'total_machines' | 'logsheet' | `custom:${string}`;
 
 const TAB_KEY = 'skyhook:calculations:tab';
 
@@ -81,6 +82,7 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
   const tabs: { id: CalcTab; label: string; icon: React.ElementType }[] = [
     ...(isManager ? [] : [{ id: 'emi' as CalcTab, label: 'Machine EMI', icon: FileText }]),
     { id: 'total_machines', label: 'Total Machines', icon: Truck },
+    { id: 'logsheet', label: 'Logsheet', icon: ClipboardList },
     ...calculators.map((c) => ({
       id: `custom:${c.id}` as CalcTab,
       label: c.name,
@@ -123,6 +125,7 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
 
       {resolvedTab === 'emi' && <EmiView />}
       {resolvedTab === 'total_machines' && <TotalMachinesView />}
+      {resolvedTab === 'logsheet' && <LogsheetCalculator />}
       {activeCustom && resolvedTab === `custom:${activeCustom.id}` && (
         <CustomCalculatorView
           key={activeCustom.id}

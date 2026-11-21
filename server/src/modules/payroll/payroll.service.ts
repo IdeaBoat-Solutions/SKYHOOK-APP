@@ -73,7 +73,7 @@ export async function generatePayroll(
 
   for (const emp of employees.rows as any[]) {
     const own = (attendance.rows as any[]).filter((a) => a.operator_id === emp.id);
-    let presentDays = 0, halfDays = 0, unpaidLeaveDays = 0, paidLeaveDays = 0, weeklyOffDays = 0, holidayDays = 0;
+    let presentDays = 0, halfDays = 0, absentDays = 0, unpaidLeaveDays = 0, paidLeaveDays = 0, weeklyOffDays = 0, holidayDays = 0;
     const otMap = new Map<string, OtBucket>();
 
     for (const a of own) {
@@ -81,6 +81,7 @@ export async function generatePayroll(
       else if (a.status === 'half_day') halfDays++;
       else if (a.status === 'paid_leave') paidLeaveDays++;
       else if (a.status === 'unpaid_leave') unpaidLeaveDays++;
+      else if (a.status === 'absent') absentDays++;
       else if (a.status === 'weekly_off') weeklyOffDays++;
       else if (a.status === 'holiday') holidayDays++;
 
@@ -97,7 +98,9 @@ export async function generatePayroll(
 
     const payableDays = emp.salary_type === 'daily'
       ? Math.max(0, presentDays + halfDays * 0.5)
-      : Math.max(0, daysInMonth - unpaidLeaveDays);
+      : Math.max(0, daysInMonth - unpaidLeaveDays - absentDays - halfDays * 0.5);
+    // Monthly staff: a fixed salary spread over the days of the month. Each absent or
+    // unpaid-leave day (and half of each half-day) is deducted at salary / days-in-month.
     // No approved attendance for a daily-wage employee means no pay. Monthly staff
     // still receive their full salary (payableDays already excludes unpaid leave).
     const effectivePayable = payableDays;

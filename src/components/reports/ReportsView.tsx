@@ -161,7 +161,7 @@ export const ReportsView: React.FC = () => {
       icon: Cpu,
       accent: 'bg-warning-50 text-warning-700',
       buttonLabel: 'Download Machine Operating XLSX',
-      onExport: () => exportMachineWorkingLogs(machineWorkingLogs, machines, projects),
+      onExport: () => exportMachineWorkingLogs(machineWorkingLogs, machines, projects, employees),
     },
     {
       id: 'attendance',

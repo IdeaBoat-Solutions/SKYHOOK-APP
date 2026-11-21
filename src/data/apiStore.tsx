@@ -193,6 +193,19 @@ function resolveAttendanceTarget(
   return { emp, operatorId, projectId: project, machineId: asUuid(machineId) ?? asUuid(emp?.currentMachineId) };
 }
 
+/** Request body for a machine working log. The API needs real ids, never display codes like CR-001. */
+function workingLogBody(log: any) {
+  const machineId = asUuid(log.machineId);
+  const projectId = asUuid(log.projectId);
+  if (!machineId) throw new Error('Choose a machine from the list.');
+  if (!projectId) throw new Error('Choose a project from the list.');
+  return {
+    date: log.date, machineId, projectId, operatorId: asUuid(log.operatorId),
+    startTime: log.startTime, endTime: log.endTime,
+    idleMinutes: Math.max(0, Math.round(Number(log.idleMinutes) || 0)), remarks: log.remarks || undefined,
+  };
+}
+
 function assertNotLocked(attendance: AttendanceRecord[], operatorId: string, date: string, name?: string) {
   const existing = attendance.find((a) => a.operatorId === operatorId && a.date === date);
   if (existing?.approvalStatus === 'approved') {
@@ -712,24 +725,30 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     approveExpense: async (id) => { await api.post(`/expenses/${id}/approve`, {}); await refresh(); },
 
     addMachineWorkingLog: async (log) => {
-      const r = await api.post<any>('/machine-working-logs', {
-        date: log.date, machineId: log.machineId, projectId: log.projectId, operatorId: log.operatorId,
-        startTime: log.startTime, endTime: log.endTime, idleMinutes: log.idleMinutes, remarks: log.remarks,
-      });
+      const r = await api.post<any>('/machine-working-logs', workingLogBody(log));
       await refresh();
       return mapWorkingLog(r);
     },
     importMachineWorkingLogs: async (logs) => {
       let created = 0;
-      for (const log of logs) {
-        await api.post('/machine-working-logs', {
-          date: log.date, machineId: log.machineId, projectId: log.projectId,
-          operatorId: log.operatorId, startTime: log.startTime, endTime: log.endTime,
-          idleMinutes: log.idleMinutes, remarks: log.remarks,
-        });
-        created += 1;
+      const failed: string[] = [];
+      try {
+        for (const [i, log] of logs.entries()) {
+          try {
+            await api.post('/machine-working-logs', workingLogBody(log));
+            created += 1;
+          } catch (e) {
+            failed.push(`row ${i + 1}: ${errorText(e)}`);
+          }
+        }
+      } finally {
+        await refresh();
       }
-      await refresh();
+      if (failed.length) {
+        throw new Error(
+          `${created} imported, ${failed.length} failed (${failed.slice(0, 3).join('; ')}${failed.length > 3 ? '; ...' : ''})`,
+        );
+      }
       return created;
     },
 

@@ -30,6 +30,8 @@ import { useSkyhook } from '../../data/apiStore';
 import { formatDateDDMMYYYY } from '../../utils/calculations';
 import { Employee, EmployeeType, SalaryType, DocumentRecord, LicenceExtras } from '../../types';
 import { LicenceDetailsFields, LicenceScanModal, ScanOutcome } from './LicenceScan';
+import { AgeingBar } from '../common/Ageing';
+import { AadhaarScanModal, AadhaarOutcome } from './AadhaarScan';
 import { Currency } from '../common/Currency';
 
 const STANDARD_DOCUMENT_TYPES = [
@@ -57,6 +59,7 @@ export const EmployeesView: React.FC = () => {
     renewOperatorLicense,
     getLicenseAlerts,
     currentDate,
+    companySettings,
   } = useSkyhook();
 
   const [activeTab, setActiveTab] = useState<'all' | 'operators' | 'staff'>('operators');
@@ -88,6 +91,8 @@ export const EmployeesView: React.FC = () => {
   const [showScan, setShowScan] = useState(false);
   const [scannedLicence, setScannedLicence] = useState(false);
   const [scanFiles, setScanFiles] = useState<{ front?: File; back?: File }>({});
+  const [showAadhaar, setShowAadhaar] = useState(false);
+  const [aadhaarFiles, setAadhaarFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [emergencyName, setEmergencyName] = useState('');
@@ -131,6 +136,7 @@ export const EmployeesView: React.FC = () => {
     setLicenceExtras({ licenseVehicleClasses: [] });
     setScannedLicence(false);
     setScanFiles({});
+    setAadhaarFiles([]);
     setSaveError('');
     setEmergencyName('');
     setEmergencyMobile('');
@@ -180,6 +186,7 @@ export const EmployeesView: React.FC = () => {
     });
     setScannedLicence(Boolean(emp.licenseScanned));
     setScanFiles({});
+    setAadhaarFiles([]);
     setSaveError('');
     if (emp.emergencyContacts && emp.emergencyContacts[0]) {
       setEmergencyName(emp.emergencyContacts[0].name);
@@ -247,6 +254,14 @@ export const EmployeesView: React.FC = () => {
   };
 
   /** Copy reviewed scan results into the form; the user can still edit before saving. */
+  const handleApplyAadhaar = (r: AadhaarOutcome) => {
+    if (r.name) setFullName(r.name);
+    if (r.dateOfBirth) setDob(r.dateOfBirth);
+    if (r.address) setAddress(r.address);
+    setAadhaarFiles(r.files);
+    setShowAadhaar(false);
+  };
+
   const handleApplyScan = ({ parsed, files }: ScanOutcome) => {
     if (parsed.licenceNumber) setLicenseNumber(parsed.licenceNumber);
     if (parsed.name) setFullName(parsed.name);
@@ -319,7 +334,7 @@ export const EmployeesView: React.FC = () => {
           ...common,
           employeeId: '',
           status: 'active',
-          standardShiftHours: 10,
+          standardShiftHours: companySettings.standardShiftHours || 10,
           overtimeEligible: true,
           salaryEffectiveDate: currentDate,
         });
@@ -333,6 +348,9 @@ export const EmployeesView: React.FC = () => {
         [scanFiles.front, 'Driving Licence – Front'],
         [scanFiles.back, 'Driving Licence – Back'],
       ];
+      aadhaarFiles.forEach((file, i) =>
+        uploads.push([file, aadhaarFiles.length > 1 ? `Aadhaar Card (UIDAI) – ${i + 1}` : 'Aadhaar Card (UIDAI)']),
+      );
       const failed: string[] = [];
       for (const [file, label] of uploads) {
         if (!file) continue;
@@ -575,6 +593,7 @@ export const EmployeesView: React.FC = () => {
       </div>
 
       {showScan && <LicenceScanModal onClose={() => setShowScan(false)} onApply={handleApplyScan} />}
+      {showAadhaar && <AadhaarScanModal onClose={() => setShowAadhaar(false)} onApply={handleApplyAadhaar} />}
 
       {/* License Quick Renewal Modal */}
       {licenseRenewalEmp && (
@@ -675,9 +694,21 @@ export const EmployeesView: React.FC = () => {
             <form onSubmit={handleSubmit} className="modal-body space-y-5">
               {/* Basic Information */}
               <div className="space-y-3">
-                <span className="stat-label block">
-                  1. Personal & Contact Details
-                </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="stat-label block">
+                    1. Personal & Contact Details
+                  </span>
+                  <button type="button" onClick={() => setShowAadhaar(true)} className="btn btn-secondary btn-sm">
+                    <ScanLine className="h-3.5 w-3.5" />
+                    Scan Aadhaar
+                  </button>
+                </div>
+                {aadhaarFiles.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    Aadhaar ({aadhaarFiles.length} file{aadhaarFiles.length > 1 ? 's' : ''}) will be saved with this record.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">Full Name:</label>
@@ -846,6 +877,7 @@ export const EmployeesView: React.FC = () => {
                       />
                     </div>
                   </div>
+                  <AgeingBar issue={craneLicenseDate} expiry={craneLicenseExpiry} />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
@@ -871,6 +903,7 @@ export const EmployeesView: React.FC = () => {
                       />
                     </div>
                   </div>
+                  <AgeingBar issue={transportLicenseDate} expiry={transportLicenseExpiry} />
 
                   <LicenceDetailsFields
                     value={licenceExtras}

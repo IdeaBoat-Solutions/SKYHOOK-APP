@@ -31,6 +31,7 @@ export const AttendanceView: React.FC = () => {
   const {
     currentUser,
     currentDate,
+    companySettings,
     attendance,
     employees,
     projects,
@@ -79,7 +80,7 @@ export const AttendanceView: React.FC = () => {
   );
 
   // Dynamic preview for daily modal
-  const durationPreview = calculateWorkingAndOt(startTime, endTime, breakMin, 600);
+  const durationPreview = calculateWorkingAndOt(startTime, endTime, breakMin, Math.round((companySettings.standardShiftHours || 10) * 60));
   const currentPrj = projects.find((p) => p.id === projectId);
   const detailedOtRate = currentPrj?.overtimeRate || 150;
   const otEarnings = Math.round(durationPreview.potentialOtHours * detailedOtRate);
@@ -341,7 +342,7 @@ export const AttendanceView: React.FC = () => {
             <span className="text-xs font-bold uppercase tracking-wider text-accent bg-accent/10 px-2 py-0.5 rounded border border-accent/20">
               Workforce Operations
             </span>
-            <span className="text-xs text-zinc-500 font-medium">Standard 10h Daily Shift</span>
+            <span className="text-xs text-zinc-500 font-medium">Standard {companySettings.standardShiftHours}h Daily Shift</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-logo-900 mt-1 tracking-tight">
             Operator Attendance & Overtime Register
@@ -700,7 +701,7 @@ export const AttendanceView: React.FC = () => {
                           {/* Quick Label */}
                           <div className="mt-1 text-[10px] font-mono">
                             {status === 'present' && (
-                              <span className="text-emerald-700 font-bold">10h Standard Working</span>
+                              <span className="text-emerald-700 font-bold">{companySettings.standardShiftHours}h Standard Working</span>
                             )}
                             {status === 'absent' && (
                               <span className="text-rose-700 font-bold">0h (No wage payable)</span>
@@ -789,7 +790,7 @@ export const AttendanceView: React.FC = () => {
                                 {10 + otHoursCurrent}h Total
                               </span>
                               <span className="text-[10px] text-zinc-500 block">
-                                (10h Std + {otHoursCurrent}h OT)
+                                ({companySettings.standardShiftHours}h Std + {otHoursCurrent}h OT)
                               </span>
                             </div>
                           ) : status === 'half_day' ? (
@@ -1427,7 +1428,7 @@ export const AttendanceView: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>Standard Shift Allowance:</span>
-                  <span>10 Hours</span>
+                  <span>{companySettings.standardShiftHours} Hours</span>
                 </div>
                 <div className="flex justify-between text-accent-700 font-bold">
                   <span>Calculated Overtime:</span>
