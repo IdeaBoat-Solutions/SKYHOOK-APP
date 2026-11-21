@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ScanLine,
   X,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { MachineType, RcDetails } from '../../types';
 import { ParsedRc, scanRcDocuments } from '../../utils/rcOcr';
-import { isPdf } from '../../utils/ocrEngine';
+import { isPdf, warmUp } from '../../utils/ocrEngine';
 import { DateInput } from '../common/DateInput';
 
 const MACHINE_TYPES: MachineType[] = [
@@ -234,6 +234,10 @@ export const RcScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => {
   const [dragging, setDragging] = useState(false);
   const [review, setReview] = useState<ReviewForm>(toReview({}));
   const input = useRef<HTMLInputElement>(null);
+  // Start the reading engines now so they are ready by the time a file is chosen.
+  useEffect(() => {
+    warmUp();
+  }, []);
 
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
