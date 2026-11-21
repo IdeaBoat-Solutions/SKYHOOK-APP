@@ -102,6 +102,17 @@ function rcDetailsField(b: any): string | undefined {
   return JSON.stringify(out);
 }
 
+/** Forms send '' for fields left empty; treat those (and null) as "not provided". */
+function stripBlank(v: any): any {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
+  return Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '' && x !== null));
+}
+
+/** Registration numbers are compared ignoring case, spaces and dashes. */
+const normalizeReg = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+const REG_KEY_SQL = `upper(regexp_replace(registration_number,'[\\s-]','','g'))`;
+const regKey = (s: string) => s.toUpperCase().replace(/[\s-]/g, '');
+
 function queryLimit(sp: URLSearchParams): number {
   const raw = sp.get('limit');
   if (raw === null) return 200;
@@ -123,16 +134,22 @@ function businessDate(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Add whole days to a yyyy-mm-dd date using UTC arithmetic (no timezone / DST drift). */
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0]!;
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().split('T')[0]!;
 }
 
+/** Add calendar months; a day past the end of the target month clamps to its last day. */
 function addMonths(dateStr: string, months: number): string {
-  const d = new Date(dateStr);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().split('T')[0]!;
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const total = y! * 12 + (m! - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = total % 12;
+  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  return `${String(ny).padStart(4, '0')}-${pad2(nm + 1)}-${pad2(Math.min(d!, lastDay))}`;
 }
 
 function nextServiceDate(lastService: string, value: number, unit: 'days' | 'months' | 'hours'): string {
@@ -259,12 +276,12 @@ export const machinesRoutes: Route[] = [
     handler: async (ctx, req) => {
       const auth = ctx.auth!;
       requirePermission(auth, 'machine:write');
-      const b = await readJson(req);
+      const b = stripBlank(await readJson(req));
       const assetCode = strField(b, 'assetCode');
       const machineType = enumField(b, 'machineType', MACHINE_TYPES, { required: true })!;
       const make = strField(b, 'make', { required: true, minLen: 1 })!;
       const model = strField(b, 'model', { required: true, minLen: 1 })!;
-      const registrationNumber = strField(b, 'registrationNumber', { required: true, minLen: 1 })!;
+      const registrationNumber = normalizeReg(strField(b, 'registrationNumber', { required: true, minLen: 1 })!);
       const serialNumber = strField(b, 'serialNumber');
       const tonnageCapacity = numField(b, 'tonnageCapacity', { min: 0 });
       const purchaseDate = strField(b, 'purchaseDate');
@@ -288,7 +305,25 @@ export const machinesRoutes: Route[] = [
       const status = enumField(b, 'status', MACHINE_STATUSES, { fallback: 'available' })!;
       const rcDetails = rcDetailsField(b);
       const created = await withTenant(auth.tenantId, async (c) => {
-        const code = assetCode ?? `CR-${String((await c.query('SELECT count(*)::int n FROM machines WHERE tenant_id=$1', [auth.tenantId])).rows[0].n + 1).padStart(3, '0')}`;
+        const dup = await c.query(
+          `SELECT asset_code FROM machines WHERE tenant_id=$1 AND ${REG_KEY_SQL} = $2 LIMIT 1`,
+          [auth.tenantId, regKey(registrationNumber)],
+        );
+        if (dup.rows[0]) {
+          throw Errors.conflict(`A machine with registration number ${registrationNumber} already exists (${dup.rows[0].asset_code})`);
+        }
+        // A suggested asset code that is already taken is replaced by the next free one.
+        let code = assetCode;
+        if (code) {
+          const taken = await c.query('SELECT 1 FROM machines WHERE tenant_id=$1 AND asset_code=$2', [auth.tenantId, code]);
+          if (taken.rows[0]) code = undefined;
+        }
+        if (!code) {
+          const seq = await c.query(
+            `SELECT COALESCE(MAX(NULLIF(regexp_replace(asset_code,'\\D','','g'),'')::bigint),0)::int AS n FROM machines WHERE tenant_id=$1`,
+            [auth.tenantId]);
+          code = `CR-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
+        }
         const r = await c.query(
           `INSERT INTO machines (tenant_id,asset_code,machine_type,make,model,registration_number,serial_number,
             tonnage_capacity,purchase_date,purchase_cost_paise,service_frequency_value,service_frequency_unit,
@@ -321,7 +356,7 @@ export const machinesRoutes: Route[] = [
       const id = idFromPath(req);
       const raw = await readJson(req);
       const b: Record<string, unknown> = {};
-      if (raw?.status !== undefined && raw?.status !== null) b.status = strField(raw, 'status', { required: true });
+      if (raw?.status !== undefined && raw?.status !== null) b.status = enumField(raw, 'status', MACHINE_STATUSES, { required: true });
       if (raw?.currentProjectId !== undefined) b.currentProjectId = raw.currentProjectId === null ? null : uuidField(raw, 'currentProjectId');
       if (raw?.assignedOperatorId !== undefined) b.assignedOperatorId = raw.assignedOperatorId === null ? null : uuidField(raw, 'assignedOperatorId');
       if (raw?.serviceFrequencyValue !== undefined && raw?.serviceFrequencyValue !== null) {
@@ -338,6 +373,7 @@ export const machinesRoutes: Route[] = [
       for (const key of ['make', 'model', 'registrationNumber'] as const) {
         if (raw?.[key] != null) b[key] = strField(raw, key, { minLen: 1 });
       }
+      if (typeof b.registrationNumber === 'string') b.registrationNumber = normalizeReg(b.registrationNumber);
       if (raw?.serialNumber !== undefined) b.serialNumber = raw.serialNumber === null ? null : strField(raw, 'serialNumber');
       if (raw?.tonnageCapacity != null) b.tonnageCapacity = numField(raw, 'tonnageCapacity', { min: 0 });
       if (raw?.rcDetails != null) b.rcDetails = rcDetailsField(raw);
@@ -357,6 +393,15 @@ export const machinesRoutes: Route[] = [
       }
       if (raw?.purchaseCostPaise != null) b.purchaseCostPaise = numField(raw, 'purchaseCostPaise', { integer: true, min: 0 });
       const result = await withTenant(auth.tenantId, async (c) => {
+        if (typeof b.registrationNumber === 'string') {
+          const dup = await c.query(
+            `SELECT asset_code FROM machines WHERE tenant_id=$1 AND id<>$2 AND ${REG_KEY_SQL} = $3 LIMIT 1`,
+            [auth.tenantId, id, regKey(b.registrationNumber)],
+          );
+          if (dup.rows[0]) {
+            throw Errors.conflict(`A machine with registration number ${b.registrationNumber} already exists (${dup.rows[0].asset_code})`);
+          }
+        }
         const map: Record<string, string> = { purchaseDate: 'purchase_date', purchaseCostPaise: 'purchase_cost_paise', lastServiceDate: 'last_service_date', nextServiceDueDate: 'next_service_due_date', insuranceProvider: 'insurance_provider', insurancePolicyNumber: 'insurance_policy_number', insuranceStartDate: 'insurance_start_date', insuranceExpiryDate: 'insurance_expiry_date', insuranceIntervalDays: 'insurance_interval_days', pucNumber: 'puc_number', pucIssueDate: 'puc_issue_date', pucExpiryDate: 'puc_expiry_date', pucIntervalDays: 'puc_interval_days', fitnessCertificateNumber: 'fitness_certificate_number', lastFitnessDate: 'last_fitness_date', nextFitnessDueDate: 'next_fitness_due_date', fitnessIntervalDays: 'fitness_interval_days', status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
         const entries = Object.entries(b).filter(([, v]) => v !== undefined);
         if (!entries.length) throw Errors.badRequest('No fields to update');
@@ -403,7 +448,7 @@ export const machinesRoutes: Route[] = [
         await c.query(
           `INSERT INTO service_records (tenant_id,machine_id,service_date,service_type,service_provider,cost_paise,odometer_or_hours,notes,completed_by)
            VALUES ($1,$2,$3::date,'Periodic Maintenance',$4,$5,$6,$7,$8)`,
-          [auth.tenantId, id, serviceDate, serviceProvider ?? 'Authorized Service Agency', costPaise, odometerOrHours ?? null, notes ?? null, auth.userId],
+          [auth.tenantId, id, serviceDate, serviceProvider || null, costPaise, odometerOrHours ?? null, notes ?? null, auth.userId],
         );
         const r = await c.query('UPDATE machines SET last_service_date=$3::date, next_service_due_date=$4::date, updated_by=$5 WHERE tenant_id=$1 AND id=$2 RETURNING *',
           [auth.tenantId, id, serviceDate, next, auth.userId]);

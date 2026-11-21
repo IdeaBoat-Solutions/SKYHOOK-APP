@@ -166,7 +166,7 @@ export function parseDrivingLicence(rawText: string): ParsedLicence {
   const used = new Set<number>();
   const take = (index: number) => used.add(index);
 
-  const dobLabel = text.search(/Birth/i);
+  const dobLabel = text.search(/Birth|\bD\.?O\.?B\b/i);
   if (dobLabel >= 0) {
     const dob = dates.find((d) => d.index >= dobLabel && d.index - dobLabel < 40);
     if (dob) {
@@ -192,8 +192,25 @@ export function parseDrivingLicence(rawText: string): ParsedLicence {
     }
   }
 
-  // The remaining dates appear in the order: issue, validity (NT), validity (TR).
-  const rest = dates.filter((d) => !used.has(d.index)).map((d) => d.iso);
+  // Validity dates are read by their (NT) / (TR) labels when the card text carries them,
+  // so a missing or unreadable date cannot shift the others into the wrong field.
+  const labelled = (re: RegExp) => {
+    const at = text.search(re);
+    if (at < 0) return undefined;
+    return dates.find((d) => !used.has(d.index) && d.index >= at && d.index - at < 45);
+  };
+  const ntHit = labelled(/\(\s*NT\s*\)|\bNon[\s-]*Transport\b/i);
+  const trHit = labelled(/\(\s*TR\s*\)|(?<!Non[\s-]*)\bTransport\b/i);
+  if (ntHit || trHit) {
+    if (ntHit) { result.validNt = ntHit.iso; take(ntHit.index); }
+    if (trHit) { result.validTr = trHit.iso; take(trHit.index); }
+    const issue = dates.find((d) => !used.has(d.index));
+    if (issue) result.issueDate = issue.iso;
+    // Back-fill vehicle classes below and skip the positional guess.
+  }
+
+  // Otherwise the remaining dates appear in the order: issue, validity (NT), validity (TR).
+  const rest = ntHit || trHit ? [] : dates.filter((d) => !used.has(d.index)).map((d) => d.iso);
   if (rest.length >= 3) {
     [result.issueDate, result.validNt, result.validTr] = rest;
   } else if (rest.length === 2) {

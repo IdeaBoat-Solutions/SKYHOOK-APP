@@ -126,7 +126,7 @@ export const LicenceDetailsFields: React.FC<FieldsProps> = ({ value, onChange })
                 type="button"
                 aria-pressed={active}
                 onClick={() => toggleClass(code)}
-                className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                className={`min-h-10 rounded-md border px-3 py-1 text-[11px] font-semibold transition-colors sm:min-h-0 sm:px-2 ${
                   active
                     ? 'border-logo-700 bg-logo-700 text-white'
                     : 'border-line bg-surface text-ink-600 hover:bg-surface-muted'
@@ -301,7 +301,6 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
         ref={ref}
         type="file"
         accept="image/*"
-        capture="environment"
         className="sr-only"
         onChange={(e) => pick(side, e.target.files?.[0])}
       />
@@ -353,7 +352,7 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
           </button>
         </div>
 
-        <div className="modal-body max-h-[72vh] space-y-4 overflow-y-auto">
+        <div className="modal-body space-y-4 sm:max-h-[72vh]">
           {error && (
             <div className="alert-banner" role="alert">
               <AlertCircle className="h-4 w-4 shrink-0" />

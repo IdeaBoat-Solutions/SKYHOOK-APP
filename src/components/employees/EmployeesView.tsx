@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
   X,
@@ -33,8 +33,29 @@ import { LicenceDetailsFields, LicenceScanModal, ScanOutcome } from './LicenceSc
 import { AgeingBar } from '../common/Ageing';
 import { AadhaarScanModal, AadhaarOutcome } from './AadhaarScan';
 import { Currency } from '../common/Currency';
+import { mapDocument } from '../../api/mappers';
+import { api } from '../../api/client';
+import { formatPerDay } from '../../lib/wage';
 
 import { DateInput } from '../common/DateInput';
+/** A document picked in the form that is uploaded when the record is saved. */
+interface StagedDoc {
+  key: string;
+  file: File;
+  type: string;
+  expiry?: string;
+}
+
+/** Documents from the API arrive as raw rows; accept both raw rows and already-mapped records. */
+const normDoc = (d: any): DocumentRecord => (d && 'doc_type' in d ? mapDocument(d) : d);
+
+const withTitle = (file: File, title: string): File => {
+  const t = title.trim();
+  if (!t || t === file.name.replace(/\.[^/.]+$/, '')) return file;
+  const ext = file.name.match(/\.[^/.]+$/)?.[0] ?? '';
+  return new File([file], t.endsWith(ext) ? t : `${t}${ext}`, { type: file.type });
+};
+
 const STANDARD_DOCUMENT_TYPES = [
   'Heavy Crane Driving License',
   'Commercial Transport Vehicle License',
@@ -58,6 +79,7 @@ export const EmployeesView: React.FC = () => {
     updateEmployee,
     deactivateEmployee,
     renewOperatorLicense,
+    downloadDocument,
     getLicenseAlerts,
     currentDate,
     companySettings,
@@ -96,23 +118,48 @@ export const EmployeesView: React.FC = () => {
   const [aadhaarFiles, setAadhaarFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [emergencyName, setEmergencyName] = useState('');
-  const [emergencyMobile, setEmergencyMobile] = useState('');
-  const [emergencyRelation, setEmergencyRelation] = useState('Wife');
+  const [showInactive, setShowInactive] = useState(false);
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState('');
+  const [docError, setDocError] = useState('');
 
-  // Pre-save Document Upload State
-  const [stagedDocuments, setStagedDocuments] = useState<DocumentRecord[]>([]);
+  // Documents picked in the form; they are uploaded to storage when the record is saved.
+  const [stagedDocs, setStagedDocs] = useState<StagedDoc[]>([]);
   const [uploadDocType, setUploadDocType] = useState(STANDARD_DOCUMENT_TYPES[0]);
   const [uploadDocTitle, setUploadDocTitle] = useState('');
   const [uploadDocExpiry, setUploadDocExpiry] = useState('');
-  const [uploadFileName, setUploadFileName] = useState('');
-  const [uploadFileSize, setUploadFileSize] = useState<number>(0);
-  const [uploadFileDataUrl, setUploadFileDataUrl] = useState<string>('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   // License Quick Renewal Modal
   const [licenseRenewalEmp, setLicenseRenewalEmp] = useState<Employee | null>(null);
-  const [newCraneExpiry, setNewCraneExpiry] = useState('2027-10-24');
-  const [newTransportExpiry, setNewTransportExpiry] = useState('2028-10-24');
+  const [newCraneExpiry, setNewCraneExpiry] = useState('');
+  const [newTransportExpiry, setNewTransportExpiry] = useState('');
+
+  // Latest copy of the employee being edited / viewed (the list refreshes after every save).
+  const liveEditing = editingEmployee ? employees.find((e) => e.id === editingEmployee.id) ?? editingEmployee : null;
+  const liveSelected = selectedEmployee ? employees.find((e) => e.id === selectedEmployee.id) ?? selectedEmployee : null;
+
+  // The employee list does not carry documents; they are fetched when a record is opened.
+  const [fetchedDocs, setFetchedDocs] = useState<Record<string, DocumentRecord[]>>({});
+  const loadDocs = async (id: string) => {
+    try {
+      const r = await api.get<{ items: any[] }>(`/employees/${id}/documents`);
+      setFetchedDocs((prev) => ({ ...prev, [id]: (r.items ?? []).map(mapDocument) }));
+    } catch {
+      /* the profile still opens; it just shows no documents */
+    }
+  };
+  useEffect(() => {
+    if (selectedEmployee) void loadDocs(selectedEmployee.id);
+  }, [selectedEmployee?.id]);
+  useEffect(() => {
+    if (showModal && editingEmployee) void loadDocs(editingEmployee.id);
+  }, [showModal, editingEmployee?.id]);
+  const docsOf = (emp: Employee | null): DocumentRecord[] =>
+    emp ? fetchedDocs[emp.id] ?? (emp.documents ?? []).map(normDoc) : [];
+  const savedDocs = docsOf(liveEditing);
 
   const licenseAlerts = getLicenseAlerts();
 
@@ -128,7 +175,7 @@ export const EmployeesView: React.FC = () => {
     setAddress('');
     setSalaryType('daily');
     setDailyRate('');
-    setMonthlySalary('0');
+    setMonthlySalary('');
     setLicenseNumber('');
     setCraneLicenseDate('');
     setCraneLicenseExpiry('');
@@ -139,18 +186,15 @@ export const EmployeesView: React.FC = () => {
     setScanFiles({});
     setAadhaarFiles([]);
     setSaveError('');
-    setEmergencyName('');
-    setEmergencyMobile('');
-    setEmergencyRelation('Wife');
+    setDocError('');
 
     // Reset staged documents
-    setStagedDocuments([]);
+    setStagedDocs([]);
     setUploadDocType(STANDARD_DOCUMENT_TYPES[0]);
     setUploadDocTitle('');
     setUploadDocExpiry('');
-    setUploadFileName('');
-    setUploadFileSize(0);
-    setUploadFileDataUrl('');
+    setUploadFile(null);
+    setFileInputKey((k) => k + 1);
 
     setShowModal(true);
   };
@@ -189,69 +233,82 @@ export const EmployeesView: React.FC = () => {
     setScanFiles({});
     setAadhaarFiles([]);
     setSaveError('');
-    if (emp.emergencyContacts && emp.emergencyContacts[0]) {
-      setEmergencyName(emp.emergencyContacts[0].name);
-      setEmergencyMobile(emp.emergencyContacts[0].mobile);
-      setEmergencyRelation(emp.emergencyContacts[0].relation);
-    } else {
-      setEmergencyName('');
-      setEmergencyMobile('');
-      setEmergencyRelation('');
-    }
+    setDocError('');
 
-    // Populate existing documents
-    setStagedDocuments(emp.documents || []);
+    // Already-saved documents are listed from the record; only new picks are staged.
+    setStagedDocs([]);
     setUploadDocType(STANDARD_DOCUMENT_TYPES[0]);
     setUploadDocTitle('');
     setUploadDocExpiry('');
-    setUploadFileName('');
-    setUploadFileSize(0);
-    setUploadFileDataUrl('');
+    setUploadFile(null);
+    setFileInputKey((k) => k + 1);
 
     setShowModal(true);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setUploadFileName(file.name);
-      setUploadFileSize(Math.round(file.size / 1024));
-      const reader = new FileReader();
-      reader.onload = () => {
-        setUploadFileDataUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-      if (!uploadDocTitle) {
-        setUploadDocTitle(file.name.replace(/\.[^/.]+$/, ''));
-      }
+    setDocError('');
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setDocError('That file is larger than 10 MB. Choose a smaller PDF or photo.');
+      setUploadFile(null);
+      setFileInputKey((k) => k + 1);
+      return;
     }
+    setUploadFile(file);
+    if (!uploadDocTitle) setUploadDocTitle(file.name.replace(/\.[^/.]+$/, ''));
   };
 
   const handleStageDocument = () => {
-    if (!uploadFileName && !uploadDocTitle) return;
-
-    const newDoc: DocumentRecord = {
-      id: `DOC-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      type: uploadDocType,
-      name: uploadDocTitle.trim() || uploadFileName || `${uploadDocType} Document`,
-      fileUrl: uploadFileDataUrl || '/assets/image.png',
-      uploadDate: currentDate,
-      expiryDate: uploadDocExpiry || undefined,
-      sizeKb: uploadFileSize || Math.floor(Math.random() * 500) + 150,
-    };
-
-    setStagedDocuments((prev) => [newDoc, ...prev]);
-
-    // Reset single upload inputs
+    if (!uploadFile) {
+      setDocError('Choose a file first.');
+      return;
+    }
+    setDocError('');
+    setStagedDocs((prev) => [
+      {
+        key: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        file: withTitle(uploadFile, uploadDocTitle),
+        type: uploadDocType,
+        expiry: uploadDocExpiry || undefined,
+      },
+      ...prev,
+    ]);
     setUploadDocTitle('');
     setUploadDocExpiry('');
-    setUploadFileName('');
-    setUploadFileSize(0);
-    setUploadFileDataUrl('');
+    setUploadFile(null);
+    setFileInputKey((k) => k + 1);
   };
 
-  const handleRemoveStagedDoc = (docId: string) => {
-    setStagedDocuments((prev) => prev.filter((d) => d.id !== docId));
+  const handleRemoveStagedDoc = (key: string) => {
+    setStagedDocs((prev) => prev.filter((d) => d.key !== key));
+  };
+
+  /** Open a stored document in a new tab (falls back to a download if pop-ups are blocked). */
+  const openDocument = async (doc: DocumentRecord) => {
+    setStatusError('');
+    const win = window.open('', '_blank');
+    try {
+      const raw = await downloadDocument(doc.fileUrl);
+      // The API serves bytes as octet-stream; tag the real type so images and PDFs open in the tab.
+      const ext = (doc.name.split('.').pop() || doc.fileUrl.split('.').pop() || '').toLowerCase();
+      const mime =
+        ({ pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' } as Record<string, string>)[ext];
+      const blob = mime ? new Blob([raw], { type: mime }) : raw;
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.name;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      win?.close();
+      setStatusError(err instanceof Error ? err.message : 'Could not open that document.');
+    }
   };
 
   /** Copy reviewed scan results into the form; the user can still edit before saving. */
@@ -297,10 +354,6 @@ export const EmployeesView: React.FC = () => {
     e.preventDefault();
     if (saving) return;
     setSaveError('');
-    const emergencyContacts = emergencyName
-      ? [{ id: `EC-${Date.now()}`, name: emergencyName, mobile: emergencyMobile, relation: emergencyRelation }]
-      : [];
-
     const common = {
       fullName,
       mobile,
@@ -320,9 +373,16 @@ export const EmployeesView: React.FC = () => {
       transportLicenseExpiry,
       ...licenceExtras,
       licenseScanned: scannedLicence,
-      emergencyContacts,
-      documents: stagedDocuments,
     };
+
+    if (salaryType === 'daily' && !(parseFloat(dailyRate) > 0)) {
+      setSaveError('Enter the daily payout amount.');
+      return;
+    }
+    if (salaryType === 'monthly' && !(parseFloat(monthlySalary) > 0)) {
+      setSaveError('Enter the monthly salary.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -333,6 +393,8 @@ export const EmployeesView: React.FC = () => {
       } else {
         const created = await addEmployee({
           ...common,
+          emergencyContacts: [],
+          documents: [],
           employeeId: '',
           status: 'active',
           standardShiftHours: companySettings.standardShiftHours || 10,
@@ -340,30 +402,42 @@ export const EmployeesView: React.FC = () => {
           salaryEffectiveDate: currentDate,
         });
         employeeId = created.id;
+        // From here on this is an edit: a retry after a failed upload must not create a duplicate.
+        setEditingEmployee(created);
       }
 
       // Keep the scanned photos with the record. The details are already saved,
       // so a failed upload is reported without losing them.
       const expiry = transportLicenseExpiry || craneLicenseExpiry || undefined;
-      const uploads: Array<[File | undefined, string]> = [
-        [scanFiles.front, 'Driving Licence – Front'],
-        [scanFiles.back, 'Driving Licence – Back'],
-      ];
+      const uploads: Array<{ key: string; file: File; type: string; expiry?: string }> = [];
+      if (scanFiles.front) uploads.push({ key: 'lic-front', file: scanFiles.front, type: 'Driving Licence – Front', expiry });
+      if (scanFiles.back) uploads.push({ key: 'lic-back', file: scanFiles.back, type: 'Driving Licence – Back', expiry });
       aadhaarFiles.forEach((file, i) =>
-        uploads.push([file, aadhaarFiles.length > 1 ? `Aadhaar Card (UIDAI) – ${i + 1}` : 'Aadhaar Card (UIDAI)']),
+        uploads.push({
+          key: `aadhaar-${i}`,
+          file,
+          type: aadhaarFiles.length > 1 ? `Aadhaar Card (UIDAI) – ${i + 1}` : 'Aadhaar Card (UIDAI)',
+          expiry: undefined,
+        }),
       );
-      const failed: string[] = [];
-      for (const [file, label] of uploads) {
-        if (!file) continue;
+      stagedDocs.forEach((d) => uploads.push({ key: d.key, file: d.file, type: d.type, expiry: d.expiry }));
+
+      const failed: typeof uploads = [];
+      for (const u of uploads) {
         try {
-          await attachEmployeeDocument(employeeId, file, label, expiry);
+          await attachEmployeeDocument(employeeId, u.file, u.type, u.expiry);
         } catch {
-          failed.push(label);
+          failed.push(u);
         }
       }
+      if (uploads.length) await loadDocs(employeeId);
       if (failed.length) {
+        // Keep only what still needs uploading so a retry does not duplicate the rest.
+        setScanFiles({});
+        setAadhaarFiles([]);
+        setStagedDocs(failed.map((u) => ({ key: u.key, file: u.file, type: u.type, expiry: u.expiry })));
         setSaveError(
-          `Saved, but could not upload: ${failed.join(', ')}. Open the profile and attach the photo again.`,
+          `Saved, but could not upload: ${failed.map((u) => u.type).join(', ')}. Press save again to retry the upload.`,
         );
         return;
       }
@@ -375,14 +449,41 @@ export const EmployeesView: React.FC = () => {
     }
   };
 
-  const handleConfirmLicenseRenewal = (e: React.FormEvent) => {
+  const handleConfirmLicenseRenewal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!licenseRenewalEmp) return;
-    renewOperatorLicense(licenseRenewalEmp.id, newCraneExpiry, newTransportExpiry);
-    setLicenseRenewalEmp(null);
+    if (!newCraneExpiry) {
+      setSaveError('Enter the new crane licence expiry date.');
+      return;
+    }
+    setSaveError('');
+    try {
+      await renewOperatorLicense(licenseRenewalEmp.id, newCraneExpiry, newTransportExpiry || undefined);
+      setLicenseRenewalEmp(null);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save the licence renewal. Please try again.');
+    }
   };
 
+  const changeStatus = async (emp: Employee, next: 'active' | 'inactive') => {
+    setStatusBusy(true);
+    setStatusError('');
+    try {
+      if (next === 'inactive') await deactivateEmployee(emp.id);
+      else await updateEmployee(emp.id, { status: 'active' });
+      setConfirmDeactivate(false);
+      if (next === 'inactive' && !showInactive) setSelectedEmployee(null);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : 'Could not change the status. Please try again.');
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
+  const licenceAlertFor = (emp: Employee) => licenseAlerts.find((a) => a.targetId === emp.id);
+
   const filteredEmployees = employees.filter((emp) => {
+    if (!showInactive && emp.status !== 'active') return false;
     const matchTab =
       activeTab === 'all'
         ? true
@@ -404,7 +505,7 @@ export const EmployeesView: React.FC = () => {
     <div className="page">
       {/* Header */}
       <div className="page-header">
-        <div>
+        <div className="min-w-0">
           <h2 className="page-title">
             Employee & Operator Master
           </h2>
@@ -415,7 +516,7 @@ export const EmployeesView: React.FC = () => {
 
         <button
           onClick={handleOpenAdd}
-          className="btn btn-primary self-start sm:self-auto shrink-0"
+          className="btn btn-primary shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>Add Operator / Staff</span>
@@ -427,19 +528,19 @@ export const EmployeesView: React.FC = () => {
         <div className="tab-bar">
           <button
             onClick={() => setActiveTab('operators')}
-            className={`tab ${activeTab === 'operators' ? 'tab-active' : ''}`}
+            className={`tab shrink-0 ${activeTab === 'operators' ? 'tab-active' : ''}`}
           >
             Crane Operators ({employees.filter((e) => e.employeeType === 'operator').length})
           </button>
           <button
             onClick={() => setActiveTab('staff')}
-            className={`tab ${activeTab === 'staff' ? 'tab-active' : ''}`}
+            className={`tab shrink-0 ${activeTab === 'staff' ? 'tab-active' : ''}`}
           >
             Management & Staff ({employees.filter((e) => e.employeeType !== 'operator').length})
           </button>
           <button
             onClick={() => setActiveTab('all')}
-            className={`tab ${activeTab === 'all' ? 'tab-active' : ''}`}
+            className={`tab shrink-0 ${activeTab === 'all' ? 'tab-active' : ''}`}
           >
             All Workforce ({employees.length})
           </button>
@@ -455,10 +556,103 @@ export const EmployeesView: React.FC = () => {
             className="form-input pl-9"
           />
         </div>
+
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-medium text-ink-700 md:min-h-0">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+          />
+          Show inactive
+        </label>
       </div>
 
-      {/* Operator List Table */}
-      <div className="table-card">
+      {/* Phones: one card per person */}
+      <div className="space-y-3 md:hidden">
+        {filteredEmployees.map((emp) => {
+          const alert = licenceAlertFor(emp);
+          return (
+            <div key={emp.id} className="card card-pad space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="chip">{emp.employeeId}</span>
+                  <h3 className="mt-1 break-words text-base font-semibold text-ink-900">{emp.fullName}</h3>
+                  <p className="text-xs text-ink-500">{emp.designation}</p>
+                </div>
+                <span className={`badge shrink-0 ${emp.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                  {emp.status}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="min-w-0">
+                  <span className="stat-label block">Contact</span>
+                  <a href={`tel:${emp.mobile.replace(/\s/g, '')}`} className="font-semibold text-logo-700">{emp.mobile}</a>
+                </div>
+                <div className="min-w-0">
+                  <span className="stat-label block">{emp.salaryType === 'daily' ? 'Daily wage' : 'Monthly salary'}</span>
+                  <span className="font-semibold text-ink-900">
+                    <Currency value={emp.salaryType === 'daily' ? emp.dailyRate : emp.monthlySalary} size="xs" />
+                    <span className="ml-1 text-[10px] font-normal text-ink-500">
+                      {emp.salaryType === 'daily' ? '/day' : '/mo'}
+                    </span>
+                  </span>
+                  {emp.salaryType === 'monthly' && emp.monthlySalary > 0 && (
+                    <span className="block text-[10px] text-ink-500">{formatPerDay(emp.monthlySalary, currentDate)}</span>
+                  )}
+                </div>
+                {emp.employeeType === 'operator' && (
+                  <div className="col-span-2 min-w-0">
+                    <span className="stat-label block">Crane licence</span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className={`font-semibold ${alert ? 'text-danger-600' : 'text-ink-800'}`}>
+                        {emp.craneLicenseExpiry ? formatDateDDMMYYYY(emp.craneLicenseExpiry) : 'Not recorded'}
+                      </span>
+                      {alert && (
+                        <span className={`badge ${alert.status === 'upcoming' ? 'badge-warning' : 'badge-danger'}`}>
+                          {alert.urgencyLabel}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-ink-500">No: {emp.licenseNumber || '-'}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {emp.employeeType === 'operator' && alert && (
+                  <button
+                    onClick={() => {
+                      setSaveError('');
+                      setLicenseRenewalEmp(emp);
+                      setNewCraneExpiry('');
+                      setNewTransportExpiry('');
+                    }}
+                    className="btn btn-primary flex-1"
+                  >
+                    Renew Licence
+                  </button>
+                )}
+                <button onClick={() => handleOpenEdit(emp)} className="btn btn-secondary flex-1">
+                  Edit
+                </button>
+                <button onClick={() => { setConfirmDeactivate(false); setStatusError(''); setSelectedEmployee(emp); }} className="btn btn-secondary flex-1">
+                  Profile
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {filteredEmployees.length === 0 && (
+          <div className="card empty-state">
+            <Users className="h-6 w-6 text-ink-300" />
+            <span>No {showInactive ? '' : 'active '}employees match your search.</span>
+          </div>
+        )}
+      </div>
+
+      {/* md and up: table */}
+      <div className="table-card hidden md:block">
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -468,15 +662,13 @@ export const EmployeesView: React.FC = () => {
                 <th className="px-3.5 py-3">Contact</th>
                 <th className="px-3.5 py-3">Wage / Salary</th>
                 <th className="px-3.5 py-3">Licenses & Expiries</th>
-                <th className="px-3.5 py-3 text-center">Docs</th>
                 <th className="px-3.5 py-3 text-center">Status</th>
                 <th className="px-3.5 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line text-ink-800">
               {filteredEmployees.map((emp) => {
-                const hasAlert = licenseAlerts.some((a) => a.targetId === emp.id);
-                const docCount = emp.documents?.length || 0;
+                const alert = licenceAlertFor(emp);
 
                 return (
                   <tr key={emp.id} className="hover:bg-surface-muted transition-colors">
@@ -503,23 +695,23 @@ export const EmployeesView: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-ink-500 block">10h Standard</span>
+                      {emp.salaryType === 'monthly' && emp.monthlySalary > 0 ? (
+                        <span className="text-[10px] text-ink-500 block">{formatPerDay(emp.monthlySalary, currentDate)}</span>
+                      ) : (
+                        <span className="text-[10px] text-ink-500 block">{emp.standardShiftHours || 10}h Standard</span>
+                      )}
                     </td>
                     <td className="px-3.5 py-3">
                       {emp.employeeType === 'operator' ? (
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] text-ink-500">Crane Lic:</span>
-                            <span
-                              className={`font-semibold ${
-                                hasAlert ? 'text-danger-600 font-semibold' : 'text-ink-800'
-                              }`}
-                            >
-                              {formatDateDDMMYYYY(emp.craneLicenseExpiry)}
+                            <span className={`font-semibold ${alert ? 'text-danger-600' : 'text-ink-800'}`}>
+                              {emp.craneLicenseExpiry ? formatDateDDMMYYYY(emp.craneLicenseExpiry) : 'Not recorded'}
                             </span>
-                            {hasAlert && (
-                              <span className="badge badge-danger">
-                                Overdue
+                            {alert && (
+                              <span className={`badge ${alert.status === 'upcoming' ? 'badge-warning' : 'badge-danger'}`}>
+                                {alert.urgencyLabel}
                               </span>
                             )}
                           </div>
@@ -533,68 +725,53 @@ export const EmployeesView: React.FC = () => {
                     </td>
 
                     <td className="px-3.5 py-3 text-center">
-                      {docCount > 0 ? (
-                        <span className="badge badge-neutral">
-                          <FileText className="w-3 h-3" />
-                          <span>{docCount}</span>
-                        </span>
-                      ) : (
-                        <span className="text-ink-300 text-[11px]">-</span>
-                      )}
-                    </td>
-
-                    <td className="px-3.5 py-3 text-center">
-                      <span
-                        className={`badge ${
-                          emp.status === 'active' ? 'badge-success' : 'badge-neutral'
-                        }`}
-                      >
+                      <span className={`badge ${emp.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
                         {emp.status}
                       </span>
                     </td>
 
                     <td className="px-3.5 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {emp.employeeType === 'operator' && hasAlert && (
+                        {emp.employeeType === 'operator' && alert && (
                           <button
                             onClick={() => {
+                              setSaveError('');
                               setLicenseRenewalEmp(emp);
-                              setNewCraneExpiry(emp.craneLicenseExpiry || '2027-10-24');
+                              setNewCraneExpiry('');
+                              setNewTransportExpiry('');
                             }}
                             className="btn btn-primary btn-sm"
                           >
                             Renew License
                           </button>
                         )}
-                        <button
-                          onClick={() => handleOpenEdit(emp)}
-                          className="btn btn-ghost btn-sm"
-                        >
+                        <button onClick={() => handleOpenEdit(emp)} className="btn btn-ghost btn-sm">
                           Edit
                         </button>
                         <button
-                          onClick={() => setSelectedEmployee(emp)}
+                          onClick={() => { setConfirmDeactivate(false); setStatusError(''); setSelectedEmployee(emp); }}
                           className="btn btn-ghost btn-sm"
                         >
                           Profile
-                          <ArrowRight
-                            size={12}
-                            className="inline-block align-middle ml-1"
-                            aria-hidden="true"
-                          />
+                          <ArrowRight size={12} className="inline-block align-middle ml-1" aria-hidden="true" />
                         </button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
+              {filteredEmployees.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-ink-500">
+                    No {showInactive ? '' : 'active '}employees match your search.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {showScan && <LicenceScanModal onClose={() => setShowScan(false)} onApply={handleApplyScan} />}
-      {showAadhaar && <AadhaarScanModal onClose={() => setShowAadhaar(false)} onApply={handleApplyAadhaar} />}
 
       {/* License Quick Renewal Modal */}
       {licenseRenewalEmp && (
@@ -605,18 +782,29 @@ export const EmployeesView: React.FC = () => {
               <button
                 onClick={() => setLicenseRenewalEmp(null)}
                 className="icon-btn"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmLicenseRenewal} className="modal-body space-y-4 text-xs">
+            <form onSubmit={handleConfirmLicenseRenewal} className="flex min-h-0 flex-1 flex-col text-xs">
+             <div className="modal-body space-y-4">
+              {saveError && (
+                <div className="alert-banner" role="alert">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="text-xs">{saveError}</span>
+                </div>
+              )}
               <div className="notice notice--warning">
                 <span className="font-semibold block text-sm">
                   {licenseRenewalEmp.fullName} ({licenseRenewalEmp.employeeId})
                 </span>
                 <span className="text-ink-600 block mt-0.5">
-                  License #: {licenseRenewalEmp.licenseNumber}
+                  License #: {licenseRenewalEmp.licenseNumber || 'not recorded'}
+                  {licenseRenewalEmp.craneLicenseExpiry && (
+                    <> · current expiry {formatDateDDMMYYYY(licenseRenewalEmp.craneLicenseExpiry)}</>
+                  )}
                 </span>
               </div>
 
@@ -633,16 +821,17 @@ export const EmployeesView: React.FC = () => {
 
               <div>
                 <label className="form-label">
-                  New Transport Vehicle License Expiry:
+                  New Transport Vehicle License Expiry (optional):
                 </label>
-                <DateInput required
+                <DateInput
                   value={newTransportExpiry}
                   onChange={(e) => setNewTransportExpiry(e.target.value)}
                   className="form-input font-semibold"
                 />
               </div>
 
-              <div className="form-actions">
+             </div>
+              <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setLicenseRenewalEmp(null)}
@@ -681,14 +870,17 @@ export const EmployeesView: React.FC = () => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
                 className="icon-btn"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="modal-body space-y-5">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+             <div className="modal-body space-y-5">
               {/* Basic Information */}
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -723,6 +915,7 @@ export const EmployeesView: React.FC = () => {
                     <input
                       type="text"
                       required
+                      inputMode="tel"
                       placeholder="+91 98200 11223"
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
@@ -769,7 +962,7 @@ export const EmployeesView: React.FC = () => {
               </div>
 
               {/* Salary Configuration */}
-              <div className="rounded-lg border border-line bg-surface-muted p-4 space-y-3">
+              <div className="rounded-lg border border-line bg-surface-muted p-3 sm:p-4 space-y-3">
                 <span className="stat-label block">
                   2. Salary & Wage Model
                 </span>
@@ -792,13 +985,20 @@ export const EmployeesView: React.FC = () => {
                     </label>
                     <input
                       type="number"
+                      inputMode="decimal"
                       required
+                      min="1"
                       value={salaryType === 'daily' ? dailyRate : monthlySalary}
                       onChange={(e) =>
                         salaryType === 'daily' ? setDailyRate(e.target.value) : setMonthlySalary(e.target.value)
                       }
                       className="form-input"
                     />
+                    {salaryType === 'monthly' && parseFloat(monthlySalary) > 0 && (
+                      <p className="mt-1 text-[11px] font-medium text-ink-600">
+                        {formatPerDay(parseFloat(monthlySalary), currentDate)}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="form-label">Standard Shift:</label>
@@ -814,7 +1014,7 @@ export const EmployeesView: React.FC = () => {
 
               {/* Operator Specific License Details */}
               {employeeType === 'operator' && (
-                <div className="rounded-lg border border-line bg-surface-muted p-4 space-y-3">
+                <div className="rounded-lg border border-line bg-surface-muted p-3 sm:p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="stat-label block">
                       3. Heavy Crane Operator Licenses
@@ -906,45 +1106,6 @@ export const EmployeesView: React.FC = () => {
                 </div>
               )}
 
-              {/* Emergency Contact */}
-              <div className="rounded-lg border border-line bg-surface-muted p-4 space-y-2">
-                <span className="stat-label block">
-                  4. Emergency Contact
-                </span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="form-label">Contact Name:</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Sangeeta Patel"
-                      value={emergencyName}
-                      onChange={(e) => setEmergencyName(e.target.value)}
-                      className="form-input"
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Contact Mobile:</label>
-                    <input
-                      type="text"
-                      placeholder="+91 98201 12233"
-                      value={emergencyMobile}
-                      onChange={(e) => setEmergencyMobile(e.target.value)}
-                      className="form-input"
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Relation:</label>
-                    <input
-                      type="text"
-                      placeholder="Wife / Father / Brother"
-                      value={emergencyRelation}
-                      onChange={(e) => setEmergencyRelation(e.target.value)}
-                      className="form-input"
-                    />
-                  </div>
-                </div>
-              </div>
-
               {/* Dedicated Operator & Employee Documents Upload Section (Before Saving) */}
               <div className="rounded-lg border border-logo-700 bg-logo-700 p-4 space-y-4 text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-logo-700 pb-3">
@@ -960,7 +1121,7 @@ export const EmployeesView: React.FC = () => {
                     </p>
                   </div>
                   <span className="badge bg-brand-600 text-white self-start sm:self-auto">
-                    {stagedDocuments.length} Document{stagedDocuments.length === 1 ? '' : 's'} Attached
+                    {savedDocs.length + stagedDocs.length} Document{savedDocs.length + stagedDocs.length === 1 ? '' : 's'}
                   </span>
                 </div>
 
@@ -1010,21 +1171,22 @@ export const EmployeesView: React.FC = () => {
 
                 {/* File Selector & Stage Button */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-lg border border-logo-700 bg-logo-700 p-3">
-                  <div className="flex items-center gap-3">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-logo-800 px-3 py-2 text-xs font-semibold text-white hover:bg-ink-700">
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-line-strong bg-logo-800 px-3 py-2 text-xs font-semibold text-white hover:bg-ink-700">
                       <Upload className="w-3.5 h-3.5 text-ink-300" />
                       <span>Choose File (PDF/Image)</span>
                       <input
+                        key={fileInputKey}
                         type="file"
                         accept=".pdf,.png,.jpg,.jpeg,.webp"
                         onChange={handleFileChange}
                         className="hidden"
                       />
                     </label>
-                    <div className="truncate">
-                      {uploadFileName ? (
-                        <span className="font-semibold text-white text-xs truncate block max-w-xs">
-                          {uploadFileName} ({uploadFileSize} KB)
+                    <div className="min-w-0">
+                      {uploadFile ? (
+                        <span className="block truncate text-xs font-semibold text-white">
+                          {uploadFile.name} ({Math.max(1, Math.round(uploadFile.size / 1024))} KB)
                         </span>
                       ) : (
                         <span className="text-ink-400 text-xs">No file chosen yet</span>
@@ -1035,42 +1197,65 @@ export const EmployeesView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleStageDocument}
-                    disabled={!uploadFileName && !uploadDocTitle}
+                    disabled={!uploadFile}
                     className="btn btn-primary"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Attach Document</span>
                   </button>
                 </div>
+                {docError && <p className="text-xs font-semibold text-danger-200" role="alert">{docError}</p>}
 
-                {/* Staged Documents List (Ready to save) */}
-                {stagedDocuments.length > 0 ? (
+                {/* Already saved + waiting to upload */}
+                {savedDocs.length > 0 && (
                   <div className="space-y-2 pt-1">
                     <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400">
-                      Documents Ready to be Saved ({stagedDocuments.length}):
+                      Saved documents ({savedDocs.length})
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {stagedDocuments.map((doc) => (
+                      {savedDocs.map((doc) => (
+                        <div key={doc.id} className="flex items-center justify-between gap-2 rounded-lg border border-logo-700 bg-logo-700 p-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-white">{doc.name}</p>
+                            <p className="truncate text-[10px] text-ink-300">
+                              {doc.type}{doc.sizeKb ? ` • ${doc.sizeKb} KB` : ''}
+                              {doc.expiryDate ? ` • Exp ${formatDateDDMMYYYY(doc.expiryDate)}` : ''}
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => void openDocument(doc)} className="btn btn-secondary btn-sm shrink-0">
+                            <Eye className="w-3 h-3" /> View
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {stagedDocs.length > 0 ? (
+                  <div className="space-y-2 pt-1">
+                    <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                      Will be uploaded when you save ({stagedDocs.length}):
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {stagedDocs.map((doc) => (
                         <div
-                          key={doc.id}
+                          key={doc.key}
                           className="flex items-center justify-between rounded-lg border border-logo-700 bg-logo-700 p-2.5"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="section-icon w-7 h-7">
+                            <span className="section-icon w-7 h-7 shrink-0">
                               <FileCheck className="w-4 h-4" />
                             </span>
-                            <div className="truncate">
-                              <p className="font-semibold text-white text-xs truncate">{doc.name}</p>
-                              <div className="flex items-center gap-1.5 text-[10px] text-ink-400">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-white text-xs truncate">{doc.file.name}</p>
+                              <div className="flex flex-wrap items-center gap-x-1.5 text-[10px] text-ink-400">
                                 <span className="text-ink-300 font-medium">{doc.type}</span>
                                 <span>•</span>
-                                <span>{doc.sizeKb} KB</span>
-                                {doc.expiryDate && (
+                                <span>{Math.max(1, Math.round(doc.file.size / 1024))} KB</span>
+                                {doc.expiry && (
                                   <>
                                     <span>•</span>
-                                    <span className="text-warning-400">
-                                      Exp: {formatDateDDMMYYYY(doc.expiryDate)}
-                                    </span>
+                                    <span className="text-warning-400">Exp: {formatDateDDMMYYYY(doc.expiry)}</span>
                                   </>
                                 )}
                               </div>
@@ -1078,9 +1263,10 @@ export const EmployeesView: React.FC = () => {
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleRemoveStagedDoc(doc.id)}
-                            className="icon-btn shrink-0 ml-2"
+                            onClick={() => handleRemoveStagedDoc(doc.key)}
+                            className="icon-btn shrink-0 ml-2 !text-white hover:!bg-white/10"
                             title="Remove document"
+                            aria-label="Remove document"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1089,9 +1275,11 @@ export const EmployeesView: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-2 text-ink-400 text-xs italic">
-                    Attach documents above to store driving licenses, fitness proofs or identity verification.
-                  </div>
+                  savedDocs.length === 0 && (
+                    <div className="text-center py-2 text-ink-400 text-xs italic">
+                      Attach documents above to store driving licences, fitness proofs or identity verification.
+                    </div>
+                  )
                 )}
               </div>
 
@@ -1113,9 +1301,10 @@ export const EmployeesView: React.FC = () => {
                   <span className="text-xs">{saveError}</span>
                 </div>
               )}
+             </div>
 
               {/* Submit / Cancel Buttons */}
-              <div className="form-actions">
+              <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
@@ -1133,8 +1322,8 @@ export const EmployeesView: React.FC = () => {
                     {saving
                       ? 'Saving…'
                       : editingEmployee
-                        ? `Save Profile (${stagedDocuments.length} Docs)`
-                        : `Register Operator (${stagedDocuments.length} Docs)`}
+                        ? 'Save Profile'
+                        : 'Register Operator'}
                   </span>
                 </button>
               </div>
@@ -1144,70 +1333,83 @@ export const EmployeesView: React.FC = () => {
       )}
 
       {/* Operator Detailed Profile Modal (Showing Attached Documents) */}
-      {selectedEmployee && (
+      {liveSelected && (
         <div className="modal-overlay">
           <div className="modal-panel modal-panel-wide text-xs">
             <div className="modal-header">
-              <div>
-                <span className="chip">
-                  {selectedEmployee.employeeId}
-                </span>
-                <h3 className="modal-title">{selectedEmployee.fullName}</h3>
+              <div className="min-w-0">
+                <span className="chip">{liveSelected.employeeId}</span>
+                <h3 className="modal-title break-words">{liveSelected.fullName}</h3>
               </div>
               <button
                 onClick={() => setSelectedEmployee(null)}
-                className="icon-btn"
+                className="icon-btn shrink-0"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="modal-body space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              {statusError && (
+                <div className="alert-banner" role="alert">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="text-xs">{statusError}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <span className="stat-label block">Designation:</span>
-                  <strong className="text-ink-900 text-sm">{selectedEmployee.designation}</strong>
-                  <p className="text-ink-500 mt-0.5">{selectedEmployee.mobile}</p>
+                  <strong className="text-ink-900 text-sm">{liveSelected.designation}</strong>
+                  <p className="mt-0.5">
+                    <a href={`tel:${liveSelected.mobile.replace(/\s/g, '')}`} className="text-logo-700 font-semibold">{liveSelected.mobile}</a>
+                  </p>
+                  <span className={`badge mt-1 ${liveSelected.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                    {liveSelected.status}
+                  </span>
                 </div>
                 <div>
                   <span className="stat-label block">Wage Model:</span>
                   <strong className="text-ink-900 text-sm block">
-                    {selectedEmployee.salaryType === 'daily' ? (
+                    {liveSelected.salaryType === 'daily' ? (
                       <span className="inline-flex items-center gap-1">
-                        <Currency value={selectedEmployee.dailyRate} size="sm" /> / day
+                        <Currency value={liveSelected.dailyRate} size="sm" /> / day
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1">
-                        <Currency value={selectedEmployee.monthlySalary} size="sm" /> / mo
+                        <Currency value={liveSelected.monthlySalary} size="sm" /> / month
                       </span>
                     )}
                   </strong>
-                  <p className="text-ink-500">Standard 10h working shift</p>
+                  {liveSelected.salaryType === 'monthly' && liveSelected.monthlySalary > 0 && (
+                    <p className="text-ink-600 font-medium">{formatPerDay(liveSelected.monthlySalary, currentDate)}</p>
+                  )}
+                  <p className="text-ink-500">Standard {liveSelected.standardShiftHours || 10}h working shift</p>
                 </div>
               </div>
 
-              {selectedEmployee.employeeType === 'operator' && (
-                <div className="rounded-lg border border-line bg-surface-muted p-4 space-y-2">
+              {liveSelected.employeeType === 'operator' && (
+                <div className="rounded-lg border border-line bg-surface-muted p-3 sm:p-4 space-y-2">
                   <span className="font-semibold text-ink-900 block text-xs">Operator License Profile</span>
                   <div className="grid grid-cols-2 gap-2 text-ink-700">
-                    <div>
+                    <div className="min-w-0">
                       <span className="stat-label block">License Number:</span>
-                      <strong className="font-mono">{selectedEmployee.licenseNumber || 'MH-LIC-PENDING'}</strong>
+                      <strong className="font-mono break-all">{liveSelected.licenseNumber || 'Not recorded'}</strong>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="stat-label block">Joining Date:</span>
-                      <strong>{formatDateDDMMYYYY(selectedEmployee.joiningDate)}</strong>
+                      <strong>{formatDateDDMMYYYY(liveSelected.joiningDate)}</strong>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="stat-label block">Crane License Expiry:</span>
                       <strong className="text-ink-900">
-                        {formatDateDDMMYYYY(selectedEmployee.craneLicenseExpiry)}
+                        {liveSelected.craneLicenseExpiry ? formatDateDDMMYYYY(liveSelected.craneLicenseExpiry) : 'Not recorded'}
                       </strong>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="stat-label block">Transport License Expiry:</span>
                       <strong className="text-ink-900">
-                        {formatDateDDMMYYYY(selectedEmployee.transportLicenseExpiry)}
+                        {liveSelected.transportLicenseExpiry ? formatDateDDMMYYYY(liveSelected.transportLicenseExpiry) : 'Not recorded'}
                       </strong>
                     </div>
                   </div>
@@ -1215,14 +1417,14 @@ export const EmployeesView: React.FC = () => {
               )}
 
               {/* Uploaded Documents Showcase */}
-              <div className="rounded-lg border border-line bg-surface-muted p-4 space-y-3">
-                <div className="flex items-center justify-between">
+              <div className="rounded-lg border border-line bg-surface-muted p-3 sm:p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-ink-900 block text-xs">
-                    Uploaded Operator Documents ({selectedEmployee.documents?.length || 0})
+                    Uploaded Documents ({docsOf(liveSelected).length})
                   </span>
                   <button
                     onClick={() => {
-                      const emp = selectedEmployee;
+                      const emp = liveSelected;
                       setSelectedEmployee(null);
                       handleOpenEdit(emp);
                     }}
@@ -1233,71 +1435,108 @@ export const EmployeesView: React.FC = () => {
                   </button>
                 </div>
 
-                {selectedEmployee.documents && selectedEmployee.documents.length > 0 ? (
+                {docsOf(liveSelected).length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {selectedEmployee.documents.map((doc) => (
+                    {docsOf(liveSelected).map((doc) => (
                       <div
                         key={doc.id}
                         className="flex items-center justify-between rounded-lg border border-line bg-surface p-3"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="section-icon">
+                          <span className="section-icon shrink-0">
                             <FileCheck className="w-4 h-4" />
                           </span>
-                          <div className="truncate">
+                          <div className="min-w-0">
                             <p className="font-semibold text-ink-900 text-xs truncate">{doc.name}</p>
                             <span className="text-[10px] text-ink-500 block truncate">
-                              {doc.type} • {doc.sizeKb || 240} KB
+                              {doc.type}{doc.sizeKb ? ` • ${doc.sizeKb} KB` : ''}
+                              {doc.expiryDate ? ` • Exp ${formatDateDDMMYYYY(doc.expiryDate)}` : ''}
                             </span>
                           </div>
                         </div>
-                        <a
-                          href={doc.fileUrl || '#'}
-                          download={doc.name}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => void openDocument(doc)}
                           className="btn btn-secondary btn-sm ml-2 shrink-0"
                         >
                           <Eye className="w-3 h-3" />
                           <span>View</span>
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="empty-state py-3 text-xs italic">
-                    No documents uploaded yet for this employee. Click &quot;Edit&quot; to attach statutory documents.
+                    No documents uploaded yet. Use &quot;Upload More&quot; to attach statutory documents.
                   </div>
                 )}
               </div>
 
-              {selectedEmployee.emergencyContacts && selectedEmployee.emergencyContacts.length > 0 && (
-                <div className="rounded-lg border border-line bg-surface-muted p-4">
-                  <span className="font-semibold text-ink-900 block text-xs mb-1">Emergency Contact</span>
-                  <p className="text-ink-900 font-semibold">
-                    {selectedEmployee.emergencyContacts[0].name} ({selectedEmployee.emergencyContacts[0].relation})
-                  </p>
-                  <p className="text-ink-500">{selectedEmployee.emergencyContacts[0].mobile}</p>
-                </div>
-              )}
-
               <div>
                 <span className="stat-label block mb-0.5">Residential Address:</span>
-                <p className="rounded-lg border border-line bg-surface-muted p-2.5 text-ink-700">
-                  {selectedEmployee.address || 'Address not recorded.'}
+                <p className="rounded-lg border border-line bg-surface-muted p-2.5 text-ink-700 break-words">
+                  {liveSelected.address || 'Address not recorded.'}
                 </p>
               </div>
             </div>
 
             <div className="modal-footer">
-              <button
-                onClick={() => setSelectedEmployee(null)}
-                className="btn btn-primary"
-              >
-                Close
-              </button>
+              {confirmDeactivate ? (
+                <>
+                  <span className="mr-auto text-xs font-medium text-ink-700">
+                    Deactivate {liveSelected.fullName}? They will be hidden from the active list.
+                  </span>
+                  <button className="btn btn-secondary" onClick={() => setConfirmDeactivate(false)} disabled={statusBusy}>
+                    Keep active
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => void changeStatus(liveSelected, 'inactive')}
+                    disabled={statusBusy}
+                  >
+                    {statusBusy ? 'Saving…' : 'Yes, deactivate'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {liveSelected.status === 'active' ? (
+                    <button className="btn btn-danger mr-auto" onClick={() => setConfirmDeactivate(true)}>
+                      Deactivate
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-secondary mr-auto"
+                      onClick={() => void changeStatus(liveSelected, 'active')}
+                      disabled={statusBusy}
+                    >
+                      {statusBusy ? 'Saving…' : 'Reactivate'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const emp = liveSelected;
+                      setSelectedEmployee(null);
+                      handleOpenEdit(emp);
+                    }}
+                    className="btn btn-secondary"
+                  >
+                    Edit
+                  </button>
+                  <button onClick={() => setSelectedEmployee(null)} className="btn btn-primary">
+                    Close
+                  </button>
+                </>
+              )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Scan modals open on top of the add / edit form (which is later in the DOM). */}
+      {(showScan || showAadhaar) && (
+        <div className="relative z-[60]">
+          {showScan && <LicenceScanModal onClose={() => setShowScan(false)} onApply={handleApplyScan} />}
+          {showAadhaar && <AadhaarScanModal onClose={() => setShowAadhaar(false)} onApply={handleApplyAadhaar} />}
         </div>
       )}
     </div>

@@ -67,11 +67,16 @@ export async function payrollRoutes(app: FastifyInstance): Promise<void> {
     const result = await idempotent(
       request.auth.tenantId, idemKey(request as any), `POST /payroll/runs/${id}/entries/${entryId}/payment`, hash(request.body),
       async (c) => {
+        const run = await c.query('SELECT status FROM payroll_runs WHERE tenant_id=$1 AND id=$2', [request.auth.tenantId, id]);
+        if (!run.rows[0]) throw Errors.notFound('PayrollRun');
+        if (run.rows[0].status === 'draft' || run.rows[0].status === 'under_review') {
+          throw Errors.conflict('Approve and lock the payroll run before recording salary payments');
+        }
         const entry = await c.query(
           `UPDATE payroll_entries SET payment_status='paid', payment_date=CURRENT_DATE,
             payment_mode=$4, payment_reference=$5
            WHERE tenant_id=$1 AND payroll_run_id=$2 AND id=$3 AND payment_status='unpaid' RETURNING *`,
-          [request.auth.tenantId, id, entryId, body.paymentMode, body.paymentReference ?? 'NEFT-PROCESSED'],
+          [request.auth.tenantId, id, entryId, body.paymentMode, body.paymentReference || null],
         );
         if (!entry.rows[0]) throw Errors.notFound('Unpaid payroll entry');
 

@@ -60,7 +60,7 @@ function calculatePayrollEntry(input: {
 }) {
   const basePaise = input.salaryType === 'daily'
     ? Math.round(input.payableDays * input.dailyRatePaise)
-    : Math.round((input.monthlySalaryPaise / Math.max(1, input.totalDaysInMonth)) * input.payableDays);
+    : Math.round((input.monthlySalaryPaise * input.payableDays) / Math.max(1, input.totalDaysInMonth));
 
   let totalOtHours = 0;
   let totalOtPaise = 0;
@@ -112,6 +112,12 @@ async function getRun(c: Queryable, tenantId: string, runId: string) {
   return { ...run.rows[0], entries: entries.rows };
 }
 
+/** Days of the month before the joining date (monthly salary is not paid for them). */
+function daysBeforeJoining(joined: string, periodStart: string): number {
+  if (!joined || joined <= periodStart) return 0;
+  return Math.round((Date.parse(joined) - Date.parse(periodStart)) / 86_400_000);
+}
+
 async function generatePayroll(c: Queryable, auth: AuthContext, month: string, requestId: string) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw Errors.badRequest('month must be YYYY-MM');
 
@@ -140,7 +146,8 @@ async function generatePayroll(c: Queryable, auth: AuthContext, month: string, r
     [auth.tenantId, periodStart, periodEnd],
   );
   const advances = await c.query(
-    `SELECT * FROM salary_advances WHERE tenant_id=$1 AND outstanding_paise > 0 AND status<>'cancelled'`,
+    `SELECT * FROM salary_advances WHERE tenant_id=$1 AND outstanding_paise > 0 AND status IN ('approved','partially_recovered')
+     ORDER BY created_at, id`,
     [auth.tenantId],
   );
 
@@ -148,6 +155,9 @@ async function generatePayroll(c: Queryable, auth: AuthContext, month: string, r
   const otBreakdowns: any[][] = [];
 
   for (const emp of employees.rows) {
+    const joined = String(emp.joining_date ?? '').slice(0, 10);
+    // Not yet employed during this period: no payroll line at all.
+    if (joined && joined > periodEnd) continue;
     const own = attendance.rows.filter((a: any) => a.operator_id === emp.id);
     let presentDays = 0, halfDays = 0, absentDays = 0, unpaidLeaveDays = 0, paidLeaveDays = 0, weeklyOffDays = 0, holidayDays = 0;
     const otMap = new Map<string, any>();
@@ -159,7 +169,8 @@ async function generatePayroll(c: Queryable, auth: AuthContext, month: string, r
       else if (a.status === 'absent') absentDays++;
       else if (a.status === 'weekly_off') weeklyOffDays++;
       else if (a.status === 'holiday') holidayDays++;
-      if (Number(a.overtime_hours) > 0) {
+      // Overtime is only paid to employees flagged overtime-eligible.
+      if (emp.overtime_eligible !== false && Number(a.overtime_hours) > 0) {
         const key = a.project_id as string;
         const bucket = otMap.get(key) ?? {
           projectId: key, projectName: a.project_name ?? key, otHours: 0,
@@ -172,15 +183,16 @@ async function generatePayroll(c: Queryable, auth: AuthContext, month: string, r
 
     const payableDays = emp.salary_type === 'daily'
       ? Math.max(0, presentDays + halfDays * 0.5)
-      : Math.max(0, daysInMonth - unpaidLeaveDays - absentDays - halfDays * 0.5);
+      : Math.max(0, daysInMonth - daysBeforeJoining(joined, periodStart) - unpaidLeaveDays - absentDays - halfDays * 0.5);
     // Monthly staff: a fixed salary spread over the days of the month. Each absent or
     // unpaid-leave day (and half of each half-day) is deducted at salary / days-in-month.
     // No approved attendance for a daily-wage employee means no pay. Monthly staff
     // still receive their full salary (payableDays already excludes unpaid leave).
     const effectivePayable = payableDays;
     const effectivePresent = presentDays;
-    const advance = advances.rows.find((a: any) => a.employee_id === emp.id);
-    const outstanding = advance?.outstanding_paise ?? 0;
+    const empAdvances = advances.rows.filter((a: any) => a.employee_id === emp.id);
+    const advance = empAdvances[0];
+    const outstanding = empAdvances.reduce((s: number, a: any) => s + Number(a.outstanding_paise), 0);
 
     const calc = calculatePayrollEntry({
       salaryType: emp.salary_type, dailyRatePaise: emp.daily_rate_paise,
@@ -196,7 +208,7 @@ async function generatePayroll(c: Queryable, auth: AuthContext, month: string, r
       appliedDailyRatePaise: emp.daily_rate_paise, appliedMonthlyRatePaise: emp.monthly_salary_paise,
       standardShiftMinutes: emp.standard_shift_minutes, totalDaysInMonth: daysInMonth,
       presentDays: effectivePresent, halfDays, paidLeaveDays, unpaidLeaveDays,
-      weeklyOffDays: weeklyOffDays || 4, holidayDays: holidayDays || 2,
+      weeklyOffDays, holidayDays,
       payableDays: effectivePayable, ...calc, advanceId: advance?.id ?? null,
     });
     otBreakdowns.push(calc.projectOtBreakdown);
@@ -276,29 +288,34 @@ async function approvePayroll(c: Queryable, auth: AuthContext, runId: string, re
   const entries = await c.query('SELECT * FROM payroll_entries WHERE tenant_id=$1 AND payroll_run_id=$2', [auth.tenantId, runId]);
   for (const e of entries.rows) {
     if (e.advance_recovery_paise <= 0 || !e.employee_code) continue;
+    // Recover from the oldest approved advances first, until this entry's recovery is used up.
     const adv = await c.query(
       `SELECT * FROM salary_advances WHERE tenant_id=$1 AND employee_id=$2 AND outstanding_paise>0
-       ORDER BY created_at LIMIT 1`,
+         AND status IN ('approved','partially_recovered')
+       ORDER BY created_at, id FOR UPDATE`,
       [auth.tenantId, e.employee_id],
     );
-    const a = adv.rows[0];
-    if (!a) continue;
-    const amount = Math.min(e.advance_recovery_paise, a.outstanding_paise);
-    const newRecovery = a.recovery_paise + amount;
-    const newOutstanding = a.amount_paise - newRecovery;
-    await c.query(
-      `INSERT INTO advance_recoveries (tenant_id,advance_id,payroll_run_id,payroll_entry_id,amount_paise,recovery_date)
-       VALUES ($1,$2,$3,$4,$5,CURRENT_DATE)
-       ON CONFLICT (tenant_id,payroll_run_id,advance_id) DO NOTHING`,
-      [auth.tenantId, a.id, runId, e.id, amount],
-    );
-    await c.query(
-      `UPDATE salary_advances SET recovery_paise=$3, outstanding_paise=$4,
-        status=(CASE WHEN $4::bigint=0 THEN 'fully_recovered' ELSE 'partially_recovered' END)::advance_status,
-        version=version+1
-       WHERE tenant_id=$1 AND id=$2`,
-      [auth.tenantId, a.id, newRecovery, newOutstanding],
-    );
+    let toRecover = e.advance_recovery_paise as number;
+    for (const a of adv.rows as any[]) {
+      if (toRecover <= 0) break;
+      const amount = Math.min(toRecover, a.outstanding_paise);
+      toRecover -= amount;
+      const newRecovery = a.recovery_paise + amount;
+      const newOutstanding = a.amount_paise - newRecovery;
+      await c.query(
+        `INSERT INTO advance_recoveries (tenant_id,advance_id,payroll_run_id,payroll_entry_id,amount_paise,recovery_date)
+         VALUES ($1,$2,$3,$4,$5,CURRENT_DATE)
+         ON CONFLICT (tenant_id,payroll_run_id,advance_id) DO NOTHING`,
+        [auth.tenantId, a.id, runId, e.id, amount],
+      );
+      await c.query(
+        `UPDATE salary_advances SET recovery_paise=$3, outstanding_paise=$4,
+          status=(CASE WHEN $4::bigint=0 THEN 'fully_recovered' ELSE 'partially_recovered' END)::advance_status,
+          version=version+1
+         WHERE tenant_id=$1 AND id=$2`,
+        [auth.tenantId, a.id, newRecovery, newOutstanding],
+      );
+    }
   }
 
   const updated = await c.query(
@@ -410,11 +427,16 @@ export const payrollRoutes: Route[] = [
         ctx.auth!.tenantId, idemKey(req),
         `POST /payroll/runs/${id}/entries/${entryId}/payment`, await hash(b),
         async (c) => {
+          const run = await c.query('SELECT status FROM payroll_runs WHERE tenant_id=$1 AND id=$2', [ctx.auth!.tenantId, id]);
+          if (!run.rows[0]) throw Errors.notFound('PayrollRun');
+          if (run.rows[0].status === 'draft' || run.rows[0].status === 'under_review') {
+            throw Errors.conflict('Approve and lock the payroll run before recording salary payments');
+          }
           const entry = await c.query(
             `UPDATE payroll_entries SET payment_status='paid', payment_date=CURRENT_DATE,
                payment_mode=$4, payment_reference=$5
              WHERE tenant_id=$1 AND payroll_run_id=$2 AND id=$3 AND payment_status='unpaid' RETURNING *`,
-            [ctx.auth!.tenantId, id, entryId, b.paymentMode, b.paymentReference ?? 'NEFT-PROCESSED'],
+            [ctx.auth!.tenantId, id, entryId, b.paymentMode, b.paymentReference || null],
           );
           if (!entry.rows[0]) throw Errors.notFound('Unpaid payroll entry');
           const totals = await c.query(

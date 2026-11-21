@@ -29,9 +29,26 @@ export const ReportsView: React.FC = () => {
     expenses,
     machineWorkingLogs,
     currentDate,
+    companySettings,
   } = useSkyhook();
 
   const [activeReportCategory, setActiveReportCategory] = useState<ReportCategory>('all');
+  const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+
+  // Every export goes through here so an empty dataset or a failed file write is reported, never silent.
+  const runExport = (label: string, count: number, fn: () => void) => {
+    if (count === 0) {
+      setNotice({ tone: 'danger', text: `Nothing to export yet for ${label}. Add records first.` });
+    } else {
+      try {
+        fn();
+        setNotice({ tone: 'success', text: `${label} downloaded (${count} row${count === 1 ? '' : 's'}).` });
+      } catch (err) {
+        setNotice({ tone: 'danger', text: `Could not create the ${label} file: ${err instanceof Error ? err.message : 'unknown error'}.` });
+      }
+    }
+    window.setTimeout(() => setNotice(null), 5000);
+  };
 
   // Export handlers
   const handleExportEmployees = () => {
@@ -43,7 +60,7 @@ export const ReportsView: React.FC = () => {
       'Mobile': e.mobile,
       'Joining Date': formatDateDDMMYYYY(e.joiningDate),
       'Salary Type': e.salaryType.toUpperCase(),
-      'Daily / Monthly Rate': formatINR(e.dailyRate || e.monthlySalary),
+      'Daily / Monthly Rate (₹)': e.dailyRate || e.monthlySalary || '',
       'License Number': e.licenseNumber || 'N/A',
       'Crane License Expiry': formatDateDDMMYYYY(e.craneLicenseExpiry),
       'Transport License Expiry': formatDateDDMMYYYY(e.transportLicenseExpiry),
@@ -58,9 +75,9 @@ export const ReportsView: React.FC = () => {
       'Type': m.machineType,
       'Make & Model': `${m.make} ${m.model}`,
       'Registration': m.registrationNumber,
-      'Tonnage': `${m.tonnageCapacity}T`,
+      'Capacity (T)': m.tonnageCapacity || '',
       'Purchase Date': formatDateDDMMYYYY(m.purchaseDate),
-      'Purchase Cost': formatINR(m.purchaseCost),
+      'Purchase Cost (₹)': m.purchaseCost || '',
       'Status': m.status.toUpperCase(),
       'Next Service Due': m.serviceFrequencyUnit === 'hours'
         ? `Every ${m.serviceFrequencyValue} operating hours`
@@ -82,13 +99,13 @@ export const ReportsView: React.FC = () => {
         'Operator': op?.fullName || a.operatorId,
         'Project': prj?.name || a.projectId,
         'Machine': a.machineId || 'Site Duty',
-        'Shift Start': a.startTime,
-        'Shift End': a.endTime,
+        'Shift Start': (a.startTime ?? '').slice(0, 5),
+        'Shift End': (a.endTime ?? '').slice(0, 5),
         'Break (Min)': a.unpaidBreakMinutes,
         'Net Hours': a.netWorkingHours,
         'Standard Hours': a.standardWorkingHours,
         'Overtime (Hours)': a.overtimeHours,
-        'OT Rate Applied': `₹${a.appliedOtRate}/h`,
+        'OT Rate Applied (₹/h)': a.appliedOtRate,
         'Status': a.status.toUpperCase(),
         'Approval': a.approvalStatus.toUpperCase(),
       };
@@ -96,7 +113,15 @@ export const ReportsView: React.FC = () => {
     exportToXLSX(rows, `Skyhook_Attendance_Register_${currentDate}`);
   };
 
-  const latestPayroll = payrollRuns[0];
+  // Prefer the run for the current month; otherwise the most recent one.
+  const currentMonthKey = currentDate.slice(0, 7);
+  const latestPayroll =
+    payrollRuns.find((r) => r.month === currentMonthKey) ??
+    [...payrollRuns].sort((a, b) => b.month.localeCompare(a.month))[0];
+  const monthLabel = (ym: string) =>
+    new Date(`${ym}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const shiftHours = companySettings.standardShiftHours;
+  const totalOperatingHours = Math.round(machineWorkingLogs.reduce((s, m) => s + m.workingHours, 0) * 100) / 100;
 
   const categories: { id: ReportCategory; label: string }[] = [
     { id: 'all', label: 'All Reports' },
@@ -122,25 +147,27 @@ export const ReportsView: React.FC = () => {
     {
       id: 'payroll',
       title: 'Monthly Payroll & Wage Master',
-      subtitle: `${new Date(`${currentDate.slice(0, 7)}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' })} Payout Period`,
+      subtitle: `${monthLabel(currentMonthKey)} payout period`,
       description:
         'Complete breakdown of payable working days, base pay, site overtime rates, advance recoveries, and net payable.',
-      summary: (
+      summary: latestPayroll ? (
         <>
-          Employees: <strong className="font-semibold text-ink-900">{latestPayroll?.employeeCount || 4}</strong>
+          {latestPayroll.month !== currentMonthKey && (
+            <>Latest run: <strong className="font-semibold text-ink-900">{monthLabel(latestPayroll.month)}</strong><span className="mx-1.5 text-ink-300">•</span></>
+          )}
+          Employees: <strong className="font-semibold text-ink-900">{latestPayroll.employeeCount}</strong>
           <span className="mx-1.5 text-ink-300">•</span>
           Net Disbursal:{' '}
-          <strong className="font-semibold text-success-700">
-            {formatINR(latestPayroll?.totalNetSalary || 86850)}
-          </strong>
+          <strong className="font-semibold text-success-700">{formatINR(latestPayroll.totalNetSalary)}</strong>
         </>
+      ) : (
+        <>No payroll run has been generated yet. Run payroll first.</>
       ),
       icon: Calculator,
       accent: 'bg-success-50 text-success-700',
       buttonLabel: 'Download Payroll XLSX',
-      onExport: () => {
-        if (latestPayroll) exportPayrollSummary(latestPayroll);
-      },
+      onExport: () =>
+        runExport('Payroll', latestPayroll?.entries.length ?? 0, () => exportPayrollSummary(latestPayroll!)),
     },
     {
       id: 'machines',
@@ -154,32 +181,34 @@ export const ReportsView: React.FC = () => {
           <span className="mx-1.5 text-ink-300">•</span>
           Total Operating Hours:{' '}
           <strong className="font-semibold text-warning-700">
-            {machineWorkingLogs.reduce((s, m) => s + m.workingHours, 0)} hrs
+            {totalOperatingHours} hrs
           </strong>
         </>
       ),
       icon: Cpu,
       accent: 'bg-warning-50 text-warning-700',
       buttonLabel: 'Download Machine Operating XLSX',
-      onExport: () => exportMachineWorkingLogs(machineWorkingLogs, machines, projects, employees),
+      onExport: () =>
+        runExport('Machine operating register', machineWorkingLogs.length, () =>
+          exportMachineWorkingLogs(machineWorkingLogs, machines, projects, employees)),
     },
     {
       id: 'attendance',
       title: 'Daily & Monthly Attendance',
-      subtitle: 'Standard 10h shift tracking',
+      subtitle: `Standard ${shiftHours}h shift tracking`,
       description:
         'Full monthly attendance matrix, presents, absents, weekly offs, paid holidays, and approved site overtime.',
       summary: (
         <>
           Total Log Entries: <strong className="font-semibold text-ink-900">{attendance.length}</strong>
           <span className="mx-1.5 text-ink-300">•</span>
-          Approved Attendance Records
+          Approved: <strong className="font-semibold text-success-700">{attendance.filter((a) => a.approvalStatus === 'approved').length}</strong>
         </>
       ),
       icon: Users,
       accent: 'bg-brand-50 text-brand-700',
       buttonLabel: 'Download Attendance XLSX',
-      onExport: handleExportAttendance,
+      onExport: () => runExport('Attendance register', attendance.length, handleExportAttendance),
     },
     {
       id: 'expenses',
@@ -200,7 +229,7 @@ export const ReportsView: React.FC = () => {
       icon: ReceiptIndianRupee,
       accent: 'bg-brand-50 text-brand-700',
       buttonLabel: 'Download Expenses XLSX',
-      onExport: () => exportProjectExpenses(expenses, projects),
+      onExport: () => runExport('Project expenses', expenses.length, () => exportProjectExpenses(expenses, projects)),
     },
     {
       id: 'assets',
@@ -221,7 +250,7 @@ export const ReportsView: React.FC = () => {
       icon: Truck,
       accent: 'bg-brand-50 text-brand-700',
       buttonLabel: 'Download Asset Master XLSX',
-      onExport: handleExportAssets,
+      onExport: () => runExport('Asset master', machines.length, handleExportAssets),
     },
     {
       id: 'employees',
@@ -235,14 +264,14 @@ export const ReportsView: React.FC = () => {
           <span className="mx-1.5 text-ink-300">•</span>
           Active Operators:{' '}
           <strong className="font-semibold text-ink-900">
-            {employees.filter((e) => e.employeeType === 'operator').length}
+            {employees.filter((e) => e.employeeType === 'operator' && e.status === 'active').length}
           </strong>
         </>
       ),
       icon: Users,
       accent: 'bg-surface-muted text-ink-700',
       buttonLabel: 'Download Workforce XLSX',
-      onExport: handleExportEmployees,
+      onExport: () => runExport('Workforce master', employees.length, handleExportEmployees),
     },
   ];
 
@@ -263,6 +292,12 @@ export const ReportsView: React.FC = () => {
         </div>
       </div>
 
+      {notice && (
+        <div role="status" className={`notice ${notice.tone === 'success' ? 'notice--success' : 'notice--danger'}`}>
+          <span>{notice.text}</span>
+        </div>
+      )}
+
       {/* Category filter */}
       <div className="filter-bar">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -276,7 +311,7 @@ export const ReportsView: React.FC = () => {
             </span>
           </div>
         </div>
-        <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:pb-0">
+        <div className="-mx-1 flex min-w-0 max-w-full gap-1 overflow-x-auto px-1 pb-1 sm:pb-0">
           {categories.map((category) => {
             const isActive = activeReportCategory === category.id;
             return (

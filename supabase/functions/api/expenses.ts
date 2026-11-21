@@ -163,14 +163,14 @@ export const expensesRoutes: Route[] = [
       const remarks = strField(b, 'remarks');
       const created = await withTenant(auth.tenantId, async (c) => {
         const auto = hasPermission(auth, 'expense:approve');
-        const seq = await c.query('SELECT count(*)::int n FROM project_expenses WHERE tenant_id=$1', [auth.tenantId]);
+        const seq = await c.query(`SELECT COALESCE(MAX(NULLIF(regexp_replace(expense_code,'\\D','','g'),'')::bigint),0)::int AS n FROM project_expenses WHERE tenant_id=$1`, [auth.tenantId]);
         const code = `EXP-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
         const r = await c.query(
           `INSERT INTO project_expenses (tenant_id,expense_code,project_id,expense_date,category,description,
             amount_paise,payment_mode,paid_by,vendor,receipt_number,approval_status,approved_by,approved_at,remarks,created_by)
            VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8::payment_mode,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
           [auth.tenantId, code, projectId, date, category, description, amountPaise,
-            paymentMode, paidBy, vendor ?? null, receiptNumber ?? null, auto ? 'approved' : 'draft',
+            paymentMode, paidBy, vendor || null, receiptNumber || null, auto ? 'approved' : 'draft',
             auto ? auth.userId : null, auto ? new Date().toISOString() : null, remarks ?? null, auth.userId],
         );
         await writeAudit(c, auth, { action: 'EXPENSE_CREATED', entity: 'ProjectExpense', entityId: r.rows[0].id, reason: `Voucher ${code} for Rs.${(amountPaise / 100).toFixed(2)}`, requestId: ctx.requestId });

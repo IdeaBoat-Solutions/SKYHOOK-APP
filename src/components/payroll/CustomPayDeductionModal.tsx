@@ -85,7 +85,9 @@ export const CustomPayDeductionModal: React.FC<Props> = ({
           <div className="notice">
             <span className="flex items-start gap-2 text-xs text-ink-600">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Adjusted net payable: <strong className="text-ink-900">{formatINR(adjustedEntry.netSalary)}</strong>. Lines are stored on the server against this employee and month, so they survive a payroll recalculation.
+              <span>
+                Adjusted net payable: <strong className="text-ink-900">{formatINR(adjustedEntry.netSalary)}</strong>. Lines are stored on the server against this employee and month, so they survive a payroll recalculation.
+              </span>
             </span>
           </div>
 

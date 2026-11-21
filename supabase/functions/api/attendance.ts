@@ -189,12 +189,17 @@ async function upsertAttendance(
   );
   if (!project.rows[0]) throw Errors.notFound('Project');
 
-  const calc = calculateWorkingAndOt(
-    input.startTime,
-    input.endTime,
-    input.unpaidBreakMinutes ?? 0,
-    standardShiftMinutes,
-  );
+  // A half day counts overtime past half a shift. Absence and leave carry no worked time or overtime.
+  const thresholdMinutes = input.status === 'half_day' ? Math.round(standardShiftMinutes / 2) : standardShiftMinutes;
+  const noWork = input.status === 'absent' || input.status === 'paid_leave' || input.status === 'unpaid_leave';
+  const calc = noWork
+    ? { totalSpanMinutes: 0, netWorkingMinutes: 0, netWorkingHours: 0, potentialOtMinutes: 0, potentialOtHours: 0 }
+    : calculateWorkingAndOt(
+      input.startTime,
+      input.endTime,
+      input.unpaidBreakMinutes ?? 0,
+      thresholdMinutes,
+    );
 
   const existing = await c.query(
     'SELECT id, approval_status FROM attendance_records WHERE tenant_id=$1 AND operator_id=$2 AND attendance_date=$3',

@@ -61,8 +61,11 @@ export const ProjectsView: React.FC = () => {
   const [contractValue, setContractValue] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('active');
   const [description, setDescription] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleOpenAdd = () => {
+    setFormError('');
     setEditingProject(null);
     setName('');
     setClientName('');
@@ -79,6 +82,7 @@ export const ProjectsView: React.FC = () => {
   };
 
   const handleOpenEdit = (p: Project) => {
+    setFormError('');
     setEditingProject(p);
     setName(p.name);
     setClientName(p.clientName);
@@ -94,42 +98,56 @@ export const ProjectsView: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingProject) {
-      updateProject(editingProject.id, {
-        name,
-        clientName,
-        clientPhone,
-        location,
-        siteAddress,
-        startDate,
-        expectedEndDate,
-        overtimeRate: parseFloat(overtimeRate) || 0,
-        contractValue: parseFloat(contractValue) || 0,
-        status,
-        description,
-      });
-    } else {
-      addProject({
-        projectId: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
-        name,
-        clientName,
-        clientPhone,
-        location,
-        siteAddress,
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        startDate,
-        expectedEndDate,
-        managerId: currentUser.id,
-        overtimeRate: parseFloat(overtimeRate) || 0,
-        contractValue: parseFloat(contractValue) || 0,
-        status,
-        description,
-      });
+    if (saving) return;
+    if (startDate && expectedEndDate && expectedEndDate < startDate) {
+      setFormError('Expected end date cannot be before the start date.');
+      return;
     }
-    setShowModal(false);
+    setSaving(true);
+    setFormError('');
+    try {
+      if (editingProject) {
+        await updateProject(editingProject.id, {
+          name,
+          clientName,
+          clientPhone,
+          location,
+          siteAddress,
+          startDate,
+          expectedEndDate,
+          overtimeRate: parseFloat(overtimeRate) || 0,
+          contractValue: parseFloat(contractValue) || 0,
+          status,
+          description,
+        });
+      } else {
+        await addProject({
+          // The server assigns the real project code; this display-only field is ignored.
+          projectId: '',
+          name,
+          clientName,
+          clientPhone,
+          location,
+          siteAddress,
+          city: '',
+          state: '',
+          startDate,
+          expectedEndDate,
+          managerId: currentUser.id,
+          overtimeRate: parseFloat(overtimeRate) || 0,
+          contractValue: parseFloat(contractValue) || 0,
+          status,
+          description,
+        });
+      }
+      setShowModal(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not save the project. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filteredProjects = projects.filter((p) => {
@@ -143,7 +161,7 @@ export const ProjectsView: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="page">
       {/* Header */}
       <div className="page-header">
         <div>
@@ -155,7 +173,7 @@ export const ProjectsView: React.FC = () => {
           </p>
         </div>
 
-        <button onClick={handleOpenAdd} className="btn btn-primary">
+        <button onClick={handleOpenAdd} className="btn btn-primary shrink-0">
           <Plus className="h-4 w-4" />
           <span>Create Project</span>
         </button>
@@ -163,9 +181,9 @@ export const ProjectsView: React.FC = () => {
 
       {/* Filter and Search Bar */}
       <div className="filter-bar filter-bar--split">
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs max-sm:[&>*]:w-full">
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="form-input w-auto font-medium">
+            <SelectTrigger className="form-input w-full font-medium sm:w-auto">
               <SelectValue placeholder="All Project Statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -265,7 +283,7 @@ export const ProjectsView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 border-t border-line bg-surface-muted px-5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-muted px-4 py-3 sm:px-5">
                 <span className="text-[11px] text-ink-500">
                   {formatDateDDMMYYYY(p.startDate)}{' '}
                   <ArrowRight
@@ -275,7 +293,7 @@ export const ProjectsView: React.FC = () => {
                   />{' '}
                   {formatDateDDMMYYYY(p.expectedEndDate)}
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 max-sm:w-full max-sm:[&>button]:flex-1">
                   <button onClick={() => handleOpenEdit(p)} className="btn btn-ghost btn-sm">
                     Edit / Rates
                   </button>
@@ -300,12 +318,18 @@ export const ProjectsView: React.FC = () => {
               <button
                 onClick={() => setShowModal(false)}
                 className="icon-btn"
+                aria-label="Close"
+                type="button"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col text-xs">
+             <div className="modal-body space-y-4">
+              {formError && (
+                <div className="notice notice--danger text-xs" role="alert">{formError}</div>
+              )}
               <div>
                 <label className="form-label">Project Name:</label>
                 <input
@@ -318,7 +342,7 @@ export const ProjectsView: React.FC = () => {
                 />
               </div>
 
-              <div className="stat-grid">
+              <div className="form-grid">
                 <div>
                   <label className="form-label">Client Name:</label>
                   <input
@@ -344,7 +368,7 @@ export const ProjectsView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="stat-grid">
+              <div className="form-grid">
                 <div>
                   <label className="form-label">Location / Site:</label>
                   <input
@@ -385,7 +409,8 @@ export const ProjectsView: React.FC = () => {
                   type="number"
                   required
                   min="0"
-                  step="10"
+                  step="any"
+                  inputMode="decimal"
                   placeholder="e.g. 150 or 200"
                   value={overtimeRate}
                   onChange={(e) => setOvertimeRate(e.target.value)}
@@ -396,7 +421,7 @@ export const ProjectsView: React.FC = () => {
                 </p>
               </div>
 
-              <div className="stat-grid">
+              <div className="form-grid">
                 <div>
                   <label className="form-label">Start Date:</label>
                   <DateInput required
@@ -419,18 +444,41 @@ export const ProjectsView: React.FC = () => {
                 <label className="form-label">Contract Value (₹):</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  min="0"
                   value={contractValue}
                   onChange={(e) => setContractValue(e.target.value)}
                   className="form-input"
                 />
               </div>
 
-              <div className="form-actions">
+              <div>
+                <label className="form-label">Site Address (optional):</label>
+                <input
+                  type="text"
+                  value={siteAddress}
+                  onChange={(e) => setSiteAddress(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">Description (optional):</label>
+                <textarea
+                  rows={2}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+             </div>
+
+              <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingProject ? 'Save Changes' : 'Create Project'}
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Saving…' : editingProject ? 'Save Changes' : 'Create Project'}
                 </button>
               </div>
             </form>
@@ -450,13 +498,14 @@ export const ProjectsView: React.FC = () => {
               <button
                 onClick={() => setSelectedProject(null)}
                 className="icon-btn"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="modal-body space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <span className="stat-label block">Client</span>
                   <strong className="mt-1 block text-sm text-ink-900">{selectedProject.clientName}</strong>
@@ -488,7 +537,7 @@ export const ProjectsView: React.FC = () => {
 
               <div>
                 <span className="mb-2 block text-sm font-semibold text-ink-900">Assigned Crane Fleet</span>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {machines
                     .filter((m) => m.currentProjectId === selectedProject.id)
                     .map((m) => (

@@ -61,9 +61,9 @@ export const MachineWorkingView: React.FC = () => {
   const [machineId, setMachineId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [operatorId, setOperatorId] = useState('');
-  const [shift, setShift] = useState<Shift>('day');
-  const [startTime, setStartTime] = useState('08:00');
-  const [endTime, setEndTime] = useState('18:00');
+  const [shift, setShift] = useState<Shift>('custom');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [remarks, setRemarks] = useState('');
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -94,15 +94,21 @@ export const MachineWorkingView: React.FC = () => {
     if (m?.currentProjectId) setProjectId(m.currentProjectId);
   };
 
+  /** Current time of this device as HH:mm (24-hour). */
+  const nowHHMM = () => {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+  };
+
   const openAddModal = () => {
-    const t = shiftTimesFor('day');
     setDate(currentDate);
-    setMachineId(machines[0]?.id ?? '');
-    setProjectId(projects[0]?.id ?? '');
+    // Nothing is chosen for the user: the machine, project and times are entered (or picked) here.
+    setMachineId('');
+    setProjectId('');
     setOperatorId('');
-    setShift('day');
-    setStartTime(t.start);
-    setEndTime(t.end);
+    setShift('custom');
+    setStartTime('');
+    setEndTime('');
     setRemarks('');
     setFormError('');
     setShowAddModal(true);
@@ -116,13 +122,21 @@ export const MachineWorkingView: React.FC = () => {
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
   const [importError, setImportError] = useState('');
 
-  const durationPreview = calculateWorkingAndOt(startTime, endTime, 0, 1440);
+  const durationPreview = startTime && endTime ? calculateWorkingAndOt(startTime, endTime, 0, 1440) : null;
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
     if (!machineId || !projectId) {
       setFormError('Choose a machine and a project.');
+      return;
+    }
+    if (!startTime || !endTime) {
+      setFormError('Enter the start and end time (or pick Day / Night, or tap Now).');
+      return;
+    }
+    if (startTime === endTime) {
+      setFormError('Start and end time are the same.');
       return;
     }
     setSaving(true);
@@ -152,13 +166,18 @@ export const MachineWorkingView: React.FC = () => {
     setImporting(true);
     setImportSuccessCount(null);
     try {
-      const result = await parseMachineWorkingExcel(file, machines, projects, employees);
+      setImportError('');
+      const result = await parseMachineWorkingExcel(file, machines, projects, employees, machineWorkingLogs);
       setParsedRows(result.validRows);
       setInvalidRows(result.invalidRows);
+      if (result.totalRows === 0) setImportError('The sheet has no rows. Use the template: one row per working session.');
     } catch (err) {
-      alert('Error reading Excel spreadsheet: ' + (err as Error).message);
+      setParsedRows([]);
+      setInvalidRows([]);
+      setImportError('Could not read that file as an Excel sheet: ' + (err as Error).message);
     } finally {
       setImporting(false);
+      e.target.value = '';
     }
   };
 
@@ -168,16 +187,11 @@ export const MachineWorkingView: React.FC = () => {
     // The sheet uses readable codes (CR-001, PRJ-001, OP-001 or an operator's name); the API needs ids.
     const formatted: Omit<MachineWorkingLog, 'id'>[] = parsedRows.map((r) => {
       const { netWorkingMinutes, netWorkingHours } = calculateWorkingAndOt(r.startTime, r.endTime, 0, 1440);
-      const machine = machines.find((m) => m.assetId.toUpperCase() === r.machineId || m.id === r.machineId);
-      const project = projects.find((p) => (p.projectId || '').toUpperCase() === r.projectId || p.id === r.projectId);
-      const operator = employees.find(
-        (e) => (e.employeeId || '').toUpperCase() === r.operatorId || (e.fullName || '').trim().toUpperCase() === r.operatorId || e.id === r.operatorId,
-      );
       return {
         date: r.date,
-        machineId: machine?.id ?? r.machineId,
-        projectId: project?.id ?? r.projectId,
-        operatorId: operator?.id ?? '',
+        machineId: r.resolved?.machineId ?? r.machineId,
+        projectId: r.resolved?.projectId ?? r.projectId,
+        operatorId: r.resolved?.operatorId ?? '',
         startTime: r.startTime,
         endTime: r.endTime,
         idleMinutes: 0,
@@ -252,7 +266,7 @@ export const MachineWorkingView: React.FC = () => {
     <div className="space-y-6 pb-12">
       {/* Top Header */}
       <div className="page-header">
-        <div>
+        <div className="min-w-0">
           <h2 className="page-title">
             Machine Operating Hours Register
           </h2>
@@ -261,7 +275,7 @@ export const MachineWorkingView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="grid w-full grid-cols-2 gap-2.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
           <button
             onClick={() => { setImportError(''); setShowImportModal(true); }}
             className="btn btn-secondary"
@@ -280,7 +294,7 @@ export const MachineWorkingView: React.FC = () => {
 
           <button
             onClick={openAddModal}
-            className="btn btn-primary"
+            className="btn btn-primary col-span-2"
           >
             <Plus className="w-4 h-4" />
             <span>Log Working Hours</span>
@@ -326,7 +340,19 @@ export const MachineWorkingView: React.FC = () => {
             <h3 className="text-sm font-semibold text-ink-900">Machine-wise hours</h3>
             <p className="text-[11px] text-ink-500">Total operating hours per crane for the logs shown below.</p>
           </div>
-          <div className="table-wrap">
+          <ul className="divide-y divide-line md:hidden">
+            {machineSummary.map((m) => (
+              <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-ink-900">{m.machine?.assetId ?? 'Unknown machine'}</div>
+                  <div className="text-[11px] text-ink-500">{m.machine?.make} {m.machine?.model}</div>
+                  <div className="mt-0.5 text-[11px] text-ink-600">{m.days} day{m.days === 1 ? '' : 's'} · {m.sessions} session{m.sessions === 1 ? '' : 's'}</div>
+                </div>
+                <div className="shrink-0 text-base font-bold text-ink-900">{m.hours} hrs</div>
+              </li>
+            ))}
+          </ul>
+          <div className="table-wrap hidden md:block">
             <table className="data-table">
               <thead>
                 <tr>
@@ -360,10 +386,10 @@ export const MachineWorkingView: React.FC = () => {
 
       {/* Filters Bar */}
       <div className="filter-bar filter-bar--split">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
           <div className="flex items-center gap-1.5 text-xs">
             <Select value={filterMachine} onValueChange={setFilterMachine}>
-              <SelectTrigger className="form-input w-auto">
+              <SelectTrigger className="form-input w-full sm:w-auto">
                 <SelectValue placeholder="All Machines" />
               </SelectTrigger>
               <SelectContent>
@@ -379,7 +405,7 @@ export const MachineWorkingView: React.FC = () => {
 
           <div className="flex items-center gap-1.5 text-xs">
             <Select value={filterProject} onValueChange={setFilterProject}>
-              <SelectTrigger className="form-input w-auto">
+              <SelectTrigger className="form-input w-full sm:w-auto">
                 <SelectValue placeholder="All Projects" />
               </SelectTrigger>
               <SelectContent>
@@ -406,8 +432,60 @@ export const MachineWorkingView: React.FC = () => {
         </div>
       </div>
 
-      {/* Logs Table */}
-      <div className="table-card">
+      {/* Logs: cards on phones */}
+      <div className="space-y-3 md:hidden">
+        {filteredLogs.length === 0 && (
+          <div className="empty-state rounded-lg border border-line bg-surface py-8 text-xs text-ink-500">
+            No working logs for this period and filters.
+          </div>
+        )}
+        {filteredLogs.map((log) => {
+          const mac = machines.find((m) => m.assetId === log.machineId || m.id === log.machineId);
+          const prj = projects.find((p) => p.id === log.projectId);
+          const night = shiftOf(log.startTime) === 'night';
+          return (
+            <div key={log.id} className="rounded-lg border border-line bg-surface p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-ink-900">{mac?.assetId ?? 'Unknown machine'}</div>
+                  <div className="text-[11px] text-ink-500">{mac?.make} {mac?.model}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-base font-bold text-ink-900">{log.workingHours} hrs</div>
+                  <div className="text-[11px] font-semibold text-ink-600">{formatDateDDMMYYYY(log.date)}</div>
+                </div>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <div className="min-w-0">
+                  <dt className="stat-label">Project site</dt>
+                  <dd className="mt-0.5 break-words font-medium text-ink-800">{prj?.name || log.projectId}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="stat-label">Operator</dt>
+                  <dd className="mt-0.5 break-words font-medium text-ink-800">{operatorName(log.operatorId) || '-'}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="stat-label">Operating timing</dt>
+                  <dd className="mt-0.5 flex items-center gap-1.5 font-medium text-ink-800">
+                    {night ? <Moon size={13} className="text-ink-400" /> : <Sun size={13} className="text-ink-400" />}
+                    {log.startTime.slice(0, 5)} <ArrowRight size={12} className="text-ink-400" aria-hidden="true" /> {log.endTime.slice(0, 5)}
+                    <span className="text-ink-500">· {night ? 'Night' : 'Day'} shift</span>
+                  </dd>
+                </div>
+                {log.remarks && (
+                  <div className="col-span-2">
+                    <dt className="stat-label">Duty remarks</dt>
+                    <dd className="mt-0.5 break-words text-ink-700">{log.remarks}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Logs table: tablets and desktop */}
+      <div className="table-card hidden md:block">
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -461,13 +539,14 @@ export const MachineWorkingView: React.FC = () => {
                     <td className="text-center font-bold text-ink-900 text-sm">
                       {log.workingHours} hrs
                     </td>
-                    <td className="text-ink-600 max-w-xs truncate">
+                    <td className="text-ink-600 max-w-[8rem] truncate" title={log.remarks || undefined}>
                       {log.remarks || '-'}
                     </td>
                     <td className="text-right">
-                      <span className="badge badge-success">
+                      <span className="badge badge-success" title="Approved">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Approved</span>
+                        <span className="hidden 2xl:inline">Approved</span>
+                        <span className="sr-only 2xl:hidden">Approved</span>
                       </span>
                     </td>
                   </tr>
@@ -487,19 +566,21 @@ export const MachineWorkingView: React.FC = () => {
               <button
                 onClick={() => setShowAddModal(false)}
                 className="icon-btn"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleManualSubmit} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleManualSubmit} noValidate className="flex min-h-0 flex-1 flex-col text-xs">
+              <div className="modal-body space-y-4">
               {formError && (
                 <div className="alert-banner" role="alert">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span className="text-xs">{formError}</span>
                 </div>
               )}
-              <div className="stat-grid">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="form-label">Date:</label>
                   <DateInput required
@@ -526,7 +607,7 @@ export const MachineWorkingView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="stat-grid">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="form-label">Project Site:</label>
                   <Select value={projectId} onValueChange={setProjectId}>
@@ -565,39 +646,60 @@ export const MachineWorkingView: React.FC = () => {
                 <span className="form-label">Shift:</span>
                 <ShiftToggle value={shift} onChange={pickShift} />
                 <p className="mt-1 text-[11px] text-ink-500">
-                  Day starts 08:00, night starts 20:00, each {shiftHours} hours (set in Company Settings). Edit the times to override.
+                  Day starts 08:00, night starts 20:00, each {shiftHours} hours (set in Company Settings). Or choose Custom, type the times, or tap Now to use this device's clock.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="form-label">Start Time:</label>
-                  <input
-                    type="time"
-                    required
-                    value={startTime}
-                    onChange={(e) => { setStartTime(e.target.value); setShift('custom'); }}
-                    className="form-input"
-                  />
+                  <label className="form-label" htmlFor="mw-start">Start Time:</label>
+                  <div className="flex gap-2">
+                    <input
+                      id="mw-start"
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => { setStartTime(e.target.value); setShift('custom'); }}
+                      className="form-input min-w-0 flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setStartTime(nowHHMM()); setShift('custom'); }}
+                      className="btn btn-secondary shrink-0"
+                    >
+                      <Clock className="h-3.5 w-3.5" /> Now
+                    </button>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="form-label">End Time:</label>
-                  <input
-                    type="time"
-                    required
-                    value={endTime}
-                    onChange={(e) => { setEndTime(e.target.value); setShift('custom'); }}
-                    className="form-input"
-                  />
+                  <label className="form-label" htmlFor="mw-end">End Time:</label>
+                  <div className="flex gap-2">
+                    <input
+                      id="mw-end"
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => { setEndTime(e.target.value); setShift('custom'); }}
+                      className="form-input min-w-0 flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setEndTime(nowHHMM()); setShift('custom'); }}
+                      className="btn btn-secondary shrink-0"
+                    >
+                      <Clock className="h-3.5 w-3.5" /> Now
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Calculation Preview */}
               <div className="notice notice--warning justify-between">
                 <span>Total Hours:</span>
-                <strong className="text-base">{durationPreview.netWorkingHours} Hours</strong>
+                <strong className="text-base">{durationPreview ? `${durationPreview.netWorkingHours} Hours` : '—'}</strong>
               </div>
+              {durationPreview && startTime > endTime && (
+                <p className="text-[11px] text-ink-500">The end time is earlier than the start, so this is counted as an overnight session ending the next day.</p>
+              )}
 
               <div>
                 <label className="form-label">Remarks / Operation:</label>
@@ -609,12 +711,13 @@ export const MachineWorkingView: React.FC = () => {
                   className="form-input"
                 />
               </div>
+              </div>
 
-              <div className="form-actions">
+              <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="btn btn-ghost"
+                  className="btn btn-secondary"
                 >
                   Cancel
                 </button>
@@ -652,17 +755,17 @@ export const MachineWorkingView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+            <div className="modal-body space-y-4 text-xs">
               {/* Step 1: Download Official Template */}
-              <div className="card card-pad flex items-center justify-between">
+              <div className="card card-pad flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h4 className="font-semibold text-ink-900">Step 1: Download Standard Template</h4>
                   <p className="text-ink-500 text-[11px] mt-0.5">
-                    Pre-formatted XLSX sheet with Date, Machine ID, Project ID, Operator (ID or name), Start/End times.
+                    Pre-formatted XLSX sheet with Date (DD/MM/YYYY), Machine ID, Project ID, Operator (ID or name), Start/End times (24-hour HH:mm).
                   </p>
                 </div>
                 <button
-                  onClick={downloadMachineWorkingTemplate}
+                  onClick={() => downloadMachineWorkingTemplate(machines, projects, employees)}
                   className="btn btn-secondary shrink-0"
                 >
                   <Download className="w-3.5 h-3.5 text-success-600" />
@@ -671,7 +774,7 @@ export const MachineWorkingView: React.FC = () => {
               </div>
 
               {/* Step 2: Upload Excel File */}
-              <div className="border-2 border-dashed border-line-strong rounded-lg p-6 text-center hover:border-ink-400 transition-colors bg-surface">
+              <div className="border-2 border-dashed border-line-strong rounded-lg p-4 sm:p-6 text-center hover:border-ink-400 transition-colors bg-surface">
                 <UploadCloud className="w-8 h-8 text-ink-500 mx-auto mb-2" />
                 <span className="font-semibold text-ink-900 block">Upload Machine Operating Excel (.xlsx)</span>
                 <p className="text-[11px] text-ink-500 mt-1">
@@ -681,8 +784,8 @@ export const MachineWorkingView: React.FC = () => {
                   Browse Excel File
                   <input
                     type="file"
-                    accept=".xlsx, .xls"
-                    className="hidden"
+                    accept=".xlsx,.xls"
+                    className="sr-only"
                     onChange={handleFileUpload}
                   />
                 </label>
@@ -713,9 +816,9 @@ export const MachineWorkingView: React.FC = () => {
               {/* Validation Summary & Preview */}
               {(parsedRows.length > 0 || invalidRows.length > 0) && (
                 <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-ink-900">Validation Results:</span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className="text-success-700 font-semibold">
                         {parsedRows.length} Valid Rows
                       </span>
@@ -734,7 +837,7 @@ export const MachineWorkingView: React.FC = () => {
                         <AlertTriangle className="w-4 h-4 text-danger-600" />
                         <span>The following rows have errors and will be skipped:</span>
                       </div>
-                      <div className="max-h-28 overflow-y-auto space-y-1 pl-5 list-disc">
+                      <div className="max-h-40 w-full overflow-y-auto space-y-1">
                         {invalidRows.map((inv) => (
                           <div key={inv.rowNumber} className="text-[11px]">
                             <strong>Row {inv.rowNumber} ({inv.machineId || 'Missing ID'}):</strong> {inv.errors.join('; ')}
@@ -746,14 +849,15 @@ export const MachineWorkingView: React.FC = () => {
 
                   {/* Valid Rows Preview Table */}
                   {parsedRows.length > 0 && (
-                    <div className="card overflow-hidden max-h-48 overflow-y-auto">
-                      <table className="data-table">
+                    <div className="card max-h-56 overflow-auto">
+                      <table className="data-table min-w-[30rem]">
                         <thead>
                           <tr>
                             <th>Row</th>
                             <th>Date</th>
                             <th>Machine</th>
                             <th>Project</th>
+                            <th>Operator</th>
                             <th>Hours</th>
                             <th>Remarks</th>
                           </tr>
@@ -765,6 +869,7 @@ export const MachineWorkingView: React.FC = () => {
                               <td>{formatDateDDMMYYYY(row.date)}</td>
                               <td className="font-bold text-ink-900">{row.machineId}</td>
                               <td>{row.projectId}</td>
+                              <td>{row.operatorId ? employees.find((x) => x.id === row.resolved?.operatorId)?.fullName ?? row.operatorId : '-'}</td>
                               <td className="font-bold text-success-700">
                                 {calculateWorkingAndOt(row.startTime, row.endTime, 0, 1440).netWorkingHours}h
                               </td>
@@ -779,28 +884,25 @@ export const MachineWorkingView: React.FC = () => {
               )}
             </div>
 
-            <div className="px-6 py-3.5 bg-surface-muted border-t border-line flex items-center justify-between shrink-0">
-              <span className="text-xs text-ink-500">
+            <div className="modal-footer">
+              <span className="mr-auto text-xs text-ink-500">
                 {parsedRows.length > 0 ? `Ready to import ${parsedRows.length} logs` : 'Upload file to proceed'}
               </span>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(false)}
-                  className="btn btn-ghost"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={parsedRows.length === 0}
-                  onClick={handleConfirmImport}
-                  className={`btn ${parsedRows.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
-                >
-                  Confirm & Import Valid Rows
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => { setShowImportModal(false); setParsedRows([]); setInvalidRows([]); }}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={parsedRows.length === 0}
+                onClick={handleConfirmImport}
+                className={`btn ${parsedRows.length > 0 ? 'btn-primary' : 'btn-secondary'}`}
+              >
+                Confirm & Import Valid Rows
+              </button>
             </div>
           </div>
         </div>

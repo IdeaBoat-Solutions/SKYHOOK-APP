@@ -78,10 +78,10 @@ function idParam(ctx: RouteCtx): string {
   return ctx.params.id ?? '';
 }
 
+/** Add whole days to a yyyy-mm-dd date using UTC arithmetic (no timezone / DST drift). */
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0]!;
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().split('T')[0]!;
 }
 
 async function writeAudit(
@@ -206,7 +206,7 @@ export const workforceRoutes: Route[] = [
       return withTenant(auth.tenantId, async (c) => {
         const prefix = body.employeeType === 'operator' ? 'OP' : 'EMP';
         const seq = await c.query(
-          `SELECT count(*)::int AS n FROM employees
+          `SELECT COALESCE(MAX(NULLIF(regexp_replace(employee_code,'\\D','','g'),'')::bigint),0)::int AS n FROM employees
            WHERE tenant_id=$1 AND employee_code LIKE $2`,
           [auth.tenantId, `${prefix}-%`],
         );

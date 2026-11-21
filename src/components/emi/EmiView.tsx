@@ -68,7 +68,10 @@ export const EmiView: React.FC = () => {
     getEmiAlerts,
   } = useSkyhook();
 
-  const [selectedLoan, setSelectedLoan] = useState<MachineEmiLoan | null>(emiLoans[0] || null);
+  const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
+  const selectedLoan: MachineEmiLoan | null =
+    emiLoans.find((l) => l.id === selectedLoanId) ?? emiLoans[0] ?? null;
+  const setSelectedLoan = (loan: MachineEmiLoan) => setSelectedLoanId(loan.id);
   const [showCalculator, setShowCalculator] = useState(false);
   const [payModalData, setPayModalData] = useState<{
     loan: MachineEmiLoan;
@@ -78,9 +81,19 @@ export const EmiView: React.FC = () => {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [historyLoanFilter, setHistoryLoanFilter] = useState('all');
+  const [showAllCards, setShowAllCards] = useState(false);
 
   const [paymentMode, setPaymentMode] = useState('Net Banking NEFT');
+  /** The machine's asset code (CR-003); the loan itself only carries the machine's database id. */
+  const loanLabel = (loan: MachineEmiLoan) =>
+    (loan as MachineEmiLoan & { assetCode?: string }).assetCode ||
+    machines.find((m) => m.id === loan.assetId)?.assetId ||
+    'Machine';
+  const modeLabel = (m?: string) =>
+    !m ? '—' : m.includes('_') || m === m.toLowerCase() ? m.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : m;
   const [paymentRef, setPaymentRef] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
 
   const emiAlerts = getEmiAlerts();
 
@@ -106,17 +119,31 @@ export const EmiView: React.FC = () => {
     );
   }
 
-  const handleConfirmPayment = (e: React.FormEvent) => {
+  const handleConfirmPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payModalData) return;
-    recordEmiPayment(
-      payModalData.loan.id,
-      payModalData.installmentNumber,
-      paymentMode,
-      paymentRef
-    );
-    setPayModalData(null);
+    if (!payModalData || savingPayment) return;
+    setSavingPayment(true);
+    setPaymentError('');
+    try {
+      await recordEmiPayment(
+        payModalData.loan.id,
+        payModalData.installmentNumber,
+        paymentMode,
+        paymentRef
+      );
+      setPayModalData(null);
+      setPaymentRef('');
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : 'Could not record the payment. Please try again.');
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  const openPay = (loan: MachineEmiLoan, installmentNumber: number, amount: number) => {
+    setPaymentError('');
     setPaymentRef('');
+    setPayModalData({ loan, installmentNumber, amount });
   };
 
   const handleSaveCalculatedLoan = async (loan: Omit<MachineEmiLoan, 'id'>) => {
@@ -148,6 +175,10 @@ export const EmiView: React.FC = () => {
       : selectedLoan.installments.filter((i) => i.status === statusFilter)
     : [];
 
+  // Phones show a window starting at the last settled instalment, so the next dues are in view.
+  const firstUnpaid = visibleInstallments.findIndex((i) => i.status !== 'paid');
+  const firstCardIdx = Math.max(0, firstUnpaid - 1);
+
   const paymentHistory = emiLoans
     .flatMap((loan) =>
       loan.installments
@@ -168,7 +199,7 @@ export const EmiView: React.FC = () => {
   ) => {
     const Icon = icon;
     return (
-      <div className="-mx-[1.125rem] mb-4 flex items-center justify-between gap-3 border-b border-line px-[1.125rem] pb-3">
+      <div className="-mx-[1.125rem] mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line px-[1.125rem] pb-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="section-icon shrink-0">
             <Icon className="h-4 w-4" />
@@ -265,7 +296,7 @@ export const EmiView: React.FC = () => {
           </p>
         </div>
 
-        <button onClick={() => setShowCalculator(true)} className="btn btn-primary">
+        <button onClick={() => setShowCalculator(true)} className="btn btn-primary w-full sm:w-auto">
           <Calculator className="h-4 w-4" />
           <span>Calculate &amp; Add Loan</span>
         </button>
@@ -329,6 +360,12 @@ export const EmiView: React.FC = () => {
           )}
 
           <div className="space-y-3">
+            {emiLoans.length === 0 && (
+              <div className="empty-state rounded-lg border border-line bg-surface-muted py-8">
+                <Landmark className="h-6 w-6 text-ink-400" />
+                <p className="text-sm">No loans yet. Use "Calculate &amp; Add Loan" to add one.</p>
+              </div>
+            )}
             {emiLoans.map((loan) => {
               const isSelected = selectedLoan?.id === loan.id;
               const hasAlert = emiAlerts.some((a) => a.targetId === loan.assetId);
@@ -355,7 +392,7 @@ export const EmiView: React.FC = () => {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-bold text-ink-900">{loan.assetId}</span>
+                        <span className="text-sm font-bold text-ink-900">{loanLabel(loan)}</span>
                         {hasAlert && (
                           <span className={`badge ${isOverdueLoan ? 'badge-danger' : 'badge-warning'}`}>
                             {isOverdueLoan ? 'Overdue' : 'Due soon'}
@@ -476,7 +513,52 @@ export const EmiView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="card mt-4 overflow-hidden">
+              <div className="mt-4 space-y-2 md:hidden">
+                {visibleInstallments.length === 0 && (
+                  <div className="rounded-lg border border-line py-6 text-center text-xs text-ink-500">
+                    No installments match this status filter.
+                  </div>
+                )}
+                {(showAllCards ? visibleInstallments : visibleInstallments.slice(firstCardIdx, firstCardIdx + 12)).map((inst) => {
+                  const style = statusStyles[inst.status] ?? statusStyles.upcoming;
+                  return (
+                    <div key={inst.id} className={`flex items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-3 ${style.row}`}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-ink-500">#{inst.installmentNumber}</span>
+                          <StatusBadge status={inst.status} />
+                        </div>
+                        <div className={`mt-1 text-sm ${inst.status === 'overdue' ? 'font-bold text-danger-700' : 'font-semibold text-ink-900'}`}>
+                          {formatDateDDMMYYYY(inst.dueDate)}
+                        </div>
+                        <Currency value={inst.amountDue} size="xs" className="font-bold text-ink-900" />
+                        {inst.status === 'paid' && inst.paymentDate && (
+                          <p className="mt-0.5 text-[11px] text-ink-500">
+                            Paid {formatDateDDMMYYYY(inst.paymentDate)}
+                            {inst.paymentReference ? ` · ${inst.paymentReference}` : ''}
+                          </p>
+                        )}
+                      </div>
+                      {inst.status !== 'paid' && (
+                        <button
+                          type="button"
+                          onClick={() => openPay(selectedLoan, inst.installmentNumber, inst.amountDue)}
+                          className="btn btn-primary shrink-0"
+                        >
+                          Record Pay
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {visibleInstallments.length > 12 && (
+                  <button type="button" className="btn btn-secondary w-full" onClick={() => setShowAllCards((v) => !v)}>
+                    {showAllCards ? 'Show fewer' : `Show all ${visibleInstallments.length} installments`}
+                  </button>
+                )}
+              </div>
+
+              <div className="card mt-4 hidden overflow-hidden md:block">
                 <div className="table-wrap">
                   <table className="data-table text-xs">
                     <thead>
@@ -547,13 +629,9 @@ export const EmiView: React.FC = () => {
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    setPayModalData({
-                                      loan: selectedLoan,
-                                      installmentNumber: inst.installmentNumber,
-                                      amount: inst.amountDue,
-                                    })
-                                  }
+                                  onClick={() => {
+                                    openPay(selectedLoan, inst.installmentNumber, inst.amountDue);
+                                  }}
                                   className="btn btn-primary btn-sm"
                                 >
                                   Record Pay
@@ -570,7 +648,7 @@ export const EmiView: React.FC = () => {
 
               <p className="mt-3 text-[11px] text-ink-500">
                 Showing {visibleInstallments.length} of {selectedLoan.installments.length}{' '}
-                installments for {selectedLoan.assetId}.
+                installments for {loanLabel(selectedLoan)}.
               </p>
             </>
           ) : (
@@ -595,7 +673,7 @@ export const EmiView: React.FC = () => {
               <SelectItem value="all">All loans</SelectItem>
               {emiLoans.map((loan) => (
                 <SelectItem key={loan.id} value={loan.id}>
-                  {loan.assetId}
+                  {loanLabel(loan)} · {loan.loanProvider}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -603,7 +681,26 @@ export const EmiView: React.FC = () => {
         )}
 
         {paymentHistory.length > 0 ? (
-          <div className="card overflow-hidden">
+          <>
+          <ul className="space-y-2.5 md:hidden">
+            {paymentHistory.map(({ loan, inst }) => (
+              <li key={inst.id} className="rounded-lg border border-line p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-ink-900">{loanLabel(loan)} · #{inst.installmentNumber}</div>
+                    <div className="text-[11px] text-ink-500">
+                      {inst.paymentDate ? formatDateDDMMYYYY(inst.paymentDate) : 'Past instalment'} · {inst.paymentMode ? modeLabel(inst.paymentMode) : 'recorded at loan setup'}
+                    </div>
+                    {inst.paymentReference && (
+                      <div className="mt-0.5 break-all font-mono text-[11px] text-ink-500">{inst.paymentReference}</div>
+                    )}
+                  </div>
+                  <Currency value={inst.amountPaid} size="sm" className="shrink-0 font-bold text-success-700" />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="card hidden overflow-hidden md:block">
             <div className="table-wrap">
               <table className="data-table text-xs">
                 <thead>
@@ -619,14 +716,14 @@ export const EmiView: React.FC = () => {
                 <tbody>
                   {paymentHistory.map(({ loan, inst }) => (
                     <tr key={inst.id} className="transition-colors hover:bg-surface-muted/70">
-                      <td className="px-4 py-3 font-bold text-ink-900">{loan.assetId}</td>
+                      <td className="px-4 py-3 font-bold text-ink-900">{loanLabel(loan)}</td>
                       <td className="px-3.5 py-3 font-semibold text-ink-700">
                         #{inst.installmentNumber}
                       </td>
                       <td className="px-3.5 py-3 text-ink-600">
-                        {formatDateDDMMYYYY(inst.paymentDate)}
+                        {inst.paymentDate ? formatDateDDMMYYYY(inst.paymentDate) : 'Past instalment'}
                       </td>
-                      <td className="px-3.5 py-3 text-ink-600">{inst.paymentMode || '—'}</td>
+                      <td className="px-3.5 py-3 text-ink-600">{inst.paymentMode ? modeLabel(inst.paymentMode) : 'Recorded at loan setup'}</td>
                       <td className="px-3.5 py-3 font-mono text-[11px] text-ink-500">
                         {inst.paymentReference || '—'}
                       </td>
@@ -639,6 +736,7 @@ export const EmiView: React.FC = () => {
               </table>
             </div>
           </div>
+          </>
         ) : (
           <div className="empty-state rounded-lg border border-line bg-surface-muted">
             <ReceiptText className="h-6 w-6 text-ink-400" />
@@ -659,7 +757,7 @@ export const EmiView: React.FC = () => {
                 <div className="min-w-0">
                   <h3 className="modal-title truncate">Record EMI Payment</h3>
                   <p className="mt-0.5 truncate text-xs text-ink-500">
-                    {payModalData.loan.assetId} · Installment #{payModalData.installmentNumber}
+                    {loanLabel(payModalData.loan)} · Installment #{payModalData.installmentNumber}
                   </p>
                 </div>
               </div>
@@ -673,7 +771,10 @@ export const EmiView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleConfirmPayment}>
+            <form onSubmit={handleConfirmPayment} className="flex min-h-0 flex-1 flex-col">
+              {paymentError && (
+                <div className="notice notice--danger mx-5 mt-4 text-xs" role="alert">{paymentError}</div>
+              )}
               <div className="modal-body space-y-4">
                 <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-muted p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -703,16 +804,17 @@ export const EmiView: React.FC = () => {
                       <SelectItem value="Auto-Debit ECS">Auto-Debit ECS</SelectItem>
                       <SelectItem value="RTGS Transfer">RTGS Transfer</SelectItem>
                       <SelectItem value="Company Cheque">Company Cheque</SelectItem>
+                      <SelectItem value="UPI">UPI</SelectItem>
+                      <SelectItem value="Cash">Cash</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <label className="form-label">Bank reference / UTR number</label>
+                  <label className="form-label">Bank reference / UTR / cheque number (optional)</label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. UTR-HDFC-991208"
+                    placeholder="Transaction or cheque reference"
                     value={paymentRef}
                     onChange={(e) => setPaymentRef(e.target.value)}
                     className="form-input"
@@ -728,9 +830,9 @@ export const EmiView: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={savingPayment}>
                   <CheckCircle2 className="h-4 w-4" />
-                  Confirm Payment
+                  {savingPayment ? 'Saving…' : 'Confirm Payment'}
                 </button>
               </div>
             </form>

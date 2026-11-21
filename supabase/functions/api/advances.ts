@@ -173,7 +173,7 @@ export const advancesRoutes: Route[] = [
       const amountPaise = numField(b, 'amountPaise', { required: true, integer: true, min: 1 })!;
       const paymentMode = enumField(b, 'paymentMode', ['cash', 'bank_transfer', 'upi', 'cheque', 'company_card'], { required: true })!;
       const paymentReference = strField(b, 'paymentReference');
-      const projectId = b?.projectId === undefined || b?.projectId === null ? undefined : uuidField(b, 'projectId');
+      const projectId = b?.projectId === undefined || b?.projectId === null || b?.projectId === '' ? undefined : uuidField(b, 'projectId');
       const remarks = strField(b, 'remarks');
       const created = await withTenant(auth.tenantId, async (c) => {
         const emp = await c.query(
@@ -181,7 +181,7 @@ export const advancesRoutes: Route[] = [
           [auth.tenantId, employeeId],
         );
         if (!emp.rows[0]) throw Errors.validation([{ field: 'employeeId', message: 'Only active operators are eligible' }]);
-        const seq = await c.query('SELECT count(*)::int n FROM salary_advances WHERE tenant_id=$1', [auth.tenantId]);
+        const seq = await c.query(`SELECT COALESCE(MAX(NULLIF(regexp_replace(advance_code,'\\D','','g'),'')::bigint),0)::int AS n FROM salary_advances WHERE tenant_id=$1`, [auth.tenantId]);
         const code = `ADV-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
         const r = await c.query(
           `INSERT INTO salary_advances (tenant_id,advance_code,employee_id,advance_date,amount_paise,payment_mode,

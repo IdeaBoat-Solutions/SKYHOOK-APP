@@ -17,6 +17,10 @@ const patchSchema = z.object({
   email: z.string().optional(),
   authorizedSignatory: z.string().optional(),
   signatoryTitle: z.string().optional(),
+  // The logo may be an uploaded image sent as a data URL.
+  logoUrl: z.string().max(1_500_000).optional(),
+  payrollCycleType: z.enum(['calendar_month', 'custom_26_to_25']).optional(),
+  shortShiftPolicy: z.enum(['half_day_under_5', 'proportional', 'manual']).optional(),
   standardShiftMinutes: z.number().int().min(60).max(1440).optional(),
   payrollPaymentDay: z.number().int().min(1).max(28).optional(),
   emiReminderLeadDays: z.number().int().min(0).max(365).optional(),
@@ -31,6 +35,7 @@ const COLUMN_MAP: Record<string, string> = {
   name: 'name', tagline: 'tagline', gstNumber: 'gst_number', address: 'address',
   city: 'city', state: 'state', pincode: 'pincode', phone: 'phone', email: 'email',
   authorizedSignatory: 'authorized_signatory', signatoryTitle: 'signatory_title',
+  logoUrl: 'logo_url', payrollCycleType: 'payroll_cycle_type', shortShiftPolicy: 'short_shift_policy',
   standardShiftMinutes: 'standard_shift_minutes', payrollPaymentDay: 'payroll_payment_day',
   emiReminderLeadDays: 'emi_reminder_lead_days', serviceReminderLeadDays: 'service_reminder_lead_days',
   insuranceReminderLeadDays: 'insurance_reminder_lead_days', pucReminderLeadDays: 'puc_reminder_lead_days',
@@ -62,7 +67,7 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
         [request.auth.tenantId, ...values, request.auth.userId],
       );
       await writeAudit(c, request.auth, {
-        action: 'SETTINGS_UPDATED', entity: 'CompanySettings', entityId: 'GLOBAL',
+        action: 'SETTINGS_UPDATED', entity: 'CompanySettings', entityId: request.auth.tenantId,
         reason: 'Company profile or payroll policies updated',
         previousValue: before.rows[0], updatedValue: r.rows[0], requestId: request.id,
       });

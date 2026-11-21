@@ -1,6 +1,7 @@
 /** HTTP helpers: CORS, JSON responses, error mapping, path/body parsing. */
 import { config } from './config.ts';
 import { ApiError, problemBody } from './errors.ts';
+import { mapPgError } from './pg-errors.ts';
 
 export function corsHeaders(): Record<string, string> {
   const origin = config.ALLOWED_ORIGIN === '*'
@@ -53,9 +54,15 @@ export function json(body: unknown, status = 200): Response {
 
 export function problem(err: unknown, requestId: string, instance: string): Response {
   if (err instanceof ApiError) return json(problemBody(err, requestId, instance), err.status);
-  const msg = err instanceof Error ? err.message : String(err);
+  // Database data errors (duplicate, bad reference, bad date...) become readable 409/422s.
+  const pgProblem = mapPgError(err);
+  if (pgProblem) {
+    console.warn('[api] database constraint error', err);
+    return json(problemBody(pgProblem, requestId, instance), pgProblem.status);
+  }
   console.error('[api] unhandled error', err);
-  const apiErr = new ApiError(500, 'internal-error', 'Internal server error', msg);
+  // Never leak SQL text or stack details to the client.
+  const apiErr = new ApiError(500, 'internal-error', 'Internal server error', 'Something went wrong on the server. Please try again');
   return json(problemBody(apiErr, requestId, instance), 500);
 }
 

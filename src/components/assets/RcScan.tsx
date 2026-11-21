@@ -15,6 +15,7 @@ import {
 import type { MachineType, RcDetails } from '../../types';
 import { ParsedRc, scanRcDocuments } from '../../utils/rcOcr';
 import { isPdf } from '../../utils/ocrEngine';
+import { DateInput } from '../common/DateInput';
 
 const MACHINE_TYPES: MachineType[] = [
   'Hydraulic Crane', 'Mobile Crane', 'Crawler Crane', 'Tower Crane', 'Hydra',
@@ -54,7 +55,7 @@ const Stepper: React.FC<{ current: number }> = ({ current }) => (
           >
             {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
           </span>
-          <span className={`truncate text-xs font-semibold ${active ? 'text-ink-900' : 'text-ink-500'}`}>{label}</span>
+          <span className={`truncate text-xs font-semibold ${active ? 'text-ink-900' : 'hidden text-ink-500 sm:inline'}`}>{label}</span>
           {i < STEPS.length - 1 && <span className="hidden h-px flex-1 bg-line sm:block" />}
         </li>
       );
@@ -158,19 +159,22 @@ export const RcDetailsFields: React.FC<FieldsProps> = ({ value, onChange }) => (
                   value={value[f.key] ?? ''}
                   onChange={(e) => onChange({ [f.key]: e.target.value === '' ? undefined : Number(e.target.value) })}
                 />
+              ) : f.kind === 'date' ? (
+                <DateInput
+                  id={`rc-${f.key}`}
+                  className="form-input"
+                  value={value[f.key] ?? ''}
+                  onChange={(e) => onChange({ [f.key]: e.target.value || undefined })}
+                />
               ) : (
                 <input
                   id={`rc-${f.key}`}
-                  type={f.kind === 'date' ? 'date' : 'text'}
+                  type="text"
                   className={`form-input ${f.mono ? 'font-mono tracking-wide' : ''}`}
                   placeholder={f.placeholder}
                   title={value[f.key] ?? undefined}
                   value={value[f.key] ?? ''}
-                  onChange={(e) =>
-                    onChange({
-                      [f.key]: f.kind === 'date' ? e.target.value || undefined : e.target.value.toUpperCase() || undefined,
-                    })
-                  }
+                  onChange={(e) => onChange({ [f.key]: e.target.value.toUpperCase() || undefined })}
                 />
               )}
             </div>
@@ -319,7 +323,7 @@ export const RcScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => {
           </button>
         </div>
 
-        <div className="modal-body max-h-[72vh] space-y-4 overflow-y-auto">
+        <div className="modal-body space-y-4 sm:max-h-[72vh]">
           {error && (
             <div className="alert-banner" role="alert">
               <AlertCircle className="h-4 w-4 shrink-0" />

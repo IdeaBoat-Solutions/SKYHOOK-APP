@@ -79,7 +79,7 @@ export async function workforceRoutes(app: FastifyInstance): Promise<void> {
     return withTenant(request.auth.tenantId, async (c) => {
       const prefix = body.employeeType === 'operator' ? 'OP' : 'EMP';
       const seq = await c.query(
-        `SELECT count(*)::int AS n FROM employees
+        `SELECT COALESCE(MAX(NULLIF(regexp_replace(employee_code,'\\D','','g'),'')::bigint),0)::int AS n FROM employees
          WHERE tenant_id=$1 AND employee_code LIKE $2`,
         [request.auth.tenantId, `${prefix}-%`],
       );

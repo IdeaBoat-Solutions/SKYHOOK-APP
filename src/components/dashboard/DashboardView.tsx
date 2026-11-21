@@ -73,7 +73,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activeProjects = projects.filter((p) => p.status === 'active');
   const totalOperators = employees.filter((e) => e.employeeType === 'operator' && e.status === 'active');
   const todayAttendance = attendance.filter((a) => a.date === currentDate);
-  const operatorsPresentToday = todayAttendance.filter((a) => a.status === 'present').length;
+  // A half day is a person who came to work, so they count as present.
+  const operatorsPresentToday = todayAttendance.filter((a) => a.status === 'present' || a.status === 'half_day').length;
   const totalMachines = machines.length;
   const machinesDeployed = machines.filter((m) => m.status === 'assigned').length;
 
@@ -98,12 +99,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const licenseAlerts = getLicenseAlerts();
 
   // 3. Attendance snapshot
-  const presentCount = todayAttendance.filter((a) => a.status === 'present').length;
+  const presentCount = operatorsPresentToday;
   const absentCount = todayAttendance.filter((a) => a.status === 'absent').length;
   const leaveCount = todayAttendance.filter(
-    (a) => a.status === 'paid_leave' || a.status === 'unpaid_leave' || a.status === 'half_day'
+    (a) => a.status === 'paid_leave' || a.status === 'unpaid_leave'
   ).length;
-  const todayOtHours = todayAttendance.reduce((sum, a) => sum + a.overtimeHours, 0);
+  const todayOtHours = todayAttendance
+    .filter((a) => a.approvalStatus === 'approved')
+    .reduce((sum, a) => sum + a.overtimeHours, 0);
 
   // 4. Machine Working Summary
   const todayMachineHours = machineWorkingLogs
@@ -130,6 +133,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
   }).sort((a, b) => b.hours - a.hours);
 
+  const maxMachineHours = machineUtilization.reduce((m, i) => Math.max(m, i.hours), 0);
+
+  const alertSections: Array<{
+    key: string;
+    title: string;
+    icon: React.ElementType;
+    alerts: ReminderAlertItem[];
+    clear: string;
+    fallback: NavTab;
+  }> = [
+    ...(!isManager
+      ? [{ key: 'emi', title: 'MACHINE EMI REMINDERS', icon: CreditCard, alerts: emiAlerts, clear: 'machine EMI items', fallback: 'emi' as NavTab }]
+      : []),
+    { key: 'service', title: 'MACHINE SERVICE REMINDERS', icon: Wrench, alerts: serviceAlerts, clear: 'machine services', fallback: 'assets' },
+    { key: 'insurance', title: 'INSURANCE RENEWAL REMINDERS', icon: ShieldAlert, alerts: insuranceAlerts, clear: 'insurance renewals', fallback: 'reminders' },
+    { key: 'puc', title: 'PUC RENEWAL REMINDERS', icon: FileCheck2, alerts: pucAlerts, clear: 'PUC renewals', fallback: 'reminders' },
+    { key: 'fitness', title: 'FITNESS TEST REMINDERS', icon: FileBadge, alerts: fitnessAlerts, clear: 'fitness tests', fallback: 'reminders' },
+    { key: 'license', title: 'OPERATOR LICENSE RENEWAL REMINDERS', icon: Users, alerts: licenseAlerts, clear: 'operator licences', fallback: 'employees' },
+  ];
+
   const renderAlertCard = (
     alert: ReminderAlertItem,
     onClickAction: () => void
@@ -155,10 +178,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <CircleAlert className="h-[18px] w-[18px]" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-ink-900">{alert.title}</div>
-          <div className="mt-0.5 truncate text-xs text-ink-500">{details.join(' | ')}</div>
+          <div className="break-words text-sm font-semibold text-ink-900 sm:truncate">{alert.title}</div>
+          <div className="mt-0.5 break-words text-xs text-ink-500 sm:truncate">{details.join(' | ')}</div>
         </div>
-        <button onClick={onClickAction} className="btn btn-primary btn-sm shrink-0">
+        <button onClick={onClickAction} className="btn btn-primary btn-sm shrink-0 max-sm:w-full">
           <span>{alert.actionLabel}</span>
           <ArrowRight className="h-3.5 w-3.5" />
         </button>
@@ -169,7 +192,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const renderSectionHeader = (title: string, icon: React.ElementType) => {
     const Icon = icon;
     return (
-      <div className="section-heading -mx-[1.125rem] px-[1.125rem]">
+      <div className="section-heading">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="section-icon">
             <Icon className="h-4 w-4" />
@@ -226,7 +249,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="kpi-card__value">{value}</div>
 
         <div className="kpi-card__foot">
-          <span className="truncate text-[11px] font-medium text-ink-500">{hint}</span>
+          <span className="min-w-0 break-words text-[11px] font-medium leading-snug text-ink-500">{hint}</span>
           <span
             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${styles.icon}`}
           >
@@ -238,7 +261,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="page">
       {/* Dashboard Top Header & Controls */}
       <div className="page-header">
         <div>
@@ -267,7 +290,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Active Projects"
           value={activeProjects.length}
-          hint={`${projects.length} Total Registered`}
+          hint={`${projects.length} total registered`}
           icon={FolderKanban}
           accent="brand"
           onClick={() => onNavigateTab('projects')}
@@ -275,7 +298,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Total Operators"
           value={totalOperators.length}
-          hint={`${employees.length} Total Workforce`}
+          hint={`${employees.length} in total workforce`}
           icon={Users}
           accent="success"
           onClick={() => onNavigateTab('employees')}
@@ -283,7 +306,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Present Today"
           value={<span className="text-success-600">{operatorsPresentToday}</span>}
-          hint={`${totalOperators.length - operatorsPresentToday} Off Duty / Leave`}
+          hint={`${Math.max(0, totalOperators.length - operatorsPresentToday)} not present yet`}
           icon={UserCheck}
           accent="success"
           onClick={() => onNavigateTab('attendance')}
@@ -296,7 +319,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-base font-normal text-ink-400">/ {totalMachines}</span>
             </>
           }
-          hint={`${totalMachines - machinesDeployed} Available at Depot`}
+          hint={`${totalMachines - machinesDeployed} not deployed`}
           icon={Truck}
           accent="warning"
           onClick={() => onNavigateTab('assets')}
@@ -304,7 +327,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Pending Payroll"
           value={<Currency value={pendingPayrollAmount} size="xl" />}
-          hint={latestPayroll?.paymentDueDate ? `Due on ${formatDateDDMMYYYY(latestPayroll.paymentDueDate)}` : 'No payroll run yet'}
+          hint={latestPayroll?.paymentDueDate ? `Due ${formatDateDDMMYYYY(latestPayroll.paymentDueDate)}` : 'No payroll run yet'}
           icon={ReceiptIndianRupee}
           accent="brand"
           onClick={() => onNavigateTab('payroll')}
@@ -312,7 +335,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Monthly Expenses"
           value={<Currency value={monthlyExpenses} size="xl" />}
-          hint="Fuel, Parts & Sites"
+          hint="Approved this month"
           icon={TrendingUp}
           accent="brand"
           onClick={() => onNavigateTab('expenses')}
@@ -320,7 +343,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Pending Approvals"
           value={<span className="text-warning-600">{pendingAttendanceCount}</span>}
-          hint="Daily logs waiting sign-off"
+          hint="Logs awaiting sign-off"
           icon={CalendarCheck}
           accent="warning"
           onClick={() => onNavigateTab('attendance')}
@@ -330,7 +353,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           value={
             <Currency value={advances.reduce((s, a) => s + a.outstandingBalance, 0)} size="xl" />
           }
-          hint={`${advances.filter((a) => a.outstandingBalance > 0).length} Operators with Advance`}
+          hint={`${advances.filter((a) => a.outstandingBalance > 0).length} with open advances`}
           icon={CreditCard}
           accent="brand"
           onClick={() => onNavigateTab('advances')}
@@ -356,139 +379,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* 1. MACHINE EMI REMINDERS (Owner Only) */}
-        {!isManager && (
-          <div className="card card-pad">
-            <div className="space-y-3">
-            {renderSectionHeader('MACHINE EMI REMINDERS', CreditCard)}
-            {emiAlerts.length > 0 ? (
-              <div className="space-y-2.5">
-                {emiAlerts.slice(0, 3).map((alert) =>
-                  renderAlertCard(alert, () => {
-                    if (onOpenAlertModal) onOpenAlertModal(alert);
-                    else onNavigateTab('emi');
-                  })
+        {alertSections
+          .filter((sec) => sec.alerts.length > 0)
+          .map((sec) => (
+            <div key={sec.key} className="card card-pad">
+              <div className="space-y-3">
+                {renderSectionHeader(sec.title, sec.icon)}
+                <div className="space-y-2.5">
+                  {sec.alerts.slice(0, 3).map((alert) =>
+                    renderAlertCard(alert, () => {
+                      if (onOpenAlertModal) onOpenAlertModal(alert);
+                      else onNavigateTab(sec.fallback);
+                    })
+                  )}
+                </div>
+                {sec.alerts.length > 3 && (
+                  <button onClick={() => onNavigateTab('reminders')} className="btn btn-ghost btn-sm w-full">
+                    View all {sec.alerts.length} <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
                 )}
               </div>
-            ) : (
-              <div className="notice notice--success">
-                <CheckCircle2 className="w-4 h-4 text-success-600" />
-                <span>All Clear – No Pending EMI Items.</span>
-              </div>
-            )}
             </div>
+          ))}
+
+        {alertSections.some((sec) => sec.alerts.length === 0) && (
+          <div className="card card-pad space-y-2">
+            {alertSections
+              .filter((sec) => sec.alerts.length === 0)
+              .map((sec) => (
+                <div key={sec.key} className="notice notice--success">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success-600" />
+                  <span>All clear: no pending {sec.clear}.</span>
+                </div>
+              ))}
           </div>
         )}
-
-        {/* 2. MACHINE SERVICE REMINDERS */}
-        <div className="card card-pad">
-          <div className="space-y-3">
-          {renderSectionHeader('MACHINE SERVICE REMINDERS', Wrench)}
-          {serviceAlerts.length > 0 ? (
-            <div className="space-y-2.5">
-              {serviceAlerts.slice(0, 3).map((alert) =>
-                renderAlertCard(alert, () => {
-                  if (onOpenAlertModal) onOpenAlertModal(alert);
-                  else onNavigateTab('assets');
-                })
-              )}
-            </div>
-          ) : (
-            <div className="notice notice--success">
-              <CheckCircle2 className="w-4 h-4 text-success-600" />
-              <span>All Clear – No Pending Machine Services.</span>
-            </div>
-            )}
-          </div>
-        </div>
-
-        {/* 3. INSURANCE RENEWAL REMINDERS */}
-        <div className="card card-pad">
-          <div className="space-y-3">
-          {renderSectionHeader('INSURANCE RENEWAL REMINDERS', ShieldAlert)}
-          {insuranceAlerts.length > 0 ? (
-            <div className="space-y-2.5">
-              {insuranceAlerts.slice(0, 3).map((alert) =>
-                renderAlertCard(alert, () => {
-                  if (onOpenAlertModal) onOpenAlertModal(alert);
-                  else onNavigateTab('reminders');
-                })
-              )}
-            </div>
-          ) : (
-            <div className="notice notice--success">
-              <CheckCircle2 className="w-4 h-4 text-success-600" />
-              <span>All Clear – No Pending Insurance Renewals.</span>
-            </div>
-            )}
-          </div>
-        </div>
-
-        {/* 4. PUC RENEWAL REMINDERS */}
-        <div className="card card-pad">
-          <div className="space-y-3">
-          {renderSectionHeader('PUC RENEWAL REMINDERS', FileCheck2)}
-          {pucAlerts.length > 0 ? (
-            <div className="space-y-2.5">
-              {pucAlerts.slice(0, 3).map((alert) =>
-                renderAlertCard(alert, () => {
-                  if (onOpenAlertModal) onOpenAlertModal(alert);
-                  else onNavigateTab('reminders');
-                })
-              )}
-            </div>
-          ) : (
-            <div className="notice notice--success">
-              <CheckCircle2 className="w-4 h-4 text-success-600" />
-              <span>All Clear – No Pending PUC Renewals.</span>
-            </div>
-            )}
-          </div>
-        </div>
-
-        {/* 5. FITNESS TEST REMINDERS */}
-        <div className="card card-pad">
-          <div className="space-y-3">
-          {renderSectionHeader('FITNESS TEST REMINDERS', FileBadge)}
-          {fitnessAlerts.length > 0 ? (
-            <div className="space-y-2.5">
-              {fitnessAlerts.slice(0, 3).map((alert) =>
-                renderAlertCard(alert, () => {
-                  if (onOpenAlertModal) onOpenAlertModal(alert);
-                  else onNavigateTab('reminders');
-                })
-              )}
-            </div>
-          ) : (
-            <div className="notice notice--success">
-              <CheckCircle2 className="w-4 h-4 text-success-600" />
-              <span>All Clear – No Pending Fitness Tests.</span>
-            </div>
-            )}
-          </div>
-        </div>
-
-        {/* 6. OPERATOR LICENSE RENEWAL REMINDERS */}
-        <div className="card card-pad">
-          <div className="space-y-3">
-          {renderSectionHeader('OPERATOR LICENSE RENEWAL REMINDERS', Users)}
-          {licenseAlerts.length > 0 ? (
-            <div className="space-y-2.5">
-              {licenseAlerts.slice(0, 3).map((alert) =>
-                renderAlertCard(alert, () => {
-                  if (onOpenAlertModal) onOpenAlertModal(alert);
-                  else onNavigateTab('employees');
-                })
-              )}
-            </div>
-          ) : (
-            <div className="notice notice--success">
-              <CheckCircle2 className="w-4 h-4 text-success-600" />
-              <span>All Clear – No Pending Operator Licenses.</span>
-            </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* SECTION C & E: ATTENDANCE SNAPSHOT & MACHINE WORKING SUMMARY */}
@@ -522,7 +447,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="stat-tile__value text-brand-800">{absentCount}</span>
             </div>
             <div className="stat-tile border-warning-100 bg-warning-50">
-              <span className="stat-tile__label text-warning-700">On Leave / Off</span>
+              <span className="stat-tile__label text-warning-700">On Leave</span>
               <span className="stat-tile__value text-warning-800">{leaveCount}</span>
             </div>
             <div className="stat-tile border-brand-100 bg-brand-50">
@@ -594,7 +519,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="progress">
                   <span
                     className="bg-warning-500"
-                    style={{ width: `${Math.min(100, (item.hours / 30) * 100)}%` }}
+                    style={{ width: `${maxMachineHours > 0 ? Math.min(100, (item.hours / maxMachineHours) * 100) : 0}%` }}
                   />
                 </div>
               </div>
@@ -625,7 +550,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="card-pad">
-          <div className="overflow-hidden rounded-lg border border-line">
+          {/* Phones: stacked cards */}
+          <div className="space-y-2 md:hidden">
+            {activeProjects.length === 0 && <div className="empty-state py-4 text-xs">No active projects.</div>}
+            {activeProjects.map((p) => {
+              const assignedCranes = machines.filter((m) => m.currentProjectId === p.id);
+              return (
+                <div key={p.id} className="rounded-lg border border-line p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="break-words text-sm font-semibold text-ink-900">{p.name}</div>
+                      <div className="text-[11px] text-ink-500">{p.clientName}{p.location ? ` · ${p.location}` : ''}</div>
+                    </div>
+                    <span className="badge badge-success shrink-0">₹{p.overtimeRate} / hr</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-ink-500">
+                    {assignedCranes.length > 0 ? (
+                      assignedCranes.map((c) => (
+                        <span key={c.id} className="chip">{c.assetId}</span>
+                      ))
+                    ) : (
+                      <span className="text-ink-400">No crane deployed</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-hidden rounded-lg border border-line md:block">
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -660,7 +613,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 </span>
                               ))
                             ) : (
-                              <span className="text-ink-400">Depot pool</span>
+                              <span className="text-ink-400">No crane deployed</span>
                             )}
                           </div>
                         </td>
@@ -693,7 +646,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <h3 className="text-base font-semibold text-ink-900">Enterprise Quick Actions</h3>
             <p className="mt-0.5 text-xs text-ink-500">Jump straight into common tasks</p>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             {[
               {
                 label: 'Add Operator',
@@ -749,20 +702,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <button
                   key={action.label}
                   onClick={() => onNavigateTab(action.tab)}
-                  className="group flex items-center gap-3 rounded-lg border border-line bg-surface p-3 text-left transition-colors hover:bg-surface-muted"
+                  className="group flex min-h-12 items-center gap-2.5 rounded-lg border border-line bg-surface p-2.5 text-left transition-colors hover:bg-surface-muted sm:gap-3 sm:p-3"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 transition-colors group-hover:bg-logo-700 group-hover:text-white">
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-ink-900">
+                    <span className="block text-sm font-semibold leading-tight text-ink-900 sm:truncate">
                       {action.label}
                     </span>
-                    <span className="block truncate text-[11px] text-ink-500">
+                    <span className="hidden truncate text-[11px] text-ink-500 sm:block">
                       {action.description}
                     </span>
                   </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-ink-400 transition-transform group-hover:translate-x-0.5" />
+                  <ArrowRight className="hidden h-4 w-4 shrink-0 text-ink-400 transition-transform group-hover:translate-x-0.5 sm:block" />
                 </button>
               );
             })}

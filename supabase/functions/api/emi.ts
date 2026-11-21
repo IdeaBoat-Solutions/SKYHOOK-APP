@@ -120,6 +120,24 @@ interface EmiInstallmentPlan {
   balancePaise: number;
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Add whole days to a yyyy-mm-dd date using UTC arithmetic (no timezone / DST drift). */
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().split('T')[0]!;
+}
+
+/** Add calendar months; a day past the end of the target month clamps to its last day. */
+function addMonths(dateStr: string, months: number): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const total = y! * 12 + (m! - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = total % 12;
+  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  return `${String(ny).padStart(4, '0')}-${pad2(nm + 1)}-${pad2(Math.min(d!, lastDay))}`;
+}
+
 /** Standard reducing-balance amortization: EMI = P·r·(1+r)^n / ((1+r)^n − 1). */
 function calculateEmi(principalPaise: number, annualRatePct: number, months: number, startDate: string, dueDay: number) {
   const p = principalPaise;
@@ -130,14 +148,14 @@ function calculateEmi(principalPaise: number, annualRatePct: number, months: num
   let balance = p;
   for (let i = 1; i <= n; i++) {
     const interestPaise = Math.round(balance * r);
-    const principalPart = Math.min(balance, emiPaise - interestPaise);
+    // The last instalment absorbs rounding so the loan closes at exactly zero.
+    const principalPart = i === n ? balance : Math.min(balance, emiPaise - interestPaise);
     balance -= principalPart;
-    const d = new Date(startDate);
-    d.setMonth(d.getMonth() + i);
-    d.setDate(dueDay);
+    // i-th month after the loan start, on the due day (1-28, so it always exists).
+    const first = addMonths(startDate, i);
     schedule.push({
       number: i,
-      dueDate: d.toISOString().split('T')[0]!,
+      dueDate: `${first.slice(0, 8)}${pad2(dueDay)}`,
       principalPaise: principalPart,
       interestPaise,
       amountPaise: principalPart + interestPaise,
@@ -228,6 +246,13 @@ async function idempotent<T>(
   });
 }
 
+/** Unpaid instalments are overdue / due today relative to the business date, whatever the stored status says. */
+function liveInstallments(rows: any[], today: string): any[] {
+  return rows.map((i) => (i.status === 'paid' ? i : {
+    ...i, status: i.due_date < today ? 'overdue' : i.due_date === today ? 'due_today' : 'upcoming',
+  }));
+}
+
 function idem(req: Request): string {
   return req.headers.get('idempotency-key') ?? crypto.randomUUID();
 }
@@ -264,7 +289,14 @@ export const emiRoutes: Route[] = [
            WHERE l.tenant_id=$1 ORDER BY l.loan_code`,
           [auth.tenantId],
         );
-        return { items: r.rows };
+        // The EMI screen and reminders work from the schedule, so ship it with each loan.
+        const inst = await c.query(
+          'SELECT * FROM emi_installments WHERE tenant_id=$1 ORDER BY loan_id, installment_number',
+          [auth.tenantId],
+        );
+        const byLoan = new Map<string, any[]>();
+        for (const i of liveInstallments(inst.rows, businessDate())) byLoan.set(i.loan_id, [...(byLoan.get(i.loan_id) ?? []), i]);
+        return { items: r.rows.map((l: any) => ({ ...l, installments: byLoan.get(l.id) ?? [] })) };
       });
       return json(result);
     },
@@ -279,7 +311,7 @@ export const emiRoutes: Route[] = [
         const loan = await c.query('SELECT * FROM emi_loans WHERE tenant_id=$1 AND id=$2', [auth.tenantId, id]);
         if (!loan.rows[0]) throw Errors.notFound('EMI loan');
         const inst = await c.query('SELECT * FROM emi_installments WHERE tenant_id=$1 AND loan_id=$2 ORDER BY installment_number', [auth.tenantId, id]);
-        return { ...loan.rows[0], installments: inst.rows };
+        return { ...loan.rows[0], installments: liveInstallments(inst.rows, businessDate()) };
       });
       return json(result);
     },
@@ -295,7 +327,9 @@ export const emiRoutes: Route[] = [
         const today = businessDate();
         const initialPaid = plan.schedule.filter((s) => s.dueDate < today).length;
         const nextDate = plan.schedule.find((s) => s.dueDate >= today)?.dueDate ?? plan.schedule[plan.schedule.length - 1]!.dueDate;
-        const seq = await c.query('SELECT count(*)::int n FROM emi_loans WHERE tenant_id=$1', [auth.tenantId]);
+        const seq = await c.query(
+          `SELECT COALESCE(MAX(NULLIF(regexp_replace(loan_code,'\\D','','g'),'')::bigint),0)::int AS n FROM emi_loans WHERE tenant_id=$1`,
+          [auth.tenantId]);
         const code = `LOAN-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
         const loan = await c.query(
           `INSERT INTO emi_loans (tenant_id,loan_code,machine_id,loan_provider,loan_ref_number,loan_start_date,
@@ -314,7 +348,8 @@ export const emiRoutes: Route[] = [
           );
         }
         await writeAudit(c, auth, { action: 'EMI_LOAN_CREATED', entity: 'MachineEmiLoan', entityId: loan.rows[0].id, reason: `Loan ${code} for machine ${b.assetId}`, requestId: ctx.requestId });
-        return { ...loan.rows[0], installments: plan.schedule };
+        const saved = await c.query('SELECT * FROM emi_installments WHERE tenant_id=$1 AND loan_id=$2 ORDER BY installment_number', [auth.tenantId, loan.rows[0].id]);
+        return { ...loan.rows[0], installments: liveInstallments(saved.rows, today) };
       });
       return json(created, 201);
     },
@@ -346,7 +381,7 @@ export const emiRoutes: Route[] = [
             `UPDATE emi_installments SET status='paid', amount_paid_paise=amount_due_paise, paid_at=now(),
               payment_mode=$3::payment_mode, payment_reference=$4, paid_by=$5
              WHERE tenant_id=$1 AND id=$2`,
-            [auth.tenantId, inst.rows[0].id, paymentMode, paymentReference ?? 'DIRECT_TRANSFER', auth.userId],
+            [auth.tenantId, inst.rows[0].id, paymentMode, paymentReference || null, auth.userId],
           );
           await c.query(
             `INSERT INTO emi_payments (tenant_id,loan_id,installment_id,amount_paise,payment_date,payment_mode,payment_reference,recorded_by,idempotency_key)

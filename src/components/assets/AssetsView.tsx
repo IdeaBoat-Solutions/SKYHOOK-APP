@@ -85,9 +85,9 @@ const DetailItem: React.FC<{
 }> = ({ label, value, icon: Icon }) => (
   <div className="min-w-0">
     <span className="stat-label block">{label}</span>
-    <span className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-ink-800">
-      {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-ink-400" />}
-      <span className="truncate">{value || "—"}</span>
+    <span className="mt-1 flex items-start gap-1.5 text-xs font-semibold text-ink-800">
+      {Icon && <Icon className="mt-px h-3.5 w-3.5 shrink-0 text-ink-400" />}
+      <span className="min-w-0 break-words">{value || "—"}</span>
     </span>
   </div>
 );
@@ -146,47 +146,44 @@ export const AssetsView: React.FC = () => {
   const [tonnage, setTonnage] = useState("");
   const [purchaseCost, setPurchaseCost] = useState("");
   const [status, setStatus] = useState<AssetStatus>("assigned");
-  const [currentProject, setCurrentProject] = useState("PRJ-001");
+  const [currentProject, setCurrentProject] = useState("");
 
   // Service details — intervals may be calendar months or crane operating hours
-  const [lastServiceDate, setLastServiceDate] = useState("2026-08-20");
+  const [lastServiceDate, setLastServiceDate] = useState(currentDate);
   const [serviceFreqValue, setServiceFreqValue] = useState(500);
   const [serviceFreqUnit, setServiceFreqUnit] = useState<"days" | "months" | "hours">("hours");
   const [lastServiceHours, setLastServiceHours] = useState(0);
-  const [nextServiceDueDate, setNextServiceDueDate] = useState("2026-10-20");
+  const [nextServiceDueDate, setNextServiceDueDate] = useState(currentDate);
 
   // Compliance & Interval Settings (Insurance, PUC, Fitness)
-  const [insuranceStartDate, setInsuranceStartDate] = useState("2026-10-24");
+  const [insuranceStartDate, setInsuranceStartDate] = useState(currentDate);
   const [insuranceIntervalDays, setInsuranceIntervalDays] = useState(365);
-  const [insuranceProvider, setInsuranceProvider] = useState(
-    "New India Assurance",
+  const [insuranceProvider, setInsuranceProvider] = useState("");
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState("");
+  const [insuranceExpiry, setInsuranceExpiry] = useState(
+    calculateExpiryFromInterval(currentDate, 365),
   );
-  const [insurancePolicyNumber, setInsurancePolicyNumber] =
-    useState("POL-COMM-8812");
-  const [insuranceExpiry, setInsuranceExpiry] = useState("2027-10-24");
 
-  const [pucIssueDate, setPucIssueDate] = useState("2026-10-24");
+  const [pucIssueDate, setPucIssueDate] = useState(currentDate);
   const [pucIntervalDays, setPucIntervalDays] = useState(180);
-  const [pucNumber, setPucNumber] = useState("PUC-MH04-881290");
-  const [pucExpiry, setPucExpiry] = useState("2027-04-22");
-
-  const [lastFitnessDate, setLastFitnessDate] = useState("2026-10-24");
-  const [fitnessIntervalDays, setFitnessIntervalDays] = useState(365);
-  const [fitnessCertNumber, setFitnessCertNumber] = useState(
-    "FIT-THANE-2026-8812",
+  const [pucNumber, setPucNumber] = useState("");
+  const [pucExpiry, setPucExpiry] = useState(
+    calculateExpiryFromInterval(currentDate, 180),
   );
-  const [fitnessDueDate, setFitnessDueDate] = useState("2027-10-24");
+
+  const [lastFitnessDate, setLastFitnessDate] = useState(currentDate);
+  const [fitnessIntervalDays, setFitnessIntervalDays] = useState(730);
+  const [fitnessCertNumber, setFitnessCertNumber] = useState("");
+  const [fitnessDueDate, setFitnessDueDate] = useState(
+    calculateExpiryFromInterval(currentDate, 730),
+  );
 
   // Service Completion Quick Action
   const [serviceModalMachine, setServiceModalMachine] =
     useState<MachineAsset | null>(null);
-  const [completedServiceCost, setCompletedServiceCost] = useState("45000");
-  const [completedServiceProvider, setCompletedServiceProvider] = useState(
-    "Authorized Liebherr Service",
-  );
-  const [completedServiceNotes, setCompletedServiceNotes] = useState(
-    "Full hydraulic fluid flush & filter change",
-  );
+  const [completedServiceCost, setCompletedServiceCost] = useState("");
+  const [completedServiceProvider, setCompletedServiceProvider] = useState("");
+  const [completedServiceNotes, setCompletedServiceNotes] = useState("");
   const [completedServiceHours, setCompletedServiceHours] = useState("");
 
   // Registration certificate (RC): OCR scan + details + files to attach on save
@@ -195,6 +192,7 @@ export const AssetsView: React.FC = () => {
   const [showRcScan, setShowRcScan] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [quickActionError, setQuickActionError] = useState("");
 
   // Quick Statutory Renew Modal in Fleet View
   const [renewModalMachine, setRenewModalMachine] =
@@ -341,6 +339,15 @@ export const AssetsView: React.FC = () => {
     setShowRcScan(false);
   };
 
+  /** Next free CR-### code (one above the highest in use, so a delete never causes a clash). */
+  const nextAssetId = () => {
+    const highest = machines.reduce((max, m) => {
+      const n = /^CR-(\d+)$/i.exec(m.assetId)?.[1];
+      return n ? Math.max(max, Number(n)) : max;
+    }, machines.length);
+    return `CR-${String(highest + 1).padStart(3, "0")}`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
@@ -386,7 +393,7 @@ export const AssetsView: React.FC = () => {
       } else {
         saved = await addMachine({
           ...fields,
-          assetId: `CR-${String(machines.length + 1).padStart(3, "0")}`,
+          assetId: nextAssetId(),
           purchaseDate: currentDate,
           serviceReminderLeadDays: 15,
           insuranceReminderLeadDays: 15,
@@ -443,6 +450,7 @@ export const AssetsView: React.FC = () => {
     m: MachineAsset,
     cat: "insurance" | "puc" | "fitness",
   ) => {
+    setQuickActionError("");
     setRenewModalMachine(m);
     setRenewCategory(cat);
     setRenewDate(currentDate);
@@ -450,26 +458,14 @@ export const AssetsView: React.FC = () => {
     let interval = 365;
     if (cat === "insurance") {
       interval = m.insuranceIntervalDays || 365;
-      setRenewProviderName(m.insuranceProvider || "New India Assurance");
-      setRenewDocNo(
-        m.insurancePolicyNumber ||
-          "POL-" + Math.floor(1000 + Math.random() * 9000),
-      );
+      setRenewProviderName(m.insuranceProvider || "");
+      setRenewDocNo(m.insurancePolicyNumber || "");
     } else if (cat === "puc") {
       interval = m.pucIntervalDays || 180;
-      setRenewDocNo(
-        m.pucNumber ||
-          "PUC-MH04-" + Math.floor(100000 + Math.random() * 900000),
-      );
+      setRenewDocNo(m.pucNumber || "");
     } else if (cat === "fitness") {
       interval = m.fitnessIntervalDays || 730;
-      setRenewDocNo(
-        m.fitnessCertificateNumber ||
-          "FIT-THANE-" +
-            new Date(currentDate).getFullYear() +
-            "-" +
-            Math.floor(1000 + Math.random() * 9000),
-      );
+      setRenewDocNo(m.fitnessCertificateNumber || "");
     }
 
     setRenewIntervalDays(interval);
@@ -490,38 +486,41 @@ export const AssetsView: React.FC = () => {
     setRenewCalculatedExpiry(calculateExpiryFromInterval(renewDate, days));
   };
 
-  const handleRenewSubmit = (e: React.FormEvent) => {
+  const handleRenewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!renewModalMachine) return;
-
-    if (renewCategory === "insurance") {
-      renewMachineInsurance(
-        renewModalMachine.id,
-        renewCalculatedExpiry,
-        renewProviderName,
-        renewDocNo,
-        renewDate,
-      );
-    } else if (renewCategory === "puc") {
-      renewMachinePuc(
-        renewModalMachine.id,
-        renewCalculatedExpiry,
-        renewDocNo,
-        renewDate,
-      );
-    } else if (renewCategory === "fitness") {
-      renewMachineFitness(
-        renewModalMachine.id,
-        renewCalculatedExpiry,
-        renewDocNo,
-        renewDate,
-      );
+    setQuickActionError("");
+    try {
+      if (renewCategory === "insurance") {
+        await renewMachineInsurance(
+          renewModalMachine.id,
+          renewCalculatedExpiry,
+          renewProviderName,
+          renewDocNo,
+          renewDate,
+        );
+      } else if (renewCategory === "puc") {
+        await renewMachinePuc(
+          renewModalMachine.id,
+          renewCalculatedExpiry,
+          renewDocNo,
+          renewDate,
+        );
+      } else if (renewCategory === "fitness") {
+        await renewMachineFitness(
+          renewModalMachine.id,
+          renewCalculatedExpiry,
+          renewDocNo,
+          renewDate,
+        );
+      }
+      setRenewModalMachine(null);
+    } catch (err) {
+      setQuickActionError(err instanceof Error ? err.message : "Could not save the renewal. Please try again.");
     }
-
-    setRenewModalMachine(null);
   };
 
-  const handleRecordServiceSubmit = (e: React.FormEvent) => {
+  const handleRecordServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceModalMachine) return;
     const reading =
@@ -535,16 +534,21 @@ export const AssetsView: React.FC = () => {
               serviceModalMachine.lastServiceDate,
             )
           : undefined;
-    recordServiceCompleted(
-      serviceModalMachine.id,
-      currentDate,
-      parseFloat(completedServiceCost) || 0,
-      completedServiceNotes,
-      completedServiceProvider,
-      reading,
-    );
-    setCompletedServiceHours("");
-    setServiceModalMachine(null);
+    setQuickActionError("");
+    try {
+      await recordServiceCompleted(
+        serviceModalMachine.id,
+        currentDate,
+        parseFloat(completedServiceCost) || 0,
+        completedServiceNotes,
+        completedServiceProvider,
+        reading,
+      );
+      setCompletedServiceHours("");
+      setServiceModalMachine(null);
+    } catch (err) {
+      setQuickActionError(err instanceof Error ? err.message : "Could not record the service. Please try again.");
+    }
   };
 
   const filteredMachines = machines.filter((m) => {
@@ -613,12 +617,9 @@ export const AssetsView: React.FC = () => {
 
     return (
       <div className={`rounded-lg border p-2.5 ${tone}`}>
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">
-            {label}
-          </span>
-          <span className="text-[10px] font-medium text-ink-500">{meta}</span>
-        </div>
+        <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+          {label}
+        </span>
         <div
           className={`mt-1 flex items-center gap-1.5 text-xs font-bold ${
             isOverdue
@@ -639,6 +640,7 @@ export const AssetsView: React.FC = () => {
           )}
           <span className="truncate">{formatDateDDMMYYYY(date)}</span>
         </div>
+        <span className="mt-0.5 block text-[10px] font-medium text-ink-500">{meta}</span>
       </div>
     );
   };
@@ -752,6 +754,10 @@ export const AssetsView: React.FC = () => {
               <SelectItem value="Rough Terrain Crane">
                 Rough Terrain Crane
               </SelectItem>
+              <SelectItem value="All Terrain Crane">
+                All Terrain Crane
+              </SelectItem>
+              <SelectItem value="Other">Other</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -799,12 +805,12 @@ export const AssetsView: React.FC = () => {
                           <span className="block text-sm font-bold tracking-tight text-ink-900">
                             {m.assetId}
                           </span>
-                          <h3 className="mt-1 truncate text-sm font-semibold text-ink-800">
+                          <h3 className="mt-1 break-words text-sm font-semibold text-ink-800">
                             {m.make} {m.model}
                           </h3>
-                          <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-ink-500">
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-500">
                             <IdCard className="h-3.5 w-3.5 shrink-0 text-ink-400" />
-                            {m.registrationNumber}
+                            <span className="min-w-0 break-all">{m.registrationNumber}</span>
                           </p>
                         </div>
                       </div>
@@ -826,9 +832,9 @@ export const AssetsView: React.FC = () => {
                           <span className="stat-label block">
                             Deployed site
                           </span>
-                          <span className="mt-1 flex items-center gap-1.5 truncate text-xs font-semibold text-ink-800">
-                            <MapPin className="h-3.5 w-3.5 shrink-0 text-ink-400" />
-                            {currentPrj ? currentPrj.name : "Depot pool"}
+                          <span className="mt-1 flex items-start gap-1.5 text-xs font-semibold text-ink-800">
+                            <MapPin className="mt-px h-3.5 w-3.5 shrink-0 text-ink-400" />
+                            <span className="min-w-0 break-words">{currentPrj ? currentPrj.name : "Depot pool"}</span>
                           </span>
                         </div>
                       </div>
@@ -855,9 +861,9 @@ export const AssetsView: React.FC = () => {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         {renderComplianceCell(
-                          "Service due",
+                          m.serviceFrequencyUnit === "hours" ? "Last service" : "Service due",
                           m.serviceFrequencyUnit === "hours"
-                            ? formatDateDDMMYYYY(m.lastServiceDate)
+                            ? m.lastServiceDate
                             : m.nextServiceDueDate,
                           `Every ${formatServiceInterval(m.serviceFrequencyValue || 60, m.serviceFrequencyUnit ?? "days")}`,
                           serviceAlert,
@@ -921,7 +927,14 @@ export const AssetsView: React.FC = () => {
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-muted px-4 py-3 sm:px-5">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
-                        onClick={() => setServiceModalMachine(m)}
+                        onClick={() => {
+                          setQuickActionError("");
+                          setCompletedServiceCost("");
+                          setCompletedServiceProvider("");
+                          setCompletedServiceNotes("");
+                          setCompletedServiceHours("");
+                          setServiceModalMachine(m);
+                        }}
                         className="btn btn-ghost btn-sm"
                       >
                         <Wrench className="h-3.5 w-3.5 text-warning-600" />
@@ -999,7 +1012,10 @@ export const AssetsView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleRecordServiceSubmit}>
+            <form onSubmit={handleRecordServiceSubmit} className="flex min-h-0 flex-1 flex-col">
+              {quickActionError && (
+                <div className="notice notice--danger m-4 text-xs" role="alert">{quickActionError}</div>
+              )}
               <div className="modal-body space-y-4">
                 <div className="rounded-lg border border-line bg-surface-muted p-3.5">
                   <div className="text-sm font-bold text-ink-900">
@@ -1185,6 +1201,9 @@ export const AssetsView: React.FC = () => {
                           </SelectItem>
                           <SelectItem value="Rough Terrain Crane">
                             Rough Terrain Crane
+                          </SelectItem>
+                          <SelectItem value="All Terrain Crane">
+                            All Terrain Crane
                           </SelectItem>
                           <SelectItem value="Other">Other</SelectItem>
                         </SelectContent>
@@ -1409,7 +1428,6 @@ export const AssetsView: React.FC = () => {
                         <label className="form-label">Insurance provider</label>
                         <input
                           type="text"
-                          required
                           value={insuranceProvider}
                           onChange={(e) => setInsuranceProvider(e.target.value)}
                           className="form-input"
@@ -1419,7 +1437,6 @@ export const AssetsView: React.FC = () => {
                         <label className="form-label">Policy number</label>
                         <input
                           type="text"
-                          required
                           value={insurancePolicyNumber}
                           onChange={(e) =>
                             setInsurancePolicyNumber(e.target.value)
@@ -1513,7 +1530,6 @@ export const AssetsView: React.FC = () => {
                         </label>
                         <input
                           type="text"
-                          required
                           value={pucNumber}
                           onChange={(e) => setPucNumber(e.target.value)}
                           className="form-input"
@@ -1603,7 +1619,6 @@ export const AssetsView: React.FC = () => {
                         </label>
                         <input
                           type="text"
-                          required
                           value={fitnessCertNumber}
                           onChange={(e) => setFitnessCertNumber(e.target.value)}
                           className="form-input"
@@ -1965,7 +1980,10 @@ export const AssetsView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleRenewSubmit}>
+            <form onSubmit={handleRenewSubmit} className="flex min-h-0 flex-1 flex-col">
+              {quickActionError && (
+                <div className="notice notice--danger m-4 text-xs" role="alert">{quickActionError}</div>
+              )}
               <div className="modal-body space-y-4">
                 <div className="tab-bar">
                   {(["insurance", "puc", "fitness"] as const).map((cat) => (
@@ -2082,7 +2100,6 @@ export const AssetsView: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    required
                     value={renewDocNo}
                     onChange={(e) => setRenewDocNo(e.target.value)}
                     className="form-input"
@@ -2096,7 +2113,6 @@ export const AssetsView: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      required
                       value={renewProviderName}
                       onChange={(e) => setRenewProviderName(e.target.value)}
                       className="form-input"

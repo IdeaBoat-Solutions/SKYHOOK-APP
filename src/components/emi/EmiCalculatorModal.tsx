@@ -10,8 +10,14 @@ import { formatDateDDMMYYYY } from '../../utils/calculations';
 interface EmiCalculatorModalProps {
   machines: MachineAsset[];
   onClose: () => void;
-  onSaveLoan: (loan: Omit<MachineEmiLoan, 'id'>) => void;
+  onSaveLoan: (loan: Omit<MachineEmiLoan, 'id'>) => void | Promise<void>;
 }
+
+const ordinal = (n: number) => {
+  const v = n % 100;
+  const suffix = v >= 11 && v <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+};
 
 export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
   machines,
@@ -19,17 +25,23 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
   onSaveLoan,
 }) => {
   const { currentDate } = useSkyhook();
-  const [selectedAssetId, setSelectedAssetId] = useState(machines[0]?.assetId ?? '');
+  // The API needs the machine's UUID, not the display code (CR-001) shown to users.
+  const [selectedMachineId, setSelectedMachineId] = useState(machines[0]?.id ?? '');
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [lenderName, setLenderName] = useState('');
   const [loanAccountNumber, setLoanAccountNumber] = useState('');
-  const [principalAmount, setPrincipalAmount] = useState<number>(0);
-  const [annualInterestRate, setAnnualInterestRate] = useState<number>(9.5);
+  // Kept as text so the fields can be cleared and accept any realistic figure (4525000, 8.75).
+  const [principalText, setPrincipalText] = useState('');
+  const [rateText, setRateText] = useState('');
+  const principalAmount = Number(principalText) || 0;
+  const annualInterestRate = Number(rateText) || 0;
   const [tenureMonths, setTenureMonths] = useState<number>(48);
   const [disbursalDate, setDisbursalDate] = useState(currentDate);
   const [dueDayOfMonth, setDueDayOfMonth] = useState<number>(10);
   const [leadReminderDays, setLeadReminderDays] = useState<number>(15);
 
-  const selectedMachine = machines.find((m) => m.assetId === selectedAssetId) || machines[0];
+  const selectedMachine = machines.find((m) => m.id === selectedMachineId) || machines[0];
 
   // Mathematical EMI Formula:
   // EMI = [P x r x (1+r)^n] / [(1+r)^n - 1]
@@ -48,13 +60,14 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
   // Generate preview installments schedule
   const generateSchedule = (loanId: string): EmiInstallment[] => {
     const installments: EmiInstallment[] = [];
-    const startDate = new Date(disbursalDate);
+    const [startYear, startMonth] = disbursalDate.split('-').map(Number) as [number, number];
 
     for (let i = 1; i <= tenureMonths; i++) {
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(startDate.getMonth() + i);
-      dueDate.setDate(dueDayOfMonth);
-      const dateStr = dueDate.toISOString().split('T')[0];
+      // i-th calendar month after the disbursal month, on the due day (1-28, so it always exists).
+      const monthIndex = (startMonth ?? 1) - 1 + i;
+      const year = (startYear ?? 0) + Math.floor(monthIndex / 12);
+      const month = (monthIndex % 12) + 1;
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(dueDayOfMonth).padStart(2, '0')}`;
 
       // Relative to today's business date
       const isPast = dateStr < currentDate;
@@ -69,8 +82,6 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
         amountPaid: isPast ? calculatedEmi : 0,
         status: isPast ? 'paid' : isToday ? 'due_today' : 'upcoming',
         paymentDate: isPast ? dateStr : undefined,
-        paymentMode: isPast ? 'NACH Auto-Debit' : undefined,
-        paymentReference: isPast ? `ACH-${Math.floor(100000 + Math.random() * 900000)}` : undefined,
       });
     }
 
@@ -88,18 +99,28 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
   const nextPending = previewSchedule.find((i) => i.status !== 'paid');
   const nextEmiDate = nextPending ? nextPending.dueDate : loanEndDate;
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAssetId || principalAmount <= 0 || tenureMonths <= 0) return;
+    if (saving) return;
+    if (!selectedMachine?.id) return setSaveError('Choose a machine from the list.');
+    if (!lenderName.trim()) return setSaveError('Enter the financier / lender name.');
+    if (!loanAccountNumber.trim()) return setSaveError('Enter the loan account number.');
+    if (principalAmount <= 0 || tenureMonths <= 0) return setSaveError('Enter the loan principal amount.');
+    if (rateText.trim() === '') return setSaveError('Enter the annual interest rate (0 if interest-free).');
+    if (annualInterestRate < 0 || annualInterestRate > 60) return setSaveError('Enter an annual interest rate between 0 and 60%.');
 
+    setSaving(true);
+    setSaveError('');
     const actualLoanId = `LOAN-${Date.now().toString().slice(-6)}`;
     const finalSchedule = generateSchedule(actualLoanId);
 
     const newLoan: Omit<MachineEmiLoan, 'id'> = {
       loanId: actualLoanId,
-      assetId: selectedAssetId,
-      loanProvider: lenderName,
-      loanRefNumber: loanAccountNumber,
+      assetId: selectedMachine.id,
+      loanProvider: lenderName.trim(),
+      // The store sends these to the API, which builds the real schedule from them.
+      ...({ principal: principalAmount, annualInterestPct: annualInterestRate } as object),
+      loanRefNumber: loanAccountNumber.trim(),
       loanStartDate: disbursalDate,
       loanEndDate,
       emiAmount: calculatedEmi,
@@ -112,8 +133,16 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
       installments: finalSchedule,
     };
 
-    onSaveLoan(newLoan);
-    onClose();
+    try {
+      await onSaveLoan(newLoan);
+      onClose();
+    } catch (err) {
+      // Keep the form open with the reason: closing it here made a rejected
+      // save look exactly like a successful one.
+      setSaveError(err instanceof Error ? err.message : 'Could not save the loan. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -145,18 +174,21 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
         </div>
 
         <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+          {saveError && (
+            <div className="notice notice--danger mx-5 mt-4 text-xs" role="alert">{saveError}</div>
+          )}
           <div className="modal-body space-y-5">
             {/* Target machine & lender */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="form-label">Target crane / machine asset</label>
-                <Select value={selectedAssetId} required onValueChange={setSelectedAssetId}>
+                <Select value={selectedMachineId} required onValueChange={setSelectedMachineId}>
                   <SelectTrigger className="form-input">
                     <SelectValue placeholder="Select machine asset" />
                   </SelectTrigger>
                   <SelectContent>
                     {machines.map((m) => (
-                      <SelectItem key={m.assetId} value={m.assetId}>
+                      <SelectItem key={m.id} value={m.id}>
                         {m.assetId} – {m.make} {m.model} ({m.tonnageCapacity}T {m.machineType})
                       </SelectItem>
                     ))}
@@ -214,9 +246,9 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                     <SelectValue placeholder="Select due day" />
                   </SelectTrigger>
                   <SelectContent>
-                    {[1, 5, 7, 10, 15, 20, 25, 28].map((day) => (
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
                       <SelectItem key={day} value={String(day)}>
-                        {day}th of each month
+                        {ordinal(day)} of each month
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -232,11 +264,13 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                   <label className="form-label">Principal amount (₹)</label>
                   <input
                     type="number"
-                    min="50000"
-                    step="50000"
+                    inputMode="decimal"
+                    min="1"
+                    step="any"
                     required
-                    value={principalAmount}
-                    onChange={(e) => setPrincipalAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 4525000"
+                    value={principalText}
+                    onChange={(e) => setPrincipalText(e.target.value)}
                     className="form-input"
                   />
                 </div>
@@ -245,12 +279,14 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                   <label className="form-label">Annual interest rate (% p.a.)</label>
                   <input
                     type="number"
-                    min="1"
-                    max="30"
-                    step="0.1"
+                    inputMode="decimal"
+                    min="0"
+                    max="60"
+                    step="any"
                     required
-                    value={annualInterestRate}
-                    onChange={(e) => setAnnualInterestRate(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 8.75"
+                    value={rateText}
+                    onChange={(e) => setRateText(e.target.value)}
                     className="form-input"
                   />
                 </div>
@@ -265,18 +301,31 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                       <SelectValue placeholder="Select tenure" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="6">6 months</SelectItem>
+                      <SelectItem value="9">9 months</SelectItem>
                       <SelectItem value="12">12 months (1 year)</SelectItem>
+                      <SelectItem value="18">18 months</SelectItem>
                       <SelectItem value="24">24 months (2 years)</SelectItem>
                       <SelectItem value="36">36 months (3 years)</SelectItem>
                       <SelectItem value="48">48 months (4 years)</SelectItem>
                       <SelectItem value="60">60 months (5 years)</SelectItem>
                       <SelectItem value="72">72 months (6 years)</SelectItem>
                       <SelectItem value="84">84 months (7 years)</SelectItem>
+                      <SelectItem value="96">96 months (8 years)</SelectItem>
+                      <SelectItem value="120">120 months (10 years)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
             </div>
+
+            {paidCount > 0 && (
+              <div className="notice notice--warning text-xs" role="status">
+                <strong>{paidCount} instalment{paidCount > 1 ? 's' : ''} fall before today ({formatDateDDMMYYYY(currentDate)}).</strong>{' '}
+                Because the disbursal date is in the past, the system records {paidCount > 1 ? 'them' : 'it'} as already paid
+                and the next EMI is due on {formatDateDDMMYYYY(nextEmiDate)}. If that is not right, correct the disbursal date.
+              </div>
+            )}
 
             {/* Live calculation results */}
             <div className="stat-grid sm:grid-cols-3">
@@ -285,7 +334,7 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                 <div className="stat-value">
                   <Currency value={calculatedEmi} size="xl" />
                 </div>
-                <p className="stat-hint">Due on {dueDayOfMonth}th each month</p>
+                <p className="stat-hint">Due on the {ordinal(dueDayOfMonth)} of each month</p>
               </div>
 
               <div className="stat-card">
@@ -309,14 +358,14 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
             <div className="card overflow-hidden">
               <div className="card-header">
                 <span className="text-xs font-semibold text-ink-900">
-                  Installment schedule preview · First 5 of {tenureMonths}
+                  Installment schedule preview · {paidCount > 0 ? `Next 5 of ${tenureMonths}` : `First 5 of ${tenureMonths}`}
                 </span>
                 <span className="text-[11px] font-medium text-ink-500">
                   {paidCount} paid · {remainingCount} pending
                 </span>
               </div>
               <div className="divide-y divide-line">
-                {previewSchedule.slice(0, 5).map((inst) => (
+                {previewSchedule.slice(Math.max(0, paidCount - 1), Math.max(0, paidCount - 1) + 5).map((inst) => (
                   <div
                     key={inst.installmentNumber}
                     className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs transition-colors hover:bg-surface-muted/60"
@@ -328,7 +377,7 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
                     <div className="flex shrink-0 items-center gap-3">
                       <Currency value={inst.amountDue} size="sm" className="font-semibold text-ink-900" />
                       <span className={`badge ${inst.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
-                        {inst.status.replace('_', ' ')}
+                        {inst.status === 'paid' ? 'paid (past)' : inst.status.replace('_', ' ')}
                       </span>
                     </div>
                   </div>
@@ -341,9 +390,9 @@ export const EmiCalculatorModal: React.FC<EmiCalculatorModalProps> = ({
             <button type="button" onClick={onClose} className="btn btn-secondary">
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
               <Plus className="h-4 w-4" />
-              Save Loan &amp; Generate Schedule
+              {saving ? 'Saving…' : 'Save Loan & Generate Schedule'}
             </button>
           </div>
         </form>

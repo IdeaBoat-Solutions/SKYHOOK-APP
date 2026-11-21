@@ -20,6 +20,7 @@ import { useSkyhook } from '../../data/apiStore';
 import { Employee } from '../../types';
 import { formatDateDDMMYYYY, formatINR } from '../../utils/calculations';
 import { Currency } from '../common/Currency';
+import { formatPerDay } from '../../lib/wage';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
@@ -64,15 +65,15 @@ export const OperatorDirectoryView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="page">
       <div className="page-header">
-        <div>
+        <div className="min-w-0">
           <h2 className="page-title">Operator Directory</h2>
           <p className="page-subtitle">
             Searchable contact book for every crane operator — licences, deployment and pay at a glance.
           </p>
         </div>
-        <span className="badge badge-neutral">
+        <span className="badge badge-neutral self-start">
           <UsersRound className="h-3.5 w-3.5" />
           {operators.length} operators on roll
         </span>
@@ -84,17 +85,17 @@ export const OperatorDirectoryView: React.FC = () => {
           <div className="stat-value">{operators.length}</div>
           <span className="stat-hint">Registered crane operators</span>
         </div>
-        <div className="notice notice--success">
+        <div className="notice notice--success max-sm:flex-col max-sm:items-start max-sm:gap-0">
           <span className="stat-label text-success-800">Currently active</span>
           <div className="stat-value text-success-900">{activeCount}</div>
           <span className="stat-hint text-success-700">Available for deployment</span>
         </div>
-        <div className="notice notice--warning">
+        <div className="notice notice--warning max-sm:flex-col max-sm:items-start max-sm:gap-0">
           <span className="stat-label text-warning-800">Deployed on site</span>
           <div className="stat-value text-warning-900">{deployedCount}</div>
           <span className="stat-hint text-warning-700">Assigned to a project</span>
         </div>
-        <div className={`${alertCount ? 'notice notice--danger' : 'stat-card'}`}>
+        <div className={`${alertCount ? "notice notice--danger max-sm:flex-col max-sm:items-start max-sm:gap-0" : "stat-card"}`}>
           <span className="stat-label">Licence alerts</span>
           <div className="stat-value">{alertCount}</div>
           <span className="stat-hint">Expiring or already overdue</span>
@@ -134,7 +135,62 @@ export const OperatorDirectoryView: React.FC = () => {
           </div>
         </div>
 
-        <div className="table-wrap">
+        {/* Phones: one card per operator */}
+        <div className="divide-y divide-line md:hidden">
+          {filtered.map((op) => {
+            const hasAlert = alertedIds.has(op.id);
+            return (
+              <div key={op.id} className="space-y-3 p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-logo-700 text-sm font-bold text-white">
+                      {op.fullName.charAt(0)}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="break-words text-sm font-bold text-ink-900">{op.fullName}</div>
+                      <div className="text-[11px] text-ink-500">{op.employeeId} · {op.designation}</div>
+                    </div>
+                  </div>
+                  <span className={`badge shrink-0 ${op.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                    {op.status.replace('_', ' ')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="min-w-0">
+                    <span className="stat-label block">Licence</span>
+                    <span className="block break-all font-semibold text-ink-800">{op.licenseNumber || '—'}</span>
+                    <span className={`flex items-center gap-1 text-[11px] ${hasAlert ? 'text-danger-700' : 'text-ink-500'}`}>
+                      {hasAlert ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3 text-success-600" />}
+                      {op.craneLicenseExpiry ? `Exp. ${formatDateDDMMYYYY(op.craneLicenseExpiry)}` : 'Expiry not recorded'}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="stat-label block">{op.salaryType === 'daily' ? 'Daily wage' : 'Monthly salary'}</span>
+                    <Currency value={op.salaryType === 'daily' ? op.dailyRate : op.monthlySalary} size="xs" className="font-semibold text-ink-900" />
+                    {op.salaryType === 'monthly' && op.monthlySalary > 0 && (
+                      <span className="block text-[10px] text-ink-500">{formatPerDay(op.monthlySalary, currentDate)}</span>
+                    )}
+                  </div>
+                  <div className="col-span-2 min-w-0">
+                    <span className="stat-label block">Deployment</span>
+                    <span className="font-semibold text-ink-800">{projectName(op.currentProjectId) || 'Depot pool'}</span>
+                    <span className="text-ink-500"> · {machineName(op.currentMachineId) || 'No machine assigned'}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <a href={`tel:${op.mobile.replace(/\s/g, '')}`} className="btn btn-primary flex-1">
+                    <Phone className="h-4 w-4" /> Call
+                  </a>
+                  <button onClick={() => setSelected(op)} className="btn btn-secondary flex-1">
+                    Profile <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="table-wrap hidden md:block">
           <table className="data-table">
             <thead>
               <tr>
@@ -183,7 +239,7 @@ export const OperatorDirectoryView: React.FC = () => {
                       <span className="font-semibold text-ink-800">{op.licenseNumber || '—'}</span>
                       <span className={`mt-0.5 flex items-center gap-1 text-[11px] ${hasAlert ? 'text-danger-700' : 'text-ink-500'}`}>
                         {hasAlert ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3 text-success-600" />}
-                        Exp. {formatDateDDMMYYYY(op.craneLicenseExpiry)}
+                        {op.craneLicenseExpiry ? `Exp. ${formatDateDDMMYYYY(op.craneLicenseExpiry)}` : 'Expiry not recorded'}
                       </span>
                     </td>
                     <td className="px-3.5 py-3 text-xs">
@@ -192,7 +248,9 @@ export const OperatorDirectoryView: React.FC = () => {
                     </td>
                     <td className="px-3.5 py-3">
                       <Currency value={op.salaryType === 'daily' ? op.dailyRate : op.monthlySalary} size="xs" />
-                      <span className="text-[10px] text-ink-400 block">per {op.salaryType === 'daily' ? 'day' : 'month'}</span>
+                      <span className="text-[10px] text-ink-400 block">
+                        {op.salaryType === 'daily' ? 'per day' : op.monthlySalary > 0 ? `per month · ${formatPerDay(op.monthlySalary, currentDate)}` : 'per month'}
+                      </span>
                     </td>
                     <td className="px-3.5 py-3 text-center">
                       <span className={`badge ${op.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
@@ -210,14 +268,14 @@ export const OperatorDirectoryView: React.FC = () => {
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && (
+        </div>
+        {filtered.length === 0 && (
             <div className="empty-state">
               <Search className="h-7 w-7 text-ink-400" />
               <span className="text-sm font-semibold text-ink-700">No operators found</span>
               <span className="text-xs text-ink-500">Try a different search or status filter.</span>
             </div>
           )}
-        </div>
       </div>
 
       {selected && (
@@ -242,8 +300,8 @@ export const OperatorDirectoryView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   ['Designation', selected.designation, HardHat],
-                  ['Date of birth', formatDateDDMMYYYY(selected.dateOfBirth), CalendarDays],
-                  ['Joined on', formatDateDDMMYYYY(selected.joiningDate), CalendarDays],
+                  ['Date of birth', selected.dateOfBirth ? formatDateDDMMYYYY(selected.dateOfBirth) : 'Not recorded', CalendarDays],
+                  ['Joined on', selected.joiningDate ? formatDateDDMMYYYY(selected.joiningDate) : 'Not recorded', CalendarDays],
                   ['Wage', `${formatINR(selected.salaryType === 'daily' ? selected.dailyRate : selected.monthlySalary)}/${selected.salaryType === 'daily' ? 'day' : 'mo'}`, Wallet],
                 ].map(([label, value, Icon]) => {
                   const IconComponent = Icon as React.ElementType;
@@ -253,11 +311,15 @@ export const OperatorDirectoryView: React.FC = () => {
                         <IconComponent className="h-3 w-3" />
                         {label as string}
                       </span>
-                      <span className="mt-1 block truncate text-xs font-bold text-ink-900">{value as string}</span>
+                      <span className="mt-1 block break-words text-xs font-bold text-ink-900">{value as string}</span>
                     </div>
                   );
                 })}
               </div>
+
+              {selected.salaryType === 'monthly' && selected.monthlySalary > 0 && (
+                <p className="-mt-2 text-[11px] font-medium text-ink-600">Wage: {formatPerDay(selected.monthlySalary, currentDate)}</p>
+              )}
 
               <section className="space-y-2">
                 <h4 className="section-heading">Licence &amp; compliance</h4>
@@ -265,12 +327,11 @@ export const OperatorDirectoryView: React.FC = () => {
                   <div className="rounded-lg border border-line p-3">
                     <span className="stat-label flex items-center gap-1.5"><IdCard className="h-3 w-3" /> Crane licence</span>
                     <p className="mt-1 text-xs font-bold text-ink-900">{selected.licenseNumber || 'Not on file'}</p>
-                    <p className="text-[11px] text-ink-500">Expiry: {formatDateDDMMYYYY(selected.craneLicenseExpiry)}</p>
+                    <p className="text-[11px] text-ink-500">Expiry: {selected.craneLicenseExpiry ? formatDateDDMMYYYY(selected.craneLicenseExpiry) : 'Not recorded'}</p>
                   </div>
                   <div className="rounded-lg border border-line p-3">
                     <span className="stat-label flex items-center gap-1.5"><ShieldCheck className="h-3 w-3" /> Transport licence</span>
-                    <p className="mt-1 text-xs font-bold text-ink-900">Heavy vehicle permit</p>
-                    <p className="text-[11px] text-ink-500">Expiry: {formatDateDDMMYYYY(selected.transportLicenseExpiry)}</p>
+                    <p className="mt-1 text-[11px] text-ink-500">Expiry: {selected.transportLicenseExpiry ? formatDateDDMMYYYY(selected.transportLicenseExpiry) : 'Not recorded'}</p>
                   </div>
                 </div>
               </section>
@@ -289,9 +350,9 @@ export const OperatorDirectoryView: React.FC = () => {
                 </div>
               </section>
 
-              <section className="space-y-2">
-                <h4 className="section-heading">Emergency contact</h4>
-                {selected.emergencyContacts?.length ? (
+              {selected.emergencyContacts?.length ? (
+                <section className="space-y-2">
+                  <h4 className="section-heading">Emergency contact</h4>
                   <div className="rounded-lg border border-line p-3 text-xs text-ink-700">
                     <span className="font-bold text-ink-900">{selected.emergencyContacts[0].name}</span>
                     <span className="text-ink-500"> · {selected.emergencyContacts[0].relation}</span>
@@ -299,14 +360,12 @@ export const OperatorDirectoryView: React.FC = () => {
                       {selected.emergencyContacts[0].mobile}
                     </a>
                   </div>
-                ) : (
-                  <div className="empty-state py-4 text-xs">No emergency contact on file.</div>
-                )}
-              </section>
+                </section>
+              ) : null}
             </div>
 
             <div className="modal-footer flex flex-wrap gap-2">
-              <a href={`tel:${selected.mobile}`} className="btn btn-primary">
+              <a href={`tel:${selected.mobile.replace(/\s/g, '')}`} className="btn btn-primary">
                 <Phone className="h-4 w-4" />
                 Call operator
               </a>

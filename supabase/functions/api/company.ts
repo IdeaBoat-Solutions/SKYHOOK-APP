@@ -22,8 +22,13 @@ function intInRange(v: unknown, field: string, min: number, max: number): number
 
 const STRING_FIELDS = [
   'name', 'tagline', 'gstNumber', 'address', 'city', 'state', 'pincode', 'phone',
-  'email', 'authorizedSignatory', 'signatoryTitle',
+  'email', 'authorizedSignatory', 'signatoryTitle', 'logoUrl',
 ] as const;
+
+const ENUM_FIELDS: Record<string, readonly string[]> = {
+  payrollCycleType: ['calendar_month', 'custom_26_to_25'],
+  shortShiftPolicy: ['half_day_under_5', 'proportional', 'manual'],
+};
 
 const NUMERIC_FIELDS: Record<string, [number, number]> = {
   standardShiftMinutes: [60, 1440],
@@ -44,7 +49,16 @@ function parsePatch(b: any): Record<string, string | number> {
     if (f === 'name') out[f] = str(b[f], f, 1, 500);
     else if (typeof b[f] !== 'string') {
       throw Errors.validation([{ field: f, message: 'Must be a string' }]);
+    } else if (f === 'logoUrl' && b[f].length > 1_500_000) {
+      throw Errors.validation([{ field: f, message: 'Logo image is too large' }]);
     } else out[f] = b[f];
+  }
+  for (const [f, allowed] of Object.entries(ENUM_FIELDS)) {
+    if (b[f] === undefined) continue;
+    if (typeof b[f] !== 'string' || !allowed.includes(b[f])) {
+      throw Errors.validation([{ field: f, message: `Must be one of: ${allowed.join(', ')}` }]);
+    }
+    out[f] = b[f];
   }
   for (const [f, [min, max]] of Object.entries(NUMERIC_FIELDS)) {
     if (b[f] === undefined) continue;
@@ -57,6 +71,7 @@ const COLUMN_MAP: Record<string, string> = {
   name: 'name', tagline: 'tagline', gstNumber: 'gst_number', address: 'address',
   city: 'city', state: 'state', pincode: 'pincode', phone: 'phone', email: 'email',
   authorizedSignatory: 'authorized_signatory', signatoryTitle: 'signatory_title',
+  logoUrl: 'logo_url', payrollCycleType: 'payroll_cycle_type', shortShiftPolicy: 'short_shift_policy',
   standardShiftMinutes: 'standard_shift_minutes', payrollPaymentDay: 'payroll_payment_day',
   emiReminderLeadDays: 'emi_reminder_lead_days', serviceReminderLeadDays: 'service_reminder_lead_days',
   insuranceReminderLeadDays: 'insurance_reminder_lead_days', pucReminderLeadDays: 'puc_reminder_lead_days',
@@ -135,7 +150,7 @@ export const companyRoutes: Route[] = [
           [auth.tenantId, ...values, auth.userId],
         );
         await writeAudit(c, auth, {
-          action: 'SETTINGS_UPDATED', entity: 'CompanySettings', entityId: 'GLOBAL',
+          action: 'SETTINGS_UPDATED', entity: 'CompanySettings', entityId: auth.tenantId,
           reason: 'Company profile or payroll policies updated',
           previousValue: before.rows[0], updatedValue: r.rows[0], requestId: ctx.requestId,
         });

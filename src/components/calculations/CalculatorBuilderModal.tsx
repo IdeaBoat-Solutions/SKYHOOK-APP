@@ -191,7 +191,7 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
           </button>
         </div>
 
-        <div className="modal-body max-h-[70vh] space-y-6 overflow-y-auto">
+        <div className="modal-body space-y-6 sm:max-h-[70vh] sm:overflow-y-auto">
           {!initial && (
             <div>
               <span className="form-label flex items-center gap-1.5">
@@ -282,7 +282,7 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
             </div>
             <div className="space-y-2">
               {fields.map((f, idx) => (
-                <div key={f.id} className="grid grid-cols-[1fr_9rem_auto] items-center gap-2">
+                <div key={f.id} className="grid grid-cols-[1fr_auto] items-center gap-2 sm:grid-cols-[1fr_9rem_auto]">
                   <div className="min-w-0">
                     <input
                       className="form-input"
@@ -296,6 +296,7 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
                       <span className="mt-0.5 block font-mono text-[10px] text-ink-400">{toKey(f.label)}</span>
                     )}
                   </div>
+                  <div className="order-3 col-span-2 sm:order-none sm:col-span-1">
                   <Select
                     value={f.unit}
                     onValueChange={(v) =>
@@ -311,9 +312,10 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
                       ))}
                     </SelectContent>
                   </Select>
+                  </div>
                   <button
                     type="button"
-                    className="icon-btn hover:text-danger-600"
+                    className="icon-btn h-11 w-11 hover:text-danger-600"
                     aria-label="Remove input"
                     onClick={() => setFields((p) => p.filter((x) => x.id !== f.id))}
                   >
@@ -348,7 +350,7 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
                 const err = submitted || o.formula.trim() ? outputErrors[idx] : null;
                 return (
                   <div key={o.id} className="rounded-lg border border-line p-3">
-                    <div className="grid grid-cols-[1fr_9rem_auto] items-center gap-2">
+                    <div className="grid grid-cols-[1fr_auto] items-center gap-2 sm:grid-cols-[1fr_9rem_auto]">
                       <input
                         className="form-input"
                         value={o.label}
@@ -357,6 +359,7 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
                           setOutputs((p) => p.map((x) => (x.id === o.id ? { ...x, label: e.target.value } : x)))
                         }
                       />
+                      <div className="order-3 col-span-2 sm:order-none sm:col-span-1">
                       <Select
                         value={o.unit}
                         onValueChange={(v) =>
@@ -372,9 +375,10 @@ export const CalculatorBuilderModal: React.FC<Props> = ({ initial, onClose, onSa
                           ))}
                         </SelectContent>
                       </Select>
+                      </div>
                       <button
                         type="button"
-                        className="icon-btn hover:text-danger-600"
+                        className="icon-btn h-11 w-11 hover:text-danger-600"
                         aria-label="Remove result"
                         onClick={() => setOutputs((p) => p.filter((x) => x.id !== o.id))}
                       >

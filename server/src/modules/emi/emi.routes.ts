@@ -21,6 +21,13 @@ const loanSchema = z.object({
   reminderLeadDays: z.number().int().min(0).default(15),
 });
 
+/** Unpaid instalments are overdue / due today relative to the business date, whatever the stored status says. */
+function liveInstallments(rows: any[], today: string): any[] {
+  return rows.map((i) => (i.status === 'paid' ? i : {
+    ...i, status: i.due_date < today ? 'overdue' : i.due_date === today ? 'due_today' : 'upcoming',
+  }));
+}
+
 function idem(request: any): string {
   return typeof request.headers['idempotency-key'] === 'string' ? request.headers['idempotency-key'] : randomUUID();
 }
@@ -44,7 +51,14 @@ export async function emiRoutes(app: FastifyInstance): Promise<void> {
          WHERE l.tenant_id=$1 ORDER BY l.loan_code`,
         [request.auth.tenantId],
       );
-      return { items: r.rows };
+      // The EMI screen and reminders work from the schedule, so ship it with each loan.
+      const inst = await c.query(
+        'SELECT * FROM emi_installments WHERE tenant_id=$1 ORDER BY loan_id, installment_number',
+        [request.auth.tenantId],
+      );
+      const byLoan = new Map<string, any[]>();
+      for (const i of liveInstallments(inst.rows as any[], businessDate())) byLoan.set(i.loan_id, [...(byLoan.get(i.loan_id) ?? []), i]);
+      return { items: r.rows.map((l: any) => ({ ...l, installments: byLoan.get(l.id) ?? [] })) };
     });
   });
 
@@ -54,18 +68,20 @@ export async function emiRoutes(app: FastifyInstance): Promise<void> {
       const loan = await c.query('SELECT * FROM emi_loans WHERE tenant_id=$1 AND id=$2', [request.auth.tenantId, id]);
       if (!loan.rows[0]) throw Errors.notFound('EMI loan');
       const inst = await c.query('SELECT * FROM emi_installments WHERE tenant_id=$1 AND loan_id=$2 ORDER BY installment_number', [request.auth.tenantId, id]);
-      return { ...loan.rows[0], installments: inst.rows };
+      return { ...loan.rows[0], installments: liveInstallments(inst.rows as any[], businessDate()) };
     });
   });
 
-  app.post('/emi-loans', { preHandler: requirePermission('emi:write') }, async (request, reply) => {
+  app.post('/emi-loans',{ preHandler: requirePermission('emi:write') }, async (request, reply) => {
     const b = loanSchema.parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
       const plan = calculateEmi(b.principalPaise, b.annualInterestPct, b.tenureMonths, b.loanStartDate, b.monthlyDueDay);
       const today = businessDate();
       const initialPaid = plan.schedule.filter((s) => s.dueDate < today).length;
       const nextDate = plan.schedule.find((s) => s.dueDate >= today)?.dueDate ?? plan.schedule[plan.schedule.length - 1]!.dueDate;
-      const seq = await c.query('SELECT count(*)::int n FROM emi_loans WHERE tenant_id=$1', [request.auth.tenantId]);
+      const seq = await c.query(
+        `SELECT COALESCE(MAX(NULLIF(regexp_replace(loan_code,'\\D','','g'),'')::bigint),0)::int AS n FROM emi_loans WHERE tenant_id=$1`,
+        [request.auth.tenantId]);
       const code = `LOAN-${String(seq.rows[0].n + 1).padStart(3, '0')}`;
       const loan = await c.query(
         `INSERT INTO emi_loans (tenant_id,loan_code,machine_id,loan_provider,loan_ref_number,loan_start_date,
@@ -84,7 +100,8 @@ export async function emiRoutes(app: FastifyInstance): Promise<void> {
         );
       }
       await writeAudit(c, request.auth, { action: 'EMI_LOAN_CREATED', entity: 'MachineEmiLoan', entityId: loan.rows[0].id, reason: `Loan ${code} for machine ${b.assetId}`, requestId: request.id });
-      return reply.code(201).send({ ...loan.rows[0], installments: plan.schedule });
+      const saved = await c.query('SELECT * FROM emi_installments WHERE tenant_id=$1 AND loan_id=$2 ORDER BY installment_number', [request.auth.tenantId, loan.rows[0].id]);
+      return reply.code(201).send({ ...loan.rows[0], installments: liveInstallments(saved.rows as any[], today) });
     });
   });
 
@@ -112,7 +129,7 @@ export async function emiRoutes(app: FastifyInstance): Promise<void> {
           `UPDATE emi_installments SET status='paid', amount_paid_paise=amount_due_paise, paid_at=now(),
             payment_mode=$3::payment_mode, payment_reference=$4, paid_by=$5
            WHERE tenant_id=$1 AND id=$2`,
-          [request.auth.tenantId, inst.rows[0].id, b.paymentMode, b.paymentReference ?? 'DIRECT_TRANSFER', request.auth.userId],
+          [request.auth.tenantId, inst.rows[0].id, b.paymentMode, b.paymentReference || null, request.auth.userId],
         );
         await c.query(
           `INSERT INTO emi_payments (tenant_id,loan_id,installment_id,amount_paise,payment_date,payment_mode,payment_reference,recorded_by,idempotency_key)

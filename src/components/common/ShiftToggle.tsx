@@ -42,7 +42,7 @@ export const ShiftToggle: React.FC<Props> = ({ value, onChange, size = 'md' }) =
         aria-pressed={value === id}
         onClick={() => onChange(id)}
         className={`inline-flex items-center gap-1.5 rounded-md font-semibold transition-colors ${
-          size === 'sm' ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'
+          size === 'sm' ? 'min-h-9 px-2.5 py-1 text-[11px] sm:min-h-0 sm:px-2' : 'min-h-10 px-3.5 py-1.5 text-xs sm:min-h-0 sm:px-3'
         } ${value === id ? 'bg-logo-700 text-white' : 'text-ink-600 hover:bg-surface'}`}
       >
         <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
