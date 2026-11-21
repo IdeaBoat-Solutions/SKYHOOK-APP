@@ -50,4 +50,11 @@ export const api = {
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
   putBinary: <T>(path: string, data: ArrayBuffer) => request<T>('PUT', path, data, true),
+  /** Authenticated binary download (stored documents). */
+  getBlob: async (path: string): Promise<Blob> => {
+    const token = getToken();
+    const res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new ApiFailure(res.status, `HTTP ${res.status}`);
+    return res.blob();
+  },
 };

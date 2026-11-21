@@ -24,6 +24,9 @@ import {
   MapPin,
   ChevronRight,
   IdCard,
+  ScanLine,
+  Paperclip,
+  AlertCircle,
 } from "lucide-react";
 import { useSkyhook } from "../../data/apiStore";
 import {
@@ -38,8 +41,13 @@ import {
   MachineType,
   AssetStatus,
   ReminderAlertItem,
+  RcDetails,
 } from "../../types";
 import { Currency } from "../common/Currency";
+import { RcDetailsFields, RcScanModal, RcScanOutcome } from "./RcScan";
+import { MachineDocumentsList, RcDetailsSummary } from "./MachineRcPanels";
+
+const RC_DOC_TYPE = "Registration Certificate (RC)";
 
 /** Consistent visual language for every asset status. Red stays reserved for critical alerts. */
 const ASSET_STATUS_META: Record<
@@ -103,6 +111,7 @@ export const AssetsView: React.FC = () => {
     machineWorkingLogs,
     addMachine,
     updateMachine,
+    attachMachineDocument,
     recordServiceCompleted,
     renewMachineInsurance,
     renewMachinePuc,
@@ -178,6 +187,13 @@ export const AssetsView: React.FC = () => {
   );
   const [completedServiceHours, setCompletedServiceHours] = useState("");
 
+  // Registration certificate (RC): OCR scan + details + files to attach on save
+  const [rcDetails, setRcDetails] = useState<RcDetails>({});
+  const [rcFiles, setRcFiles] = useState<File[]>([]);
+  const [showRcScan, setShowRcScan] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
   // Quick Statutory Renew Modal in Fleet View
   const [renewModalMachine, setRenewModalMachine] =
     useState<MachineAsset | null>(null);
@@ -225,8 +241,13 @@ export const AssetsView: React.FC = () => {
     setFitnessDueDate(calculateExpiryFromInterval(date, fitnessIntervalDays));
   };
 
-  const handleOpenAdd = () => {
+  /** Open the add form; `scanRc` jumps straight into the RC upload. */
+  const handleOpenAdd = (scanRc = false) => {
     setEditingMachine(null);
+    setRcDetails({});
+    setRcFiles([]);
+    setSaveError("");
+    setShowRcScan(scanRc);
     setMachineType("Hydraulic Crane");
     setMake("ACE");
     setModel("FX 250");
@@ -304,80 +325,120 @@ export const AssetsView: React.FC = () => {
     setFitnessDueDate(m.nextFitnessDueDate);
     setFitnessCertNumber(m.fitnessCertificateNumber || "FIT-THANE-2026-8812");
 
+    setRcDetails(m.rcDetails ?? {});
+    setRcFiles([]);
+    setSaveError("");
+    setShowRcScan(false);
     setShowModal(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  /** Fill the asset form from a reviewed RC scan. */
+  const handleApplyRc = (rc: RcScanOutcome) => {
+    if (rc.registrationNumber) setRegNo(rc.registrationNumber);
+    if (rc.make) setMake(rc.make);
+    if (rc.model) setModel(rc.model);
+    if (rc.machineType) setMachineType(rc.machineType);
+    // The chassis number is the machine's permanent serial on Indian RCs.
+    if (rc.details.chassisNumber) setSerialNo(rc.details.chassisNumber);
+    setRcDetails((prev) => ({ ...prev, ...rc.details }));
+    if (rc.files.length) setRcFiles(rc.files);
+    setShowRcScan(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingMachine) {
-      updateMachine(editingMachine.id, {
-        machineType,
-        make,
-        model,
-        registrationNumber: regNo,
-        serialNumber: serialNo,
-        tonnageCapacity: parseFloat(tonnage) || 0,
-        purchaseCost: parseFloat(purchaseCost) || 0,
-        status,
-        currentProjectId: currentProject || undefined,
-        lastServiceDate,
-        serviceFrequencyValue: serviceFreqValue,
-        serviceFrequencyUnit: serviceFreqUnit,
-        lastServiceHours: Number(lastServiceHours) || 0,
-        nextServiceDueDate,
-        insuranceProvider,
-        insurancePolicyNumber,
-        insuranceStartDate,
-        insuranceExpiryDate: insuranceExpiry,
-        insuranceIntervalDays,
-        pucNumber,
-        pucIssueDate,
-        pucExpiryDate: pucExpiry,
-        pucIntervalDays,
-        fitnessCertificateNumber: fitnessCertNumber,
-        lastFitnessDate,
-        nextFitnessDueDate: fitnessDueDate,
-        fitnessIntervalDays,
-      });
-    } else {
-      addMachine({
-        assetId: `CR-${String(machines.length + 1).padStart(3, "0")}`,
-        machineType,
-        make,
-        model,
-        registrationNumber: regNo,
-        serialNumber: serialNo,
-        tonnageCapacity: parseFloat(tonnage) || 0,
-        purchaseDate: currentDate,
-        purchaseCost: parseFloat(purchaseCost) || 0,
-        status,
-        currentProjectId: currentProject || undefined,
-        lastServiceDate,
-        serviceFrequencyValue: serviceFreqValue,
-        serviceFrequencyUnit: serviceFreqUnit,
-        lastServiceHours: Number(lastServiceHours) || 0,
-        nextServiceDueDate,
-        serviceReminderLeadDays: 15,
-        insuranceProvider,
-        insurancePolicyNumber,
-        insuranceStartDate,
-        insuranceExpiryDate: insuranceExpiry,
-        insuranceIntervalDays,
-        insuranceReminderLeadDays: 15,
-        pucNumber,
-        pucIssueDate,
-        pucExpiryDate: pucExpiry,
-        pucIntervalDays,
-        pucReminderLeadDays: 15,
-        fitnessCertificateNumber: fitnessCertNumber,
-        lastFitnessDate,
-        nextFitnessDueDate: fitnessDueDate,
-        fitnessIntervalDays,
-        fitnessReminderLeadDays: 15,
-        serviceHistory: [],
-        documents: [],
-      });
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+
+    const fields = {
+      machineType,
+      make,
+      model,
+      registrationNumber: regNo,
+      serialNumber: serialNo,
+      tonnageCapacity: parseFloat(tonnage) || 0,
+      purchaseCost: parseFloat(purchaseCost) || 0,
+      status,
+      currentProjectId: currentProject || undefined,
+      lastServiceDate,
+      serviceFrequencyValue: serviceFreqValue,
+      serviceFrequencyUnit: serviceFreqUnit,
+      lastServiceHours: Number(lastServiceHours) || 0,
+      nextServiceDueDate,
+      insuranceProvider,
+      insurancePolicyNumber,
+      insuranceStartDate,
+      insuranceExpiryDate: insuranceExpiry,
+      insuranceIntervalDays,
+      pucNumber,
+      pucIssueDate,
+      pucExpiryDate: pucExpiry,
+      pucIntervalDays,
+      fitnessCertificateNumber: fitnessCertNumber,
+      lastFitnessDate,
+      nextFitnessDueDate: fitnessDueDate,
+      fitnessIntervalDays,
+      rcDetails: Object.keys(rcDetails).length ? rcDetails : undefined,
+    };
+
+    let saved: MachineAsset;
+    try {
+      if (editingMachine) {
+        await updateMachine(editingMachine.id, fields);
+        saved = editingMachine;
+      } else {
+        saved = await addMachine({
+          ...fields,
+          assetId: `CR-${String(machines.length + 1).padStart(3, "0")}`,
+          purchaseDate: currentDate,
+          serviceReminderLeadDays: 15,
+          insuranceReminderLeadDays: 15,
+          pucReminderLeadDays: 15,
+          fitnessReminderLeadDays: 15,
+          serviceHistory: [],
+          documents: [],
+        });
+      }
+    } catch (err) {
+      setSaveError(
+        err instanceof Error
+          ? `Could not save the asset: ${err.message}`
+          : "Could not save the asset.",
+      );
+      setSaving(false);
+      return;
     }
+
+    // The asset is saved; now store the RC file(s) against it.
+    const failed: File[] = [];
+    for (const [i, file] of rcFiles.entries()) {
+      const label =
+        rcFiles.length > 1 ? `${RC_DOC_TYPE} – ${i + 1}` : RC_DOC_TYPE;
+      try {
+        await attachMachineDocument(
+          saved.id,
+          file,
+          label,
+          rcDetails.registrationValidUpto,
+        );
+      } catch {
+        failed.push(file);
+      }
+    }
+    setSaving(false);
+    if (failed.length) {
+      // Stay open in edit mode so "Save" retries only the upload — never a duplicate asset.
+      setEditingMachine(saved);
+      setRcFiles(failed);
+      setSaveError(
+        `Asset saved, but the RC file could not be uploaded (${failed
+          .map((f) => f.name)
+          .join(", ")}). Press Save to retry.`,
+      );
+      return;
+    }
+    setRcFiles([]);
     setShowModal(false);
   };
 
@@ -600,10 +661,16 @@ export const AssetsView: React.FC = () => {
           </p>
         </div>
 
-        <button onClick={handleOpenAdd} className="btn btn-primary">
-          <Plus className="h-4 w-4" />
-          <span>Add Machine Asset</span>
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => handleOpenAdd(true)} className="btn btn-secondary">
+            <ScanLine className="h-4 w-4" />
+            <span>Add from RC (OCR)</span>
+          </button>
+          <button onClick={() => handleOpenAdd()} className="btn btn-primary">
+            <Plus className="h-4 w-4" />
+            <span>Add Machine Asset</span>
+          </button>
+        </div>
       </div>
 
       {/* Fleet overview cards */}
@@ -1068,6 +1135,31 @@ export const AssetsView: React.FC = () => {
               className="flex min-h-0 flex-1 flex-col"
             >
               <div className="modal-body space-y-5">
+                {/* RC OCR upload */}
+                <div className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2.5">
+                    <span className="section-icon"><ScanLine className="h-4 w-4" /></span>
+                    <div className="text-xs">
+                      <div className="font-semibold text-ink-800">
+                        Fill from registration certificate (RC)
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-ink-500">
+                        {rcFiles.length
+                          ? `${rcFiles.map((f) => f.name).join(", ")} will be saved with this asset.`
+                          : "Upload the RC as a PDF or photos — registration no., chassis, engine, make, model and more are read automatically."}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowRcScan(true)}
+                    className="btn btn-secondary shrink-0"
+                  >
+                    {rcFiles.length ? <Paperclip className="h-4 w-4" /> : <ScanLine className="h-4 w-4" />}
+                    {rcFiles.length || rcDetails.scannedAt ? "Rescan RC" : "Scan RC document"}
+                  </button>
+                </div>
+
                 {/* Equipment identity */}
                 <section className="space-y-4">
                   <ProfileSection title="Equipment identity" icon={Truck} />
@@ -1604,23 +1696,53 @@ export const AssetsView: React.FC = () => {
                     </div>
                   </div>
                 </section>
+
+                {/* Registration certificate */}
+                <section className="space-y-4">
+                  <ProfileSection
+                    title="Registration certificate (RC)"
+                    icon={FileBadge}
+                  />
+                  <RcDetailsFields
+                    value={rcDetails}
+                    onChange={(patch) => setRcDetails((prev) => ({ ...prev, ...patch }))}
+                  />
+                </section>
               </div>
 
+              {saveError && (
+                <div className="alert-banner mx-4 mb-2" role="alert">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span className="text-xs">{saveError}</span>
+                </div>
+              )}
               <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="btn btn-secondary"
+                  disabled={saving}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingMachine ? "Save asset" : "Add to fleet"}
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving
+                    ? "Saving…"
+                    : editingMachine
+                      ? "Save asset"
+                      : "Add to fleet"}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {showModal && showRcScan && (
+        <RcScanModal
+          onClose={() => setShowRcScan(false)}
+          onApply={handleApplyRc}
+        />
       )}
 
       {/* Machine Profile Modal */}
@@ -1763,6 +1885,21 @@ export const AssetsView: React.FC = () => {
                     icon={FileBadge}
                   />
                 </div>
+              </section>
+
+              {/* Registration certificate */}
+              <section className="space-y-4">
+                <ProfileSection
+                  title="Registration certificate (RC)"
+                  icon={FileBadge}
+                />
+                <RcDetailsSummary details={selectedMachine.rcDetails} />
+              </section>
+
+              {/* Documents */}
+              <section className="space-y-3">
+                <ProfileSection title="Documents" icon={Paperclip} />
+                <MachineDocumentsList machineId={selectedMachine.id} />
               </section>
 
               {/* Service history */}

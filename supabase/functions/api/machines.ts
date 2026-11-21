@@ -65,6 +65,43 @@ function uuidField(b: any, field: string): string {
   return v;
 }
 
+/** RC (registration certificate) fields: text or number, nothing else. */
+const RC_TEXT_KEYS = [
+  'chassisNumber', 'engineNumber', 'registrationDate', 'registrationValidUpto', 'ownerName',
+  'ownership', 'ownerAddress', 'vehicleClass', 'makerName', 'bodyType', 'colour', 'fuel',
+  'emissionNorms', 'manufactureMonthYear', 'financier', 'registrationAuthority', 'cardIssueDate', 'scannedAt',
+] as const;
+const RC_NUMBER_KEYS = [
+  'ownerSerial', 'cylinders', 'seatingCapacity', 'unladenWeightKg', 'cubicCapacityCc', 'horsePower', 'wheelBaseMm',
+] as const;
+
+/** Whitelist + type-check the rcDetails object; returns JSON text for a jsonb column. */
+function rcDetailsField(b: any): string | undefined {
+  const v = b?.rcDetails;
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'object' || Array.isArray(v)) {
+    throw Errors.validation([{ field: 'rcDetails', message: 'Must be an object' }]);
+  }
+  const out: Record<string, string | number> = {};
+  for (const key of RC_TEXT_KEYS) {
+    const x = v[key];
+    if (x === undefined || x === null || x === '') continue;
+    if (typeof x !== 'string' || x.length > 300) {
+      throw Errors.validation([{ field: `rcDetails.${key}`, message: 'Must be text (max 300 chars)' }]);
+    }
+    out[key] = x.trim();
+  }
+  for (const key of RC_NUMBER_KEYS) {
+    const x = v[key];
+    if (x === undefined || x === null || x === '') continue;
+    if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) {
+      throw Errors.validation([{ field: `rcDetails.${key}`, message: 'Must be a non-negative number' }]);
+    }
+    out[key] = x;
+  }
+  return JSON.stringify(out);
+}
+
 function queryLimit(sp: URLSearchParams): number {
   const raw = sp.get('limit');
   if (raw === null) return 200;
@@ -247,6 +284,7 @@ export const machinesRoutes: Route[] = [
       const nextFitnessDueDate = strField(b, 'nextFitnessDueDate');
       const fitnessIntervalDays = numField(b, 'fitnessIntervalDays', { integer: true, min: 1, fallback: 730 })!;
       const status = enumField(b, 'status', MACHINE_STATUSES, { fallback: 'available' })!;
+      const rcDetails = rcDetailsField(b);
       const created = await withTenant(auth.tenantId, async (c) => {
         const code = assetCode ?? `CR-${String((await c.query('SELECT count(*)::int n FROM machines WHERE tenant_id=$1', [auth.tenantId])).rows[0].n + 1).padStart(3, '0')}`;
         const r = await c.query(
@@ -255,9 +293,9 @@ export const machinesRoutes: Route[] = [
             last_service_date,next_service_due_date,insurance_provider,insurance_policy_number,
             insurance_expiry_date,insurance_interval_days,puc_number,puc_issue_date,puc_expiry_date,
             puc_interval_days,fitness_certificate_number,last_fitness_date,next_fitness_due_date,
-            fitness_interval_days,status,created_by,service_reminder_lead_hours)
+            fitness_interval_days,status,created_by,service_reminder_lead_hours,rc_details)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13::date,$14::date,$15,$16,$17::date,$18,
-             $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29) RETURNING *`,
+             $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29,$30::jsonb) RETURNING *`,
           [auth.tenantId, code, machineType, make, model, registrationNumber, serialNumber ?? null,
             tonnageCapacity ?? null, purchaseDate ?? null, purchaseCostPaise ?? null,
             serviceFrequencyValue, serviceFrequencyUnit, lastServiceDate ?? null,
@@ -265,7 +303,7 @@ export const machinesRoutes: Route[] = [
             insuranceProvider ?? null, insurancePolicyNumber ?? null, insuranceExpiryDate ?? null, insuranceIntervalDays,
             pucNumber ?? null, pucIssueDate ?? null, pucExpiryDate ?? null, pucIntervalDays,
             fitnessCertificateNumber ?? null, lastFitnessDate ?? null, nextFitnessDueDate ?? null,
-            fitnessIntervalDays, status, auth.userId, serviceReminderLeadHours],
+            fitnessIntervalDays, status, auth.userId, serviceReminderLeadHours, rcDetails ?? '{}'],
         );
         await writeAudit(c, auth, { action: 'ASSET_CREATED', entity: 'MachineAsset', entityId: r.rows[0].id, reason: `Registered ${make} ${model}`, requestId: ctx.requestId });
         return r.rows[0];
@@ -293,12 +331,20 @@ export const machinesRoutes: Route[] = [
       if (raw?.serviceReminderLeadHours !== undefined && raw?.serviceReminderLeadHours !== null) {
         b.serviceReminderLeadHours = numField(raw, 'serviceReminderLeadHours', { min: 0 });
       }
+      // Identity fields, editable so a corrected or newly scanned RC can be saved.
+      if (raw?.machineType != null) b.machineType = enumField(raw, 'machineType', MACHINE_TYPES);
+      for (const key of ['make', 'model', 'registrationNumber'] as const) {
+        if (raw?.[key] != null) b[key] = strField(raw, key, { minLen: 1 });
+      }
+      if (raw?.serialNumber !== undefined) b.serialNumber = raw.serialNumber === null ? null : strField(raw, 'serialNumber');
+      if (raw?.tonnageCapacity != null) b.tonnageCapacity = numField(raw, 'tonnageCapacity', { min: 0 });
+      if (raw?.rcDetails != null) b.rcDetails = rcDetailsField(raw);
       const result = await withTenant(auth.tenantId, async (c) => {
-        const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours' };
+        const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
         const entries = Object.entries(b).filter(([, v]) => v !== undefined);
         if (!entries.length) throw Errors.badRequest('No fields to update');
         // Fixed upstream off-by-one: values occupy $4..$n; $3 is the id in WHERE.
-        const sets = entries.map(([k], i) => `${map[k]!} = $${i + 4}`).join(', ');
+        const sets = entries.map(([k], i) => `${map[k]!} = $${i + 4}${k === 'rcDetails' ? '::jsonb' : ''}`).join(', ');
         const r = await c.query(`UPDATE machines SET ${sets}, updated_by=$2 WHERE tenant_id=$1 AND id=$3 RETURNING *`,
           [auth.tenantId, auth.userId, id, ...entries.map(([, v]) => v)]);
         if (!r.rows[0]) throw Errors.notFound('Machine');

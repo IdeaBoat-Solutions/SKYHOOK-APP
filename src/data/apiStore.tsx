@@ -6,13 +6,14 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type {
   CompanySettings, User, UserRole, Employee, Project, AttendanceRecord, AttendanceStatus,
   SalaryAdvance, PayrollRun, ProjectExpense, MachineAsset, MachineEmiLoan, MachineWorkingLog,
-  AuditLog, ReminderAlertItem, InAppNotification, PayrollAdjustment, PersonalRecord,
+  AuditLog, ReminderAlertItem, InAppNotification, PayrollAdjustment, PersonalRecord, DocumentRecord,
 } from '../types';
 import { api, getToken, setToken, ApiFailure } from '../api/client';
 import {
   mapUser, mapCompany, mapProject, mapEmployee, mapMachine, mapAttendance, mapAdvance,
   mapPayrollRun, mapExpense, mapEmiLoan, mapWorkingLog, mapAudit, mapNotification,
   mapServiceRecord, mapPayrollAdjustment, mapPersonalRecord, rupeesToPaise,
+  mapDocument, machineTypeToApi,
 } from '../api/mappers';
 import { evaluateReminderStatus, evaluateServiceHours, sumOperatingHours, formatServiceInterval } from '../utils/calculations';
 import {
@@ -90,6 +91,11 @@ interface SkyhookStoreContextType {
   renewOperatorLicense: (operatorId: string, newCraneExpiry?: string, newTransportExpiry?: string) => Promise<void>;
   machines: MachineAsset[];
   addMachine: (m: Omit<MachineAsset, 'id'>) => Promise<MachineAsset>;
+  /** Upload a file to storage and register it as a machine document (e.g. the RC). */
+  attachMachineDocument: (machineId: string, file: File, docType: string, expiryDate?: string) => Promise<void>;
+  listMachineDocuments: (machineId: string) => Promise<DocumentRecord[]>;
+  /** Download a stored document by its object key. */
+  downloadDocument: (objectKey: string) => Promise<Blob>;
   updateMachine: (id: string, m: Partial<MachineAsset>) => Promise<void>;
   recordServiceCompleted: (machineId: string, serviceDate: string, cost: number, notes?: string, provider?: string, operatingHours?: number) => Promise<void>;
   updateMachineServiceConfig: (machineId: string, patch: {
@@ -406,7 +412,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     addMachine: async (m) => {
       const r = await api.post<any>('/machines', {
-        assetCode: m.assetId, machineType: m.machineType, make: m.make, model: m.model,
+        assetCode: m.assetId, machineType: machineTypeToApi(m.machineType), make: m.make, model: m.model,
         registrationNumber: m.registrationNumber, serialNumber: m.serialNumber,
         tonnageCapacity: m.tonnageCapacity, purchaseDate: m.purchaseDate,
         purchaseCostPaise: rupeesToPaise(m.purchaseCost),
@@ -419,11 +425,27 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         pucIssueDate: m.pucIssueDate, pucExpiryDate: m.pucExpiryDate, pucIntervalDays: m.pucIntervalDays,
         fitnessCertificateNumber: m.fitnessCertificateNumber, lastFitnessDate: m.lastFitnessDate,
         nextFitnessDueDate: m.nextFitnessDueDate, fitnessIntervalDays: m.fitnessIntervalDays,
-        status: m.status,
+        status: m.status, rcDetails: m.rcDetails,
       });
       await refresh();
       return mapMachine(r);
     },
+    attachMachineDocument: async (machineId, file, docType, expiryDate) => {
+      const signed = await api.post<{ objectKey: string }>('/files/sign-upload', {
+        kind: 'machine', ownerId: machineId, name: file.name,
+      });
+      await api.putBinary(`/files/${signed.objectKey}`, await file.arrayBuffer());
+      await api.post('/documents', {
+        ownerType: 'machine', ownerId: machineId, docType, name: file.name,
+        objectKey: signed.objectKey, sizeKb: Math.ceil(file.size / 1024),
+        mimeType: file.type || undefined, expiryDate: expiryDate || undefined,
+      });
+    },
+    listMachineDocuments: async (machineId) => {
+      const r = await api.get<{ items: any[] }>(`/machines/${machineId}/documents`);
+      return (r.items ?? []).map(mapDocument);
+    },
+    downloadDocument: (objectKey) => api.getBlob(`/files/${objectKey}`),
     updateMachine: async (id, m) => {
       const payload: any = {};
       if (m.status) payload.status = m.status;
@@ -433,6 +455,14 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (m.serviceFrequencyUnit) payload.serviceFrequencyUnit = m.serviceFrequencyUnit;
       if (m.serviceFrequencyValue !== undefined) payload.serviceFrequencyValue = m.serviceFrequencyValue;
       if (m.serviceReminderLeadHours !== undefined) payload.serviceReminderLeadHours = m.serviceReminderLeadHours;
+      // Identity + RC details (editable, e.g. after scanning the RC).
+      if (m.machineType) payload.machineType = machineTypeToApi(m.machineType);
+      if (m.make) payload.make = m.make;
+      if (m.model) payload.model = m.model;
+      if (m.registrationNumber) payload.registrationNumber = m.registrationNumber;
+      if (m.serialNumber !== undefined) payload.serialNumber = m.serialNumber || null;
+      if (m.tonnageCapacity !== undefined) payload.tonnageCapacity = m.tonnageCapacity;
+      if (m.rcDetails) payload.rcDetails = m.rcDetails;
       await api.patch(`/machines/${id}`, payload);
       await refresh();
     },
