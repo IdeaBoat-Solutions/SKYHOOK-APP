@@ -29,6 +29,7 @@ import {
 } from '../../data/personalCategories';
 import { CALC_ICONS, calcIcon } from '../calculations/calcUi';
 
+import { DateInput } from '../common/DateInput';
 const EMPTY_FORM = {
   title: '',
   provider: '',
@@ -786,18 +787,14 @@ export const PersonalView: React.FC = () => {
                 <div className="form-grid">
                   <div>
                     <label className="form-label">Start date</label>
-                    <input
-                      type="date"
-                      value={form.startDate}
+                    <DateInput value={form.startDate}
                       onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                       className="form-input"
                     />
                   </div>
                   <div>
                     <label className="form-label">Next due / expiry</label>
-                    <input
-                      type="date"
-                      value={form.dueDate}
+                    <DateInput value={form.dueDate}
                       onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
                       className="form-input"
                     />

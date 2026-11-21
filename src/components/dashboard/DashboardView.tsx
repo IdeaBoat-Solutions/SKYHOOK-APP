@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
   FolderKanban,
   Users,
@@ -61,7 +60,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } = useSkyhook();
 
   const isManager = currentUser.role === 'manager';
-  const [dateRange, setDateRange] = useState('Current Month (Oct 2026)');
+  // Everything on this page is for the current month; it follows the real date.
+  const month = currentDate.slice(0, 7);
+  const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const weekStart = (() => {
+    const d = new Date(`${currentDate}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 6);
+    return d.toISOString().slice(0, 10);
+  })();
 
   // 1. KPI Calculations
   const activeProjects = projects.filter((p) => p.status === 'active');
@@ -71,11 +77,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalMachines = machines.length;
   const machinesDeployed = machines.filter((m) => m.status === 'assigned').length;
 
-  const latestPayroll = payrollRuns.find((r) => r.month === '2026-10') || payrollRuns[0];
+  // This month's run if there is one, otherwise the most recent run.
+  const latestPayroll =
+    payrollRuns.find((r) => r.month === month) ??
+    [...payrollRuns].sort((a, b) => b.month.localeCompare(a.month))[0];
   const pendingPayrollAmount = latestPayroll ? latestPayroll.totalNetSalary - latestPayroll.totalPaidAmount : 0;
 
   const monthlyExpenses = expenses
-    .filter((e) => e.date.startsWith('2026-10') && e.approvalStatus === 'approved')
+    .filter((e) => e.date.startsWith(month) && e.approvalStatus === 'approved')
     .reduce((sum, e) => sum + e.amount, 0);
 
   const pendingAttendanceCount = attendance.filter((a) => a.approvalStatus === 'submitted').length;
@@ -102,11 +111,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     .reduce((s, m) => s + m.workingHours, 0);
 
   const weekMachineHours = machineWorkingLogs
-    .filter((m) => m.date >= '2026-10-18' && m.date <= currentDate)
+    .filter((m) => m.date >= weekStart && m.date <= currentDate)
     .reduce((s, m) => s + m.workingHours, 0);
 
   const monthMachineHours = machineWorkingLogs
-    .filter((m) => m.date.startsWith('2026-10'))
+    .filter((m) => m.date.startsWith(month))
     .reduce((s, m) => s + m.workingHours, 0);
 
   // Machine utilization calculation
@@ -242,16 +251,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="page-header-actions">
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="form-input w-auto font-semibold">
-              <SelectValue placeholder="Select period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Current Month (Oct 2026)">Current Month (Oct 2026)</SelectItem>
-              <SelectItem value="Today: 24/10/2026">Today: 24/10/2026</SelectItem>
-              <SelectItem value="Q3 FY 2026-27">Q3 FY 2026-27</SelectItem>
-            </SelectContent>
-          </Select>
+          <span className="badge badge-neutral self-center px-3 py-1.5 text-xs font-semibold">
+            {monthLabel}
+          </span>
 
           <button onClick={() => onNavigateTab('payroll')} className="btn btn-primary">
             <ReceiptIndianRupee className="h-3.5 w-3.5" />
@@ -302,7 +304,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <KpiCard
           label="Pending Payroll"
           value={<Currency value={pendingPayrollAmount} size="xl" />}
-          hint="Due on 15/11/2026"
+          hint={latestPayroll?.paymentDueDate ? `Due on ${formatDateDDMMYYYY(latestPayroll.paymentDueDate)}` : 'No payroll run yet'}
           icon={ReceiptIndianRupee}
           accent="brand"
           onClick={() => onNavigateTab('payroll')}
@@ -776,7 +778,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-semibold text-ink-900">
-                  October 2026 Payroll
+                  {latestPayroll ? new Date(`${latestPayroll.month}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' }) : monthLabel} Payroll
                 </h3>
                 <p className="text-xs text-ink-500">Monthly salary summary</p>
               </div>
@@ -794,25 +796,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="sm:flex-1 sm:px-6 sm:first:pl-0">
               <span className="stat-label block">Gross Payroll</span>
               <strong className="mt-1 block text-lg font-bold text-ink-900">
-                {formatINR(latestPayroll?.totalGrossSalary || 89850)}
+                {formatINR(latestPayroll?.totalGrossSalary ?? 0)}
               </strong>
             </div>
             <div className="sm:flex-1 sm:px-6">
               <span className="stat-label block">Advances Recovered</span>
               <strong className="mt-1 block text-lg font-bold text-warning-700">
-                {formatINR(latestPayroll?.totalAdvancesRecovered || 2500)}
+                {formatINR(latestPayroll?.totalAdvancesRecovered ?? 0)}
               </strong>
             </div>
             <div className="sm:flex-1 sm:px-6">
               <span className="stat-label block">Net Payable</span>
               <strong className="mt-1 block text-lg font-bold text-success-700">
-                {formatINR(latestPayroll?.totalNetSalary || 86850)}
+                {formatINR(latestPayroll?.totalNetSalary ?? 0)}
               </strong>
             </div>
             <div className="sm:flex-1 sm:px-6">
               <span className="stat-label block">Status</span>
-              <span className="badge badge-success mt-1 uppercase">
-                {latestPayroll?.status || 'Approved'}
+              <span className={`badge mt-1 uppercase ${latestPayroll ? 'badge-success' : 'badge-neutral'}`}>
+                {latestPayroll?.status ?? 'Not generated'}
               </span>
             </div>
           </div>

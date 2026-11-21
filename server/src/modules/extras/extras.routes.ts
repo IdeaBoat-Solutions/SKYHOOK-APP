@@ -71,12 +71,13 @@ const personalRecordPatchSchema = z.object({
 
 export async function extrasRoutes(app: FastifyInstance): Promise<void> {
   app.get('/payroll-adjustments', { preHandler: requirePermission('payroll:read') }, async (request) => {
-    const { month } = z.object({ month: z.string().regex(monthPattern, 'month must be YYYY-MM') }).parse(request.query);
+    // The app loads every month at once; `month` only narrows the result.
+    const { month } = z.object({ month: z.string().regex(monthPattern, 'month must be YYYY-MM').optional() }).parse(request.query);
     return withTenantRead(request.auth.tenantId, async (c) => {
       const r = await c.query(
         `SELECT id, month, employee_code, kind, label, amount_paise, remarks, created_at
-         FROM payroll_adjustments WHERE tenant_id=$1 AND month=$2 ORDER BY created_at DESC`,
-        [request.auth.tenantId, month],
+         FROM payroll_adjustments WHERE tenant_id=$1 AND ($2::text IS NULL OR month=$2) ORDER BY created_at DESC`,
+        [request.auth.tenantId, month ?? null],
       );
       return { items: r.rows.map(payrollAdjustmentView) };
     });

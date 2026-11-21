@@ -11,7 +11,7 @@
 
 import type { MachineType, RcDetails } from '../types';
 import { STATE_BY_CODE } from './licenceOcr';
-import { documentToImages, recognizeImages, type ScanProgress } from './ocrEngine';
+import { documentToImages, preprocess, recognizeImages, type ScanProgress } from './ocrEngine';
 
 export interface ParsedRc extends RcDetails {
   /** Normalised as GJ-38-S-1889. */
@@ -424,6 +424,71 @@ export function mergeRcPasses(texts: string[]): ParsedRc {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Owner serial: the number printed inside a circle next to "Owner Serial"      */
+/* -------------------------------------------------------------------------- */
+
+interface OcrWord { text: string; bbox: { x0: number; y0: number; x1: number; y1: number } }
+
+/**
+ * Full-page OCR drops a lone digit inside a circle, so the serial is read separately:
+ * find the "Owner" label of "Owner Serial" by position, crop the circle to its right
+ * and read just that crop with a digits-only whitelist. Returns undefined when the
+ * page has no such label (e.g. the back of the card).
+ */
+export async function readOwnerSerial(images: Blob[]): Promise<number | undefined> {
+  const { createWorker } = await import('tesseract.js');
+  const worker = await createWorker('eng', 1);
+  try {
+    for (const image of images) {
+      const prepared = await preprocess(image);
+      await worker.setParameters({ tessedit_pageseg_mode: '11' as never, tessedit_char_whitelist: '' });
+      const { data } = await worker.recognize(prepared);
+      const words = ((data as unknown as { words?: OcrWord[] }).words ?? []).filter((w) => w.text.trim());
+
+      // "Owner" labels also appear in "Owner Name" and "...Individual Owner)"; the serial's
+      // label is the top-most plain "Owner" that is not followed by "Name".
+      const candidates = words.filter((w, i) => {
+        if (!/^owner$/i.test(w.text.trim())) return false;
+        const h = w.bbox.y1 - w.bbox.y0;
+        return !words.some(
+          (o, j) => j !== i && /^name/i.test(o.text) &&
+            Math.abs(o.bbox.y0 - w.bbox.y0) < h && o.bbox.x0 >= w.bbox.x1 - 5 && o.bbox.x0 - w.bbox.x1 < h * 3,
+        );
+      });
+      const label = candidates.sort((a, b) => a.bbox.y0 - b.bbox.y0)[0];
+      if (!label) continue;
+
+      const h = Math.max(20, label.bbox.y1 - label.bbox.y0);
+      const sx = Math.max(0, Math.round(label.bbox.x1 + 0.3 * h));
+      const sy = Math.max(0, Math.round(label.bbox.y0 - 0.6 * h));
+      const sw = Math.round(4.2 * h);
+      const sh = Math.round(3 * h);
+
+      const bitmap = await createImageBitmap(prepared);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(sw, bitmap.width - sx) * 2;
+      canvas.height = Math.min(sh, bitmap.height - sy) * 2;
+      const ctx = canvas.getContext('2d');
+      if (!ctx || canvas.width < 10 || canvas.height < 10) continue;
+      ctx.drawImage(bitmap, sx, sy, canvas.width / 2, canvas.height / 2, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      const crop = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+      if (!crop) continue;
+
+      for (const psm of ['7', '10']) {
+        await worker.setParameters({ tessedit_pageseg_mode: psm as never, tessedit_char_whitelist: '123456789' });
+        const { data: digit } = await worker.recognize(crop);
+        const value = digit.text.replace(/\D/g, '');
+        if (/^[1-9]\d?$/.test(value)) return Number(value);
+      }
+    }
+    return undefined;
+  } finally {
+    await worker.terminate();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Document -> fields                                                          */
 /* -------------------------------------------------------------------------- */
 
@@ -456,6 +521,15 @@ export async function scanRcDocuments(
   const columnText = pages.map((p) => p[0]!.text).join('\n');
   const sparseText = pages.map((p) => p[1]!.text).join('\n');
   const parsed = mergeRcPasses([columnText, sparseText]);
+  if (parsed.ownerSerial === undefined) {
+    onProgress?.({ status: 'reading owner serial', progress: 1 });
+    try {
+      const serial = await readOwnerSerial(images);
+      if (serial !== undefined) parsed.ownerSerial = serial;
+    } catch {
+      /* the serial is a convenience; the review step lets a person type it */
+    }
+  }
   const confidence = Math.min(...pages.map((p) => Math.max(...p.map((x) => x.confidence))));
   return { parsed, confidence, pages: images.length, text: `${columnText}\n${sparseText}` };
 }

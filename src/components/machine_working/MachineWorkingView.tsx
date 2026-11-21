@@ -15,6 +15,8 @@ import {
   Layers,
   FileText,
   ArrowRight,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import {
@@ -29,11 +31,15 @@ import {
   ParsedImportRow,
 } from '../../utils/excelAndPdf';
 import { MachineWorkingLog } from '../../types';
+import { ShiftToggle, shiftTimes, type Shift } from '../common/ShiftToggle';
 
+import { DateInput } from '../common/DateInput';
+import { PeriodFilter, inPeriod, defaultPeriod, type PeriodState } from '../common/PeriodFilter';
 export const MachineWorkingView: React.FC = () => {
   const {
     currentUser,
     currentDate,
+    companySettings,
     machineWorkingLogs,
     machines,
     projects,
@@ -45,17 +51,62 @@ export const MachineWorkingView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMachine, setFilterMachine] = useState('all');
   const [filterProject, setFilterProject] = useState('all');
+  const [period, setPeriod] = useState<PeriodState>(defaultPeriod('month'));
 
   // Manual Log Entry Modal
+  const shiftHours = companySettings.standardShiftHours || 10;
+  const activeOperators = employees.filter((e) => e.employeeType === 'operator' && e.status === 'active');
   const [showAddModal, setShowAddModal] = useState(false);
   const [date, setDate] = useState(currentDate);
-  const [machineId, setMachineId] = useState(machines[0]?.assetId || 'CR-001');
-  const [projectId, setProjectId] = useState(projects[0]?.id || 'PRJ-001');
-  const [operatorId, setOperatorId] = useState('OP-001');
+  const [machineId, setMachineId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [operatorId, setOperatorId] = useState('');
+  const [shift, setShift] = useState<Shift>('day');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('18:00');
-  const [idleMinutes, setIdleMinutes] = useState(60);
   const [remarks, setRemarks] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const shiftTimesFor = (kind: Exclude<Shift, 'custom'>) => shiftTimes(kind, shiftHours);
+
+  const pickShift = (kind: Shift) => {
+    setShift(kind);
+    if (kind !== 'custom') {
+      const t = shiftTimesFor(kind);
+      setStartTime(t.start);
+      setEndTime(t.end);
+    }
+  };
+
+  /** Choosing an operator pre-fills their usual machine and project. */
+  const pickOperator = (id: string) => {
+    setOperatorId(id);
+    const op = employees.find((e) => e.id === id);
+    if (op?.currentMachineId) setMachineId(op.currentMachineId);
+    if (op?.currentProjectId) setProjectId(op.currentProjectId);
+  };
+
+  /** Choosing a machine pre-fills the project it is deployed on. */
+  const pickMachine = (id: string) => {
+    setMachineId(id);
+    const m = machines.find((x) => x.id === id);
+    if (m?.currentProjectId) setProjectId(m.currentProjectId);
+  };
+
+  const openAddModal = () => {
+    const t = shiftTimesFor('day');
+    setDate(currentDate);
+    setMachineId(machines[0]?.id ?? '');
+    setProjectId(projects[0]?.id ?? '');
+    setOperatorId('');
+    setShift('day');
+    setStartTime(t.start);
+    setEndTime(t.end);
+    setRemarks('');
+    setFormError('');
+    setShowAddModal(true);
+  };
 
   // Excel Import Modal
   const [showImportModal, setShowImportModal] = useState(false);
@@ -63,25 +114,35 @@ export const MachineWorkingView: React.FC = () => {
   const [parsedRows, setParsedRows] = useState<ParsedImportRow[]>([]);
   const [invalidRows, setInvalidRows] = useState<ParsedImportRow[]>([]);
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
+  const [importError, setImportError] = useState('');
 
-  const durationPreview = calculateWorkingAndOt(startTime, endTime, idleMinutes, 1440);
+  const durationPreview = calculateWorkingAndOt(startTime, endTime, 0, 1440);
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    addMachineWorkingLog({
-      date,
-      machineId,
-      projectId,
-      operatorId,
-      startTime,
-      endTime,
-      idleMinutes: Number(idleMinutes) || 0,
-      remarks,
-      enteredBy: currentUser.name,
-      approvalStatus: 'approved',
-    });
-    setShowAddModal(false);
-    setRemarks('');
+    if (saving) return;
+    if (!machineId || !projectId) {
+      setFormError('Choose a machine and a project.');
+      return;
+    }
+    setSaving(true);
+    setFormError('');
+    try {
+      await addMachineWorkingLog({
+        date,
+        machineId,
+        projectId,
+        operatorId: operatorId || undefined,
+        startTime,
+        endTime,
+        remarks,
+      });
+      setShowAddModal(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not save the log.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,21 +164,23 @@ export const MachineWorkingView: React.FC = () => {
 
   const handleConfirmImport = async () => {
     if (parsedRows.length === 0) return;
+    setImportError('');
+    // The sheet uses readable codes (CR-001, PRJ-001, OP-001 or an operator's name); the API needs ids.
     const formatted: Omit<MachineWorkingLog, 'id'>[] = parsedRows.map((r) => {
-      const { netWorkingMinutes, netWorkingHours } = calculateWorkingAndOt(
-        r.startTime,
-        r.endTime,
-        r.idleMinutes,
-        1440
+      const { netWorkingMinutes, netWorkingHours } = calculateWorkingAndOt(r.startTime, r.endTime, 0, 1440);
+      const machine = machines.find((m) => m.assetId.toUpperCase() === r.machineId || m.id === r.machineId);
+      const project = projects.find((p) => (p.projectId || '').toUpperCase() === r.projectId || p.id === r.projectId);
+      const operator = employees.find(
+        (e) => (e.employeeId || '').toUpperCase() === r.operatorId || (e.fullName || '').trim().toUpperCase() === r.operatorId || e.id === r.operatorId,
       );
       return {
         date: r.date,
-        machineId: r.machineId,
-        projectId: r.projectId,
-        operatorId: r.operatorId,
+        machineId: machine?.id ?? r.machineId,
+        projectId: project?.id ?? r.projectId,
+        operatorId: operator?.id ?? '',
         startTime: r.startTime,
         endTime: r.endTime,
-        idleMinutes: r.idleMinutes,
+        idleMinutes: 0,
         workingMinutes: netWorkingMinutes,
         workingHours: netWorkingHours,
         remarks: r.remarks,
@@ -126,28 +189,64 @@ export const MachineWorkingView: React.FC = () => {
       };
     });
 
-    const count = await importMachineWorkingLogs(formatted);
-    setImportSuccessCount(count);
-    setParsedRows([]);
-    setInvalidRows([]);
-    setTimeout(() => {
-      setShowImportModal(false);
-      setImportSuccessCount(null);
-    }, 1500);
+    try {
+      const count = await importMachineWorkingLogs(formatted);
+      setImportSuccessCount(count);
+      setParsedRows([]);
+      setInvalidRows([]);
+      setTimeout(() => {
+        setShowImportModal(false);
+        setImportSuccessCount(null);
+      }, 1500);
+    } catch (err) {
+      setParsedRows([]);
+      setImportError(err instanceof Error ? err.message : 'Import failed.');
+    }
   };
+
+  const operatorName = (ref: string) =>
+    employees.find((e) => e.id === ref || e.employeeId === ref)?.fullName ?? '';
 
   const filteredLogs = machineWorkingLogs.filter((log) => {
     const matchMachine = filterMachine === 'all' || log.machineId === filterMachine;
     const matchProject = filterProject === 'all' || log.projectId === filterProject;
+    const matchPeriod = inPeriod(log.date, period, currentDate);
+    const term = searchTerm.toLowerCase();
+    const code = machines.find((m) => m.id === log.machineId)?.assetId ?? '';
     const matchSearch =
-      !searchTerm ||
-      log.machineId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.operatorId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (log.remarks && log.remarks.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchMachine && matchProject && matchSearch;
+      !term ||
+      code.toLowerCase().includes(term) ||
+      operatorName(log.operatorId).toLowerCase().includes(term) ||
+      (log.remarks && log.remarks.toLowerCase().includes(term));
+    return matchMachine && matchProject && matchPeriod && matchSearch;
   });
 
-  const totalWorkingHours = filteredLogs.reduce((s, l) => s + l.workingHours, 0);
+  const totalWorkingHours = Math.round(filteredLogs.reduce((s, l) => s + l.workingHours, 0) * 100) / 100;
+
+  // Machine-wise totals: one row per crane across the filtered logs.
+  const machineSummary = Array.from(
+    filteredLogs.reduce((map, l) => {
+      const row = map.get(l.machineId) ?? { hours: 0, days: new Set<string>(), sessions: 0 };
+      row.hours += l.workingHours;
+      row.days.add(l.date);
+      row.sessions += 1;
+      map.set(l.machineId, row);
+      return map;
+    }, new Map<string, { hours: number; days: Set<string>; sessions: number }>()),
+  )
+    .map(([id, v]) => ({
+      id,
+      machine: machines.find((m) => m.id === id),
+      hours: Math.round(v.hours * 100) / 100,
+      days: v.days.size,
+      sessions: v.sessions,
+    }))
+    .sort((a, b) => b.hours - a.hours);
+
+  const shiftOf = (start: string) => {
+    const h = parseInt(start.split(':')[0] ?? '8', 10);
+    return h >= 18 || h < 5 ? 'night' : 'day';
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -158,13 +257,13 @@ export const MachineWorkingView: React.FC = () => {
             Machine Operating Hours Register
           </h2>
           <p className="text-xs sm:text-sm text-ink-500 mt-0.5">
-            Log machine engine sessions, deduct idle hours, analyze crane fleet utilization, and import Excel sheets.
+            Log machine working sessions by day or night shift, see total hours machine-wise, and import Excel sheets.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            onClick={() => setShowImportModal(true)}
+            onClick={() => { setImportError(''); setShowImportModal(true); }}
             className="btn btn-secondary"
           >
             <UploadCloud className="w-4 h-4" />
@@ -172,7 +271,7 @@ export const MachineWorkingView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => exportMachineWorkingLogs(filteredLogs, machines, projects)}
+            onClick={() => exportMachineWorkingLogs(filteredLogs, machines, projects, employees)}
             className="btn btn-secondary"
           >
             <Download className="w-4 h-4 text-ink-600" />
@@ -180,7 +279,7 @@ export const MachineWorkingView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddModal}
             className="btn btn-primary"
           >
             <Plus className="w-4 h-4" />
@@ -220,6 +319,45 @@ export const MachineWorkingView: React.FC = () => {
         </div>
       </div>
 
+      {/* Machine-wise totals */}
+      {machineSummary.length > 0 && (
+        <div className="table-card">
+          <div className="border-b border-line px-4 py-3">
+            <h3 className="text-sm font-semibold text-ink-900">Machine-wise hours</h3>
+            <p className="text-[11px] text-ink-500">Total operating hours per crane for the logs shown below.</p>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Machine / Crane</th>
+                  <th className="text-center">Days worked</th>
+                  <th className="text-center">Sessions</th>
+                  <th className="text-right">Total hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {machineSummary.map((m) => (
+                  <tr key={m.id}>
+                    <td className="font-bold text-ink-900">
+                      <div>{m.machine?.assetId ?? 'Unknown machine'}</div>
+                      <div className="text-[10px] font-normal text-ink-500">
+                        {m.machine?.make} {m.machine?.model}
+                      </div>
+                    </td>
+                    <td className="text-center">{m.days}</td>
+                    <td className="text-center">{m.sessions}</td>
+                    <td className="text-right text-sm font-bold text-ink-900">{m.hours} hrs</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <PeriodFilter value={period} onChange={setPeriod} />
+
       {/* Filters Bar */}
       <div className="filter-bar filter-bar--split">
         <div className="flex flex-wrap items-center gap-3">
@@ -231,7 +369,7 @@ export const MachineWorkingView: React.FC = () => {
               <SelectContent>
                 <SelectItem value="all">All Machines</SelectItem>
                 {machines.map((m) => (
-                  <SelectItem key={m.id} value={m.assetId}>
+                  <SelectItem key={m.id} value={m.id}>
                     {m.assetId} – {m.model}
                   </SelectItem>
                 ))}
@@ -260,7 +398,7 @@ export const MachineWorkingView: React.FC = () => {
           <Search className="w-4 h-4" />
           <input
             type="text"
-            placeholder="Search crane or remarks..."
+            placeholder="Search crane, operator or remarks..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="form-input pl-9"
@@ -279,8 +417,7 @@ export const MachineWorkingView: React.FC = () => {
                 <th>Project Site</th>
                 <th>Operator</th>
                 <th>Operating Timing</th>
-                <th className="text-center">Idle Duration</th>
-                <th className="text-center">Net Working Hours</th>
+                <th className="text-center">Total Hours</th>
                 <th>Duty Remarks</th>
                 <th className="text-right">Approval</th>
               </tr>
@@ -295,7 +432,7 @@ export const MachineWorkingView: React.FC = () => {
                       {formatDateDDMMYYYY(log.date)}
                     </td>
                     <td className="font-bold text-ink-900">
-                      <div>{log.machineId}</div>
+                      <div>{mac?.assetId ?? 'Unknown machine'}</div>
                       <div className="text-[10px] text-ink-500 font-normal">
                         {mac?.make} {mac?.model}
                       </div>
@@ -304,19 +441,22 @@ export const MachineWorkingView: React.FC = () => {
                       {prj?.name || log.projectId}
                     </td>
                     <td className="text-ink-700">
-                      {log.operatorId}
+                      {operatorName(log.operatorId) || '-'}
                     </td>
                     <td className="text-ink-600">
-                      {log.startTime}{' '}
+                      <span
+                        className="mr-1.5 inline-flex align-middle text-ink-400"
+                        title={shiftOf(log.startTime) === 'night' ? 'Night shift' : 'Day shift'}
+                      >
+                        {shiftOf(log.startTime) === 'night' ? <Moon size={13} /> : <Sun size={13} />}
+                      </span>
+                      {log.startTime.slice(0, 5)}{' '}
                       <ArrowRight
                         size={12}
                         className="inline-block align-middle text-ink-400"
                         aria-hidden="true"
                       />{' '}
-                      {log.endTime}
-                    </td>
-                    <td className="text-center text-warning-700">
-                      {log.idleMinutes} mins
+                      {log.endTime.slice(0, 5)}
                     </td>
                     <td className="text-center font-bold text-ink-900 text-sm">
                       {log.workingHours} hrs
@@ -353,12 +493,16 @@ export const MachineWorkingView: React.FC = () => {
             </div>
 
             <form onSubmit={handleManualSubmit} className="p-6 space-y-4 text-xs">
+              {formError && (
+                <div className="alert-banner" role="alert">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="text-xs">{formError}</span>
+                </div>
+              )}
               <div className="stat-grid">
                 <div>
                   <label className="form-label">Date:</label>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     className="form-input"
@@ -367,13 +511,13 @@ export const MachineWorkingView: React.FC = () => {
 
                 <div>
                   <label className="form-label">Machine / Crane:</label>
-                  <Select value={machineId} onValueChange={setMachineId}>
+                  <Select value={machineId} onValueChange={pickMachine}>
                     <SelectTrigger className="form-input">
                       <SelectValue placeholder="Select machine" />
                     </SelectTrigger>
                     <SelectContent>
                       {machines.map((m) => (
-                        <SelectItem key={m.id} value={m.assetId}>
+                        <SelectItem key={m.id} value={m.id}>
                           {m.assetId} – {m.model} ({m.tonnageCapacity}T)
                         </SelectItem>
                       ))}
@@ -400,25 +544,39 @@ export const MachineWorkingView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="form-label">Operator ID:</label>
-                  <input
-                    type="text"
-                    required
-                    value={operatorId}
-                    onChange={(e) => setOperatorId(e.target.value)}
-                    className="form-input"
-                  />
+                  <label className="form-label">Operator:</label>
+                  <Select value={operatorId || '__none__'} onValueChange={(v) => pickOperator(v === '__none__' ? '' : v)}>
+                    <SelectTrigger className="form-input">
+                      <SelectValue placeholder="Select operator" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No operator</SelectItem>
+                      {activeOperators.map((o) => (
+                        <SelectItem key={o.id} value={o.id}>
+                          {o.fullName} ({o.employeeId})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div>
+                <span className="form-label">Shift:</span>
+                <ShiftToggle value={shift} onChange={pickShift} />
+                <p className="mt-1 text-[11px] text-ink-500">
+                  Day starts 08:00, night starts 20:00, each {shiftHours} hours (set in Company Settings). Edit the times to override.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="form-label">Start Time:</label>
                   <input
                     type="time"
                     required
                     value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    onChange={(e) => { setStartTime(e.target.value); setShift('custom'); }}
                     className="form-input"
                   />
                 </div>
@@ -429,17 +587,7 @@ export const MachineWorkingView: React.FC = () => {
                     type="time"
                     required
                     value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="form-input"
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">Idle Minutes:</label>
-                  <input
-                    type="number"
-                    value={idleMinutes}
-                    onChange={(e) => setIdleMinutes(parseInt(e.target.value, 10) || 0)}
+                    onChange={(e) => { setEndTime(e.target.value); setShift('custom'); }}
                     className="form-input"
                   />
                 </div>
@@ -447,7 +595,7 @@ export const MachineWorkingView: React.FC = () => {
 
               {/* Calculation Preview */}
               <div className="notice notice--warning justify-between">
-                <span>Calculated Net Operating Hours:</span>
+                <span>Total Hours:</span>
                 <strong className="text-base">{durationPreview.netWorkingHours} Hours</strong>
               </div>
 
@@ -472,9 +620,10 @@ export const MachineWorkingView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={saving}
                   className="btn btn-primary"
                 >
-                  Save Log
+                  {saving ? 'Saving…' : 'Save Log'}
                 </button>
               </div>
             </form>
@@ -509,7 +658,7 @@ export const MachineWorkingView: React.FC = () => {
                 <div>
                   <h4 className="font-semibold text-ink-900">Step 1: Download Standard Template</h4>
                   <p className="text-ink-500 text-[11px] mt-0.5">
-                    Pre-formatted XLSX sheet with Date, Machine ID, Project ID, Operator ID, Start/End times.
+                    Pre-formatted XLSX sheet with Date, Machine ID, Project ID, Operator (ID or name), Start/End times.
                   </p>
                 </div>
                 <button
@@ -542,6 +691,13 @@ export const MachineWorkingView: React.FC = () => {
               {importing && (
                 <div className="p-4 text-center font-semibold text-ink-700">
                   Validating records across database...
+                </div>
+              )}
+
+              {importError && (
+                <div className="alert-banner" role="alert">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="text-xs">{importError}</span>
                 </div>
               )}
 
@@ -606,11 +762,11 @@ export const MachineWorkingView: React.FC = () => {
                           {parsedRows.map((row) => (
                             <tr key={row.rowNumber}>
                               <td>#{row.rowNumber}</td>
-                              <td>{row.date}</td>
+                              <td>{formatDateDDMMYYYY(row.date)}</td>
                               <td className="font-bold text-ink-900">{row.machineId}</td>
                               <td>{row.projectId}</td>
                               <td className="font-bold text-success-700">
-                                {calculateWorkingAndOt(row.startTime, row.endTime, row.idleMinutes, 1440).netWorkingHours}h
+                                {calculateWorkingAndOt(row.startTime, row.endTime, 0, 1440).netWorkingHours}h
                               </td>
                               <td className="text-ink-600 truncate max-w-xs">{row.remarks}</td>
                             </tr>

@@ -2,7 +2,7 @@
  * API-backed implementation of the Skyhook store.
  * Drop-in replacement for ./store.tsx — same context interface, server as source of truth.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CompanySettings, User, UserRole, Employee, Project, AttendanceRecord, AttendanceStatus,
   SalaryAdvance, PayrollRun, ProjectExpense, MachineAsset, MachineEmiLoan, MachineWorkingLog,
@@ -116,7 +116,7 @@ interface SkyhookStoreContextType {
   approveAttendanceRecord: (id: string) => Promise<void>;
   rejectAttendanceRecord: (id: string, reason?: string) => Promise<void>;
   markOperatorAttendanceQuick: (params: any) => Promise<AttendanceRecord>;
-  markAllOperatorsPresent: (params: { date: string; projectId?: string }) => Promise<AttendanceRecord[]>;
+  markAllOperatorsPresent: (params: { date: string; projectId?: string }) => Promise<BulkMarkResult>;
   addOrUpdateOvertimeHours: (params: any) => Promise<AttendanceRecord>;
   advances: SalaryAdvance[];
   addAdvance: (adv: any) => Promise<SalaryAdvance>;
@@ -159,8 +159,59 @@ interface SkyhookStoreContextType {
   resetToDemoData: () => Promise<void>;
 }
 
+/** Outcome of "mark all present": operators already marked that day are left alone. */
+export interface BulkMarkResult {
+  created: number;
+  skipped: number;
+  failed: { name: string; reason: string }[];
+}
+
 const Ctx = createContext<SkyhookStoreContextType | null>(null);
-const DEMO_DATE = '2026-10-24';
+
+/** Today in the user's own timezone as yyyy-mm-dd (never UTC, which is a day behind in India early morning). */
+export function todayISO(now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** The API only accepts real UUIDs; anything else (e.g. a display code like CR-001) must be dropped, not sent. */
+const asUuid = (v?: string | null): string | undefined => (v && UUID_RE.test(v) ? v : undefined);
+const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'Request failed');
+
+/** Resolve the operator / project / machine ids for an attendance write, or explain what is missing. */
+function resolveAttendanceTarget(
+  employees: Employee[], projects: Project[], operatorRef: string, projectId?: string, machineId?: string,
+) {
+  const emp = employees.find((e) => e.id === operatorRef || e.employeeId === operatorRef);
+  const operatorId = asUuid(emp?.id ?? operatorRef);
+  if (!operatorId) throw new Error('Operator not found. Reload the page and try again.');
+  const project = asUuid(projectId) ?? asUuid(emp?.currentProjectId) ?? asUuid(projects[0]?.id);
+  if (!project) {
+    throw new Error(`No project to book attendance against for ${emp?.fullName ?? 'this operator'}. Create a project first.`);
+  }
+  return { emp, operatorId, projectId: project, machineId: asUuid(machineId) ?? asUuid(emp?.currentMachineId) };
+}
+
+/** Request body for a machine working log. The API needs real ids, never display codes like CR-001. */
+function workingLogBody(log: any) {
+  const machineId = asUuid(log.machineId);
+  const projectId = asUuid(log.projectId);
+  if (!machineId) throw new Error('Choose a machine from the list.');
+  if (!projectId) throw new Error('Choose a project from the list.');
+  return {
+    date: log.date, machineId, projectId, operatorId: asUuid(log.operatorId),
+    startTime: log.startTime, endTime: log.endTime,
+    idleMinutes: Math.max(0, Math.round(Number(log.idleMinutes) || 0)), remarks: log.remarks || undefined,
+  };
+}
+
+function assertNotLocked(attendance: AttendanceRecord[], operatorId: string, date: string, name?: string) {
+  const existing = attendance.find((a) => a.operatorId === operatorId && a.date === date);
+  if (existing?.approvalStatus === 'approved') {
+    throw new Error(`${name ?? 'This operator'}'s attendance for ${date} is already approved and locked.`);
+  }
+}
 const fallbackSettings: CompanySettings = {
   name: 'SKYHOOK', tagline: '', logoUrl: '', address: '', city: '', state: '', pincode: '',
   phone: '', email: '', gstNumber: '', authorizedSignatory: '', signatoryTitle: '',
@@ -220,7 +271,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       safeGet<{ items: any[] }>('/employees', { items: [] }),
       safeGet<{ items: any[] }>('/machines', { items: [] }),
       safeGet<{ items: any[] }>('/emi-loans', { items: [] }),
-      safeGet<{ items: any[] }>('/attendance', { items: [] }),
+      safeGet<{ items: any[] }>('/attendance?limit=1000', { items: [] }),
       safeGet<{ items: any[] }>('/advances', { items: [] }),
       safeGet<{ items: any[] }>('/payroll/runs', { items: [] }),
       safeGet<{ items: any[] }>('/expenses', { items: [] }),
@@ -270,14 +321,37 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [loadAll]);
 
-  const refresh = useCallback(async () => { if (getToken()) await loadAll(); }, [loadAll]);
+  // Several actions refresh at once (e.g. an attendance write plus a payroll run). Running
+  // them in parallel lets an older response overwrite newer data, so overlapping calls are
+  // coalesced: one load at a time, plus one more load if anything asked while it was running.
+  const loading = useRef<Promise<void> | null>(null);
+  const rerun = useRef(false);
+  const refresh = useCallback(async () => {
+    if (!getToken()) return;
+    if (loading.current) {
+      rerun.current = true;
+      return loading.current;
+    }
+    const run = (async () => {
+      try {
+        do {
+          rerun.current = false;
+          await loadAll();
+        } while (rerun.current);
+      } finally {
+        loading.current = null;
+      }
+    })();
+    loading.current = run;
+    return run;
+  }, [loadAll]);
 
   const value = useMemo<SkyhookStoreContextType>(() => ({
     currentUser, isAuthenticated, availableUsers, companySettings,
     projects, employees, machines, emiLoans, attendance, advances, payrollRuns,
     expenses, machineWorkingLogs, auditLogs, notifications,
     payrollAdjustments, personalRecords, personalPinSet,
-    currentDate: DEMO_DATE,
+    currentDate: todayISO(),
 
     login: async (email, password) => {
       const r = await api.post<{ token: string }>('/auth/token', {
@@ -425,7 +499,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         pucIssueDate: m.pucIssueDate, pucExpiryDate: m.pucExpiryDate, pucIntervalDays: m.pucIntervalDays,
         fitnessCertificateNumber: m.fitnessCertificateNumber, lastFitnessDate: m.lastFitnessDate,
         nextFitnessDueDate: m.nextFitnessDueDate, fitnessIntervalDays: m.fitnessIntervalDays,
-        status: m.status, rcDetails: m.rcDetails,
+        status: m.status, rcDetails: m.rcDetails, insuranceStartDate: m.insuranceStartDate || undefined,
       });
       await refresh();
       return mapMachine(r);
@@ -449,8 +523,9 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     updateMachine: async (id, m) => {
       const payload: any = {};
       if (m.status) payload.status = m.status;
-      if (m.currentProjectId) payload.currentProjectId = m.currentProjectId;
-      if (m.assignedOperatorId) payload.assignedOperatorId = m.assignedOperatorId;
+      // An explicit empty value means "unassign" (it used to be ignored, so a machine could never leave a site).
+      if ('currentProjectId' in m) payload.currentProjectId = m.currentProjectId || null;
+      if ('assignedOperatorId' in m) payload.assignedOperatorId = m.assignedOperatorId || null;
       // Service interval — including 'hours' — is now persisted server-side.
       if (m.serviceFrequencyUnit) payload.serviceFrequencyUnit = m.serviceFrequencyUnit;
       if (m.serviceFrequencyValue !== undefined) payload.serviceFrequencyValue = m.serviceFrequencyValue;
@@ -463,6 +538,15 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (m.serialNumber !== undefined) payload.serialNumber = m.serialNumber || null;
       if (m.tonnageCapacity !== undefined) payload.tonnageCapacity = m.tonnageCapacity;
       if (m.rcDetails) payload.rcDetails = m.rcDetails;
+      // Servicing and statutory details shown in the Edit form.
+      if (m.purchaseCost !== undefined) payload.purchaseCostPaise = rupeesToPaise(m.purchaseCost);
+      for (const key of [
+        'lastServiceDate', 'nextServiceDueDate', 'insuranceProvider', 'insurancePolicyNumber', 'insuranceStartDate',
+        'insuranceExpiryDate', 'insuranceIntervalDays', 'pucNumber', 'pucIssueDate', 'pucExpiryDate', 'pucIntervalDays',
+        'fitnessCertificateNumber', 'lastFitnessDate', 'nextFitnessDueDate', 'fitnessIntervalDays',
+      ] as const) {
+        if (m[key] !== undefined) payload[key] = m[key] === '' ? null : m[key];
+      }
       await api.patch(`/machines/${id}`, payload);
       await refresh();
     },
@@ -483,19 +567,19 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
     renewMachineInsurance: async (machineId, newExpiry, provider, policyNo, renewalDate) => {
       await api.post(`/machines/${machineId}/renewals`, {
-        category: 'insurance', newExpiry, provider, referenceNumber: policyNo, renewalDate: renewalDate ?? DEMO_DATE,
+        category: 'insurance', newExpiry, provider, referenceNumber: policyNo, renewalDate: renewalDate ?? todayISO(),
       });
       await refresh();
     },
     renewMachinePuc: async (machineId, newExpiry, pucNo, renewalDate) => {
       await api.post(`/machines/${machineId}/renewals`, {
-        category: 'puc', newExpiry, referenceNumber: pucNo, renewalDate: renewalDate ?? DEMO_DATE,
+        category: 'puc', newExpiry, referenceNumber: pucNo, renewalDate: renewalDate ?? todayISO(),
       });
       await refresh();
     },
     renewMachineFitness: async (machineId, newExpiry, fitNo, testPassedDate) => {
       await api.post(`/machines/${machineId}/renewals`, {
-        category: 'fitness', newExpiry, referenceNumber: fitNo, renewalDate: testPassedDate ?? DEMO_DATE,
+        category: 'fitness', newExpiry, referenceNumber: fitNo, renewalDate: testPassedDate ?? todayISO(),
       });
       await refresh();
     },
@@ -520,70 +604,98 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
 
     addAttendanceRecord: async (record) => {
+      const t = resolveAttendanceTarget(employees, projects, record.operatorId, record.projectId, record.machineId);
+      assertNotLocked(attendance, t.operatorId, record.date, t.emp?.fullName);
       const r = await api.post<any>('/attendance', {
-        operatorId: record.operatorId, date: record.date, projectId: record.projectId,
-        machineId: record.machineId, startTime: record.startTime, endTime: record.endTime,
-        unpaidBreakMinutes: record.unpaidBreakMinutes, status: record.status, remarks: record.remarks,
+        operatorId: t.operatorId, date: record.date, projectId: t.projectId, machineId: t.machineId,
+        startTime: record.startTime, endTime: record.endTime,
+        unpaidBreakMinutes: Math.max(0, Math.round(Number(record.unpaidBreakMinutes) || 0)),
+        status: record.status, remarks: record.remarks || undefined,
       });
       await refresh();
       return mapAttendance(r);
     },
     bulkAddAttendance: async (records) => {
-      for (const r of records) {
-        await api.post('/attendance', {
-          operatorId: r.operatorId, date: r.date, projectId: r.projectId, machineId: r.machineId,
-          startTime: r.startTime || '08:00', endTime: r.endTime || '18:00',
-          unpaidBreakMinutes: r.unpaidBreakMinutes, status: r.status, remarks: r.remarks,
-        });
+      try {
+        for (const rec of records) {
+          const t = resolveAttendanceTarget(employees, projects, rec.operatorId, rec.projectId, rec.machineId);
+          await api.post('/attendance', {
+            operatorId: t.operatorId, date: rec.date, projectId: t.projectId, machineId: t.machineId,
+            startTime: rec.startTime || '08:00', endTime: rec.endTime || '18:00',
+            unpaidBreakMinutes: Math.max(0, Math.round(Number(rec.unpaidBreakMinutes) || 0)),
+            status: rec.status, remarks: rec.remarks || undefined,
+          });
+        }
+      } finally {
+        await refresh();
       }
-      await refresh();
     },
     approveAttendanceRecord: async (id) => { await api.post(`/attendance/${id}/approve`, {}); await refresh(); },
     rejectAttendanceRecord: async (id, reason) => { await api.post(`/attendance/${id}/reject`, { reason: reason ?? 'Discrepancy in shift hours' }); await refresh(); },
     markOperatorAttendanceQuick: async (params) => {
-      const emp = employees.find((e) => e.id === params.operatorId || e.employeeId === params.operatorId);
-      const projectId = params.projectId ?? emp?.currentProjectId ?? projects[0]?.id ?? '';
-      const hours = params.status === 'present' ? companySettings.standardShiftHours : params.status === 'half_day' ? 5 : 0;
-      const overtime = params.overtimeHours ?? 0;
+      const t = resolveAttendanceTarget(employees, projects, params.operatorId, params.projectId, params.machineId);
+      assertNotLocked(attendance, t.operatorId, params.date, t.emp?.fullName);
+      const shift = companySettings.standardShiftHours || 10;
+      const overtime = Math.max(0, Number(params.overtimeHours) || 0);
+      // The server derives hours and overtime from the shift times, so encode them here.
+      const worked = params.status === 'present' ? shift + overtime : params.status === 'half_day' ? shift / 2 + overtime : 0;
       const r = await api.post<any>('/attendance', {
-        operatorId: emp?.id ?? params.operatorId, date: params.date, projectId,
-        machineId: params.machineId ?? emp?.currentMachineId,
-        startTime: '08:00',
-        endTime: params.status === 'present' ? withExtraHours('18:00', overtime) : params.status === 'half_day' ? withExtraHours('13:00', overtime) : '08:00',
+        operatorId: t.operatorId, date: params.date, projectId: t.projectId, machineId: t.machineId,
+        startTime: '08:00', endTime: withExtraHours('08:00', worked),
         status: params.status, remarks: params.remarks ?? (overtime ? `${overtime}h OT` : 'Quick attendance'),
       });
-      void hours;
       await refresh();
       return mapAttendance(r);
     },
     markAllOperatorsPresent: async (params) => {
       const ops = employees.filter((e) => e.employeeType === 'operator' && e.status === 'active');
-      const created: AttendanceRecord[] = [];
-      for (const op of ops) {
-        const r = await api.post<any>('/attendance', {
-          operatorId: op.id, date: params.date, projectId: params.projectId ?? op.currentProjectId ?? projects[0]?.id ?? '',
-          machineId: op.currentMachineId, startTime: '08:00', endTime: '18:00', status: 'present',
-          remarks: 'Marked present via Quick Attendance bulk action',
-        });
-        created.push(mapAttendance(r));
+      const shift = companySettings.standardShiftHours || 10;
+      const result: BulkMarkResult = { created: 0, skipped: 0, failed: [] };
+      try {
+        for (const op of ops) {
+          // Never overwrite a day that is already marked (absent, half day, approved...).
+          if (attendance.some((a) => a.operatorId === op.id && a.date === params.date)) {
+            result.skipped += 1;
+            continue;
+          }
+          try {
+            const t = resolveAttendanceTarget(employees, projects, op.id, params.projectId, undefined);
+            await api.post('/attendance', {
+              operatorId: t.operatorId, date: params.date, projectId: t.projectId, machineId: t.machineId,
+              startTime: '08:00', endTime: withExtraHours('08:00', shift), status: 'present',
+              remarks: 'Marked present via Quick Attendance bulk action',
+            });
+            result.created += 1;
+          } catch (e) {
+            result.failed.push({ name: op.fullName, reason: errorText(e) });
+          }
+        }
+      } finally {
+        await refresh();
       }
-      await refresh();
-      return created;
+      return result;
     },
     addOrUpdateOvertimeHours: async (params) => {
-      const emp = employees.find((e) => e.id === params.operatorId || e.employeeId === params.operatorId);
-      const existing = attendance.find((a) => (a.operatorId === emp?.id || a.operatorId === params.operatorId) && a.date === params.date);
+      const t = resolveAttendanceTarget(employees, projects, params.operatorId, params.projectId, undefined);
+      assertNotLocked(attendance, t.operatorId, params.date, t.emp?.fullName);
+      const existing = attendance.find((a) => a.operatorId === t.operatorId && a.date === params.date);
+      const shift = companySettings.standardShiftHours || 10;
+      const overtime = Math.max(0, Number(params.overtimeHours) || 0);
+      const keep = existing && (existing.status === 'present' || existing.status === 'half_day');
+      const status = keep ? existing.status : overtime > 0 || !existing ? 'present' : existing.status;
+      const base = status === 'present' ? shift : status === 'half_day' ? shift / 2 : 0;
+      const breakMin = existing?.unpaidBreakMinutes ?? 0;
+      const startTime = existing?.startTime || '08:00';
       const r = await api.post<any>('/attendance', {
-        operatorId: emp?.id ?? params.operatorId, date: params.date,
-        projectId: params.projectId ?? existing?.projectId ?? emp?.currentProjectId ?? projects[0]?.id ?? '',
-        machineId: existing?.machineId ?? emp?.currentMachineId,
-        startTime: existing?.startTime || '08:00',
+        operatorId: t.operatorId, date: params.date, projectId: t.projectId,
+        machineId: asUuid(existing?.machineId) ?? t.machineId,
+        startTime,
         // Overtime is encoded in the end time — the server is the only authority on OT hours.
-        endTime: withExtraHours(existing?.status === 'half_day' ? '13:00' : '18:00', params.overtimeHours),
-        status: existing?.status === 'absent' ? 'present' : existing?.status ?? 'present',
-        remarks: params.remarks ?? `${params.overtimeHours}h OT logged`,
+        endTime: withExtraHours(startTime, base + overtime + breakMin / 60),
+        unpaidBreakMinutes: breakMin,
+        status,
+        remarks: params.remarks ?? `${overtime}h OT logged`,
       });
-      void params.appliedOtRate;
       await refresh();
       return mapAttendance(r);
     },
@@ -623,24 +735,30 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     approveExpense: async (id) => { await api.post(`/expenses/${id}/approve`, {}); await refresh(); },
 
     addMachineWorkingLog: async (log) => {
-      const r = await api.post<any>('/machine-working-logs', {
-        date: log.date, machineId: log.machineId, projectId: log.projectId, operatorId: log.operatorId,
-        startTime: log.startTime, endTime: log.endTime, idleMinutes: log.idleMinutes, remarks: log.remarks,
-      });
+      const r = await api.post<any>('/machine-working-logs', workingLogBody(log));
       await refresh();
       return mapWorkingLog(r);
     },
     importMachineWorkingLogs: async (logs) => {
       let created = 0;
-      for (const log of logs) {
-        await api.post('/machine-working-logs', {
-          date: log.date, machineId: log.machineId, projectId: log.projectId,
-          operatorId: log.operatorId, startTime: log.startTime, endTime: log.endTime,
-          idleMinutes: log.idleMinutes, remarks: log.remarks,
-        });
-        created += 1;
+      const failed: string[] = [];
+      try {
+        for (const [i, log] of logs.entries()) {
+          try {
+            await api.post('/machine-working-logs', workingLogBody(log));
+            created += 1;
+          } catch (e) {
+            failed.push(`row ${i + 1}: ${errorText(e)}`);
+          }
+        }
+      } finally {
+        await refresh();
       }
-      await refresh();
+      if (failed.length) {
+        throw new Error(
+          `${created} imported, ${failed.length} failed (${failed.slice(0, 3).join('; ')}${failed.length > 3 ? '; ...' : ''})`,
+        );
+      }
       return created;
     },
 
@@ -802,7 +920,7 @@ type AlertSeed = {
 function buildReminderAlerts(seeds: AlertSeed[], defaultLead: number): ReminderAlertItem[] {
   const alerts: ReminderAlertItem[] = [];
   for (const s of seeds) {
-    const ev = evaluateReminderStatus(s.dueDate ?? '', s.lead || defaultLead, DEMO_DATE);
+    const ev = evaluateReminderStatus(s.dueDate ?? '', s.lead || defaultLead, todayISO());
     if (ev.status === 'none') continue;
     alerts.push({
       id: s.id, category: s.category, categoryHeading: s.heading, title: s.title, subtitle: s.subtitle,

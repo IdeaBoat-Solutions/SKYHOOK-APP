@@ -118,7 +118,9 @@ function idFromPath(req: Request): string {
 
 /* ------------------------ calculations / helpers ----------------------- */
 function businessDate(): string {
-  return config.DEMO_DATE ?? new Date().toISOString().split('T')[0]!;
+  // Today in India (en-CA formats as yyyy-mm-dd). The old DEMO_DATE override is ignored so a
+  // leftover secret can never pin reminders to a past date.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -293,9 +295,9 @@ export const machinesRoutes: Route[] = [
             last_service_date,next_service_due_date,insurance_provider,insurance_policy_number,
             insurance_expiry_date,insurance_interval_days,puc_number,puc_issue_date,puc_expiry_date,
             puc_interval_days,fitness_certificate_number,last_fitness_date,next_fitness_due_date,
-            fitness_interval_days,status,created_by,service_reminder_lead_hours,rc_details)
+            fitness_interval_days,status,created_by,service_reminder_lead_hours,rc_details,insurance_start_date)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13::date,$14::date,$15,$16,$17::date,$18,
-             $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29,$30::jsonb) RETURNING *`,
+             $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29,$30::jsonb,$31::date) RETURNING *`,
           [auth.tenantId, code, machineType, make, model, registrationNumber, serialNumber ?? null,
             tonnageCapacity ?? null, purchaseDate ?? null, purchaseCostPaise ?? null,
             serviceFrequencyValue, serviceFrequencyUnit, lastServiceDate ?? null,
@@ -303,7 +305,7 @@ export const machinesRoutes: Route[] = [
             insuranceProvider ?? null, insurancePolicyNumber ?? null, insuranceExpiryDate ?? null, insuranceIntervalDays,
             pucNumber ?? null, pucIssueDate ?? null, pucExpiryDate ?? null, pucIntervalDays,
             fitnessCertificateNumber ?? null, lastFitnessDate ?? null, nextFitnessDueDate ?? null,
-            fitnessIntervalDays, status, auth.userId, serviceReminderLeadHours, rcDetails ?? '{}'],
+            fitnessIntervalDays, status, auth.userId, serviceReminderLeadHours, rcDetails ?? '{}', strField(b, 'insuranceStartDate') ?? null],
         );
         await writeAudit(c, auth, { action: 'ASSET_CREATED', entity: 'MachineAsset', entityId: r.rows[0].id, reason: `Registered ${make} ${model}`, requestId: ctx.requestId });
         return r.rows[0];
@@ -339,8 +341,23 @@ export const machinesRoutes: Route[] = [
       if (raw?.serialNumber !== undefined) b.serialNumber = raw.serialNumber === null ? null : strField(raw, 'serialNumber');
       if (raw?.tonnageCapacity != null) b.tonnageCapacity = numField(raw, 'tonnageCapacity', { min: 0 });
       if (raw?.rcDetails != null) b.rcDetails = rcDetailsField(raw);
+      // Statutory and service details, so the Edit form really saves what it shows.
+      for (const key of ['insuranceProvider', 'insurancePolicyNumber', 'pucNumber', 'fitnessCertificateNumber'] as const) {
+        if (raw?.[key] !== undefined) b[key] = raw[key] === null || raw[key] === '' ? null : strField(raw, key);
+      }
+      for (const key of ['purchaseDate', 'lastServiceDate', 'nextServiceDueDate', 'insuranceStartDate', 'insuranceExpiryDate', 'pucIssueDate', 'pucExpiryDate', 'lastFitnessDate', 'nextFitnessDueDate'] as const) {
+        const v = raw?.[key];
+        if (v === undefined) continue;
+        if (v === null || v === '') b[key] = null;
+        else if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) b[key] = v;
+        else throw Errors.validation([{ field: key, message: 'Must be a date (YYYY-MM-DD)' }]);
+      }
+      for (const key of ['insuranceIntervalDays', 'pucIntervalDays', 'fitnessIntervalDays'] as const) {
+        if (raw?.[key] != null) b[key] = numField(raw, key, { integer: true, min: 1 });
+      }
+      if (raw?.purchaseCostPaise != null) b.purchaseCostPaise = numField(raw, 'purchaseCostPaise', { integer: true, min: 0 });
       const result = await withTenant(auth.tenantId, async (c) => {
-        const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
+        const map: Record<string, string> = { purchaseDate: 'purchase_date', purchaseCostPaise: 'purchase_cost_paise', lastServiceDate: 'last_service_date', nextServiceDueDate: 'next_service_due_date', insuranceProvider: 'insurance_provider', insurancePolicyNumber: 'insurance_policy_number', insuranceStartDate: 'insurance_start_date', insuranceExpiryDate: 'insurance_expiry_date', insuranceIntervalDays: 'insurance_interval_days', pucNumber: 'puc_number', pucIssueDate: 'puc_issue_date', pucExpiryDate: 'puc_expiry_date', pucIntervalDays: 'puc_interval_days', fitnessCertificateNumber: 'fitness_certificate_number', lastFitnessDate: 'last_fitness_date', nextFitnessDueDate: 'next_fitness_due_date', fitnessIntervalDays: 'fitness_interval_days', status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
         const entries = Object.entries(b).filter(([, v]) => v !== undefined);
         if (!entries.length) throw Errors.badRequest('No fields to update');
         // Fixed upstream off-by-one: values occupy $4..$n; $3 is the id in WHERE.

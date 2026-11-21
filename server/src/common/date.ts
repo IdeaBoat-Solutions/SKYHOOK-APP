@@ -1,6 +1,10 @@
 import { config } from '../config.js';
 
-/** Business "today" — DEMO_DATE overrides for deterministic demos, otherwise today (UTC date). */
+/**
+ * Business "today" in the company's timezone (India by default), as yyyy-mm-dd.
+ * DEMO_DATE can pin it for a scripted demo, but only outside production.
+ */
 export function businessDate(): string {
-  return config.DEMO_DATE ?? new Date().toISOString().split('T')[0]!;
+  if (config.DEMO_DATE && config.NODE_ENV !== 'production') return config.DEMO_DATE;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: config.APP_TIMEZONE }).format(new Date());
 }

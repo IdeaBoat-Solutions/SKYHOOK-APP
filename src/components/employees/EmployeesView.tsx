@@ -30,8 +30,11 @@ import { useSkyhook } from '../../data/apiStore';
 import { formatDateDDMMYYYY } from '../../utils/calculations';
 import { Employee, EmployeeType, SalaryType, DocumentRecord, LicenceExtras } from '../../types';
 import { LicenceDetailsFields, LicenceScanModal, ScanOutcome } from './LicenceScan';
+import { AgeingBar } from '../common/Ageing';
+import { AadhaarScanModal, AadhaarOutcome } from './AadhaarScan';
 import { Currency } from '../common/Currency';
 
+import { DateInput } from '../common/DateInput';
 const STANDARD_DOCUMENT_TYPES = [
   'Heavy Crane Driving License',
   'Commercial Transport Vehicle License',
@@ -57,6 +60,7 @@ export const EmployeesView: React.FC = () => {
     renewOperatorLicense,
     getLicenseAlerts,
     currentDate,
+    companySettings,
   } = useSkyhook();
 
   const [activeTab, setActiveTab] = useState<'all' | 'operators' | 'staff'>('operators');
@@ -71,14 +75,14 @@ export const EmployeesView: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
-  const [dob, setDob] = useState('1990-01-01');
-  const [joiningDate, setJoiningDate] = useState('2023-01-01');
-  const [designation, setDesignation] = useState('Hydraulic Crane Operator');
+  const [dob, setDob] = useState('');
+  const [joiningDate, setJoiningDate] = useState(currentDate);
+  const [designation, setDesignation] = useState('');
   const [employeeType, setEmployeeType] = useState<EmployeeType>('operator');
   const [address, setAddress] = useState('');
   const [salaryType, setSalaryType] = useState<SalaryType>('daily');
-  const [dailyRate, setDailyRate] = useState('900');
-  const [monthlySalary, setMonthlySalary] = useState('25000');
+  const [dailyRate, setDailyRate] = useState('');
+  const [monthlySalary, setMonthlySalary] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [craneLicenseDate, setCraneLicenseDate] = useState('');
   const [craneLicenseExpiry, setCraneLicenseExpiry] = useState('');
@@ -88,6 +92,8 @@ export const EmployeesView: React.FC = () => {
   const [showScan, setShowScan] = useState(false);
   const [scannedLicence, setScannedLicence] = useState(false);
   const [scanFiles, setScanFiles] = useState<{ front?: File; back?: File }>({});
+  const [showAadhaar, setShowAadhaar] = useState(false);
+  const [aadhaarFiles, setAadhaarFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [emergencyName, setEmergencyName] = useState('');
@@ -115,13 +121,13 @@ export const EmployeesView: React.FC = () => {
     setFullName('');
     setMobile('');
     setEmail('');
-    setDob('1992-05-15');
+    setDob('');
     setJoiningDate(currentDate);
-    setDesignation(employeeType === 'operator' ? 'Crane Operator Grade I' : 'Site Supervisor');
+    setDesignation('');
     setEmployeeType('operator');
-    setAddress('Navi Mumbai, Maharashtra');
+    setAddress('');
     setSalaryType('daily');
-    setDailyRate('900');
+    setDailyRate('');
     setMonthlySalary('0');
     setLicenseNumber('');
     setCraneLicenseDate('');
@@ -131,6 +137,7 @@ export const EmployeesView: React.FC = () => {
     setLicenceExtras({ licenseVehicleClasses: [] });
     setScannedLicence(false);
     setScanFiles({});
+    setAadhaarFiles([]);
     setSaveError('');
     setEmergencyName('');
     setEmergencyMobile('');
@@ -180,6 +187,7 @@ export const EmployeesView: React.FC = () => {
     });
     setScannedLicence(Boolean(emp.licenseScanned));
     setScanFiles({});
+    setAadhaarFiles([]);
     setSaveError('');
     if (emp.emergencyContacts && emp.emergencyContacts[0]) {
       setEmergencyName(emp.emergencyContacts[0].name);
@@ -247,6 +255,14 @@ export const EmployeesView: React.FC = () => {
   };
 
   /** Copy reviewed scan results into the form; the user can still edit before saving. */
+  const handleApplyAadhaar = (r: AadhaarOutcome) => {
+    if (r.name) setFullName(r.name);
+    if (r.dateOfBirth) setDob(r.dateOfBirth);
+    if (r.address) setAddress(r.address);
+    setAadhaarFiles(r.files);
+    setShowAadhaar(false);
+  };
+
   const handleApplyScan = ({ parsed, files }: ScanOutcome) => {
     if (parsed.licenceNumber) setLicenseNumber(parsed.licenceNumber);
     if (parsed.name) setFullName(parsed.name);
@@ -319,7 +335,7 @@ export const EmployeesView: React.FC = () => {
           ...common,
           employeeId: '',
           status: 'active',
-          standardShiftHours: 10,
+          standardShiftHours: companySettings.standardShiftHours || 10,
           overtimeEligible: true,
           salaryEffectiveDate: currentDate,
         });
@@ -333,6 +349,9 @@ export const EmployeesView: React.FC = () => {
         [scanFiles.front, 'Driving Licence – Front'],
         [scanFiles.back, 'Driving Licence – Back'],
       ];
+      aadhaarFiles.forEach((file, i) =>
+        uploads.push([file, aadhaarFiles.length > 1 ? `Aadhaar Card (UIDAI) – ${i + 1}` : 'Aadhaar Card (UIDAI)']),
+      );
       const failed: string[] = [];
       for (const [file, label] of uploads) {
         if (!file) continue;
@@ -575,6 +594,7 @@ export const EmployeesView: React.FC = () => {
       </div>
 
       {showScan && <LicenceScanModal onClose={() => setShowScan(false)} onApply={handleApplyScan} />}
+      {showAadhaar && <AadhaarScanModal onClose={() => setShowAadhaar(false)} onApply={handleApplyAadhaar} />}
 
       {/* License Quick Renewal Modal */}
       {licenseRenewalEmp && (
@@ -604,9 +624,7 @@ export const EmployeesView: React.FC = () => {
                 <label className="form-label">
                   New Crane Heavy Machine License Expiry:
                 </label>
-                <input
-                  type="date"
-                  required
+                <DateInput required
                   value={newCraneExpiry}
                   onChange={(e) => setNewCraneExpiry(e.target.value)}
                   className="form-input font-semibold"
@@ -617,9 +635,7 @@ export const EmployeesView: React.FC = () => {
                 <label className="form-label">
                   New Transport Vehicle License Expiry:
                 </label>
-                <input
-                  type="date"
-                  required
+                <DateInput required
                   value={newTransportExpiry}
                   onChange={(e) => setNewTransportExpiry(e.target.value)}
                   className="form-input font-semibold"
@@ -675,9 +691,21 @@ export const EmployeesView: React.FC = () => {
             <form onSubmit={handleSubmit} className="modal-body space-y-5">
               {/* Basic Information */}
               <div className="space-y-3">
-                <span className="stat-label block">
-                  1. Personal & Contact Details
-                </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="stat-label block">
+                    1. Personal & Contact Details
+                  </span>
+                  <button type="button" onClick={() => setShowAadhaar(true)} className="btn btn-secondary btn-sm">
+                    <ScanLine className="h-3.5 w-3.5" />
+                    Scan Aadhaar
+                  </button>
+                </div>
+                {aadhaarFiles.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-success-700">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    Aadhaar ({aadhaarFiles.length} file{aadhaarFiles.length > 1 ? 's' : ''}) will be saved with this record.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="form-label">Full Name:</label>
@@ -731,9 +759,7 @@ export const EmployeesView: React.FC = () => {
                   </div>
                   <div>
                     <label className="form-label">Joining Date:</label>
-                    <input
-                      type="date"
-                      required
+                    <DateInput required
                       value={joiningDate}
                       onChange={(e) => setJoiningDate(e.target.value)}
                       className="form-input"
@@ -827,9 +853,7 @@ export const EmployeesView: React.FC = () => {
                       <label className="form-label">
                         Crane License Issue Date:
                       </label>
-                      <input
-                        type="date"
-                        value={craneLicenseDate}
+                      <DateInput value={craneLicenseDate}
                         onChange={(e) => setCraneLicenseDate(e.target.value)}
                         className="form-input"
                       />
@@ -838,23 +862,20 @@ export const EmployeesView: React.FC = () => {
                       <label className="form-label">
                         Crane License Expiry Date:
                       </label>
-                      <input
-                        type="date"
-                        value={craneLicenseExpiry}
+                      <DateInput value={craneLicenseExpiry}
                         onChange={(e) => setCraneLicenseExpiry(e.target.value)}
                         className="form-input font-bold"
                       />
                     </div>
                   </div>
+                  <AgeingBar issue={craneLicenseDate} expiry={craneLicenseExpiry} />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="form-label">
                         Transport License Issue Date:
                       </label>
-                      <input
-                        type="date"
-                        value={transportLicenseDate}
+                      <DateInput value={transportLicenseDate}
                         onChange={(e) => setTransportLicenseDate(e.target.value)}
                         className="form-input"
                       />
@@ -863,14 +884,13 @@ export const EmployeesView: React.FC = () => {
                       <label className="form-label">
                         Transport License Expiry Date:
                       </label>
-                      <input
-                        type="date"
-                        value={transportLicenseExpiry}
+                      <DateInput value={transportLicenseExpiry}
                         onChange={(e) => setTransportLicenseExpiry(e.target.value)}
                         className="form-input font-bold"
                       />
                     </div>
                   </div>
+                  <AgeingBar issue={transportLicenseDate} expiry={transportLicenseExpiry} />
 
                   <LicenceDetailsFields
                     value={licenceExtras}
@@ -981,9 +1001,7 @@ export const EmployeesView: React.FC = () => {
                     <label className="form-label mb-1 !text-ink-300">
                       Expiry Date (If Applicable):
                     </label>
-                    <input
-                      type="date"
-                      value={uploadDocExpiry}
+                    <DateInput value={uploadDocExpiry}
                       onChange={(e) => setUploadDocExpiry(e.target.value)}
                       className="form-input !border-line-strong !bg-logo-700 !text-white"
                     />

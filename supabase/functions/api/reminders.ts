@@ -7,7 +7,9 @@ import { json, readJson } from '../_shared/http.ts';
 import type { RouteCtx, Route } from '../_shared/types.ts';
 
 function businessDate(): string {
-  return config.DEMO_DATE ?? new Date().toISOString().split('T')[0]!;
+  // Today in India (en-CA formats as yyyy-mm-dd). The old DEMO_DATE override is ignored so a
+  // leftover secret can never pin reminders to a past date.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
 /** Ported from server/src/domain/calculations.ts (kept local — no Fastify/Node deps). */

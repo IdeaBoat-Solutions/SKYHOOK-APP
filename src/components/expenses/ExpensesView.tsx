@@ -15,6 +15,8 @@ import { formatINR, formatDateDDMMYYYY } from '../../utils/calculations';
 import { exportProjectExpenses } from '../../utils/excelAndPdf';
 import { ProjectExpense } from '../../types';
 
+import { DateInput } from '../common/DateInput';
+import { PeriodFilter, inPeriod, defaultPeriod, type PeriodState } from '../common/PeriodFilter';
 export const ExpensesView: React.FC = () => {
   const {
     expenses,
@@ -28,16 +30,19 @@ export const ExpensesView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterProject, setFilterProject] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [period, setPeriod] = useState<PeriodState>(defaultPeriod('month'));
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || '');
   const [date, setDate] = useState(currentDate);
   const [category, setCategory] = useState('Diesel');
   const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('35000');
+  const [amount, setAmount] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'cash' | 'company_card' | 'bank_transfer' | 'upi'>('company_card');
-  const [vendor, setVendor] = useState('HPCL Petrol Pump');
-  const [receiptNumber, setReceiptNumber] = useState('HPCL-9921');
+  const [vendor, setVendor] = useState('');
+  const [receiptNumber, setReceiptNumber] = useState('');
 
   const categories = [
     'Diesel',
@@ -53,22 +58,44 @@ export const ExpensesView: React.FC = () => {
     'Miscellaneous',
   ];
 
-  const handleAddSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    addExpense({
-      projectId,
-      date,
-      category,
-      description,
-      amount: parseFloat(amount) || 0,
-      paymentMode,
-      paidBy: currentUser.name,
-      vendor,
-      receiptNumber,
-      approvalStatus: currentUser.role === 'owner' ? 'approved' : 'pending',
-    });
-    setShowAddModal(false);
+  const openAddModal = () => {
+    setProjectId(projects[0]?.id ?? '');
+    setDate(currentDate);
     setDescription('');
+    setAmount('');
+    setVendor('');
+    setReceiptNumber('');
+    setFormError('');
+    setShowAddModal(true);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    const value = parseFloat(amount);
+    if (!projectId) return setFormError('Choose a project first. Create one under Project Management if there are none.');
+    if (!Number.isFinite(value) || value <= 0) return setFormError('Enter the expense amount.');
+    setSaving(true);
+    setFormError('');
+    try {
+      await addExpense({
+        projectId,
+        date,
+        category,
+        description,
+        amount: value,
+        paymentMode,
+        paidBy: currentUser.name,
+        vendor,
+        receiptNumber,
+        approvalStatus: currentUser.role === 'owner' ? 'approved' : 'pending',
+      });
+      setShowAddModal(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not save the expense.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filteredExpenses = expenses.filter((exp) => {
@@ -82,7 +109,7 @@ export const ExpensesView: React.FC = () => {
       (prj && prj.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (exp.vendor && exp.vendor.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    return matchProject && matchCategory && matchSearch;
+    return matchProject && matchCategory && matchSearch && inPeriod(exp.date, period, currentDate);
   });
 
   const totalExpenseAmount = filteredExpenses.reduce((s, e) => s + e.amount, 0);
@@ -115,7 +142,7 @@ export const ExpensesView: React.FC = () => {
             <span>Export XLSX</span>
           </button>
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddModal}
             className="px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-700 text-white font-bold text-xs transition-colors shadow-sm flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
@@ -146,6 +173,8 @@ export const ExpensesView: React.FC = () => {
           <span className="text-[10px] text-slate-400">Vouchers submitted by managers</span>
         </div>
       </div>
+
+      <PeriodFilter value={period} onChange={setPeriod} />
 
       {/* Filters Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
@@ -294,6 +323,11 @@ export const ExpensesView: React.FC = () => {
             </div>
 
             <form onSubmit={handleAddSubmit} className="p-6 space-y-4 text-xs">
+              {formError && (
+                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800" role="alert">
+                  <span className="font-semibold">{formError}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Project Site:</label>
@@ -312,9 +346,7 @@ export const ExpensesView: React.FC = () => {
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Expense Date:</label>
-                  <input
-                    type="date"
-                    required
+                  <DateInput required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg"
@@ -410,9 +442,10 @@ export const ExpensesView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 font-bold text-white bg-logo-700 hover:bg-logo-800 rounded-xl shadow-xs"
+                  disabled={saving}
+                  className="px-5 py-2.5 font-bold text-white bg-logo-700 hover:bg-logo-800 rounded-xl shadow-xs disabled:opacity-60"
                 >
-                  Record Voucher
+                  {saving ? 'Saving…' : 'Record Voucher'}
                 </button>
               </div>
             </form>

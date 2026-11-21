@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Truck, FileText, LockKeyhole } from 'lucide-react';
+import { Plus, Truck, FileText, ClipboardList } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import {
   CustomCalculator,
@@ -8,12 +8,12 @@ import {
 } from '../../data/customCalculators';
 import { EmiView } from '../emi/EmiView';
 import { TotalMachinesView } from './TotalMachinesView';
-import { PersonalView } from '../personal/PersonalView';
+import { LogsheetCalculator } from './LogsheetCalculator';
 import { CustomCalculatorView } from './CustomCalculatorView';
 import { CalculatorBuilderModal } from './CalculatorBuilderModal';
 import { calcIcon } from './calcUi';
 
-export type CalcTab = 'emi' | 'personal' | 'total_machines' | `custom:${string}`;
+export type CalcTab = 'emi' | 'total_machines' | 'logsheet' | `custom:${string}`;
 
 const TAB_KEY = 'skyhook:calculations:tab';
 
@@ -32,8 +32,9 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
   const [tab, setTab] = useState<CalcTab>(() => {
     if (initialTab) return initialTab;
     try {
-      const saved = localStorage.getItem(TAB_KEY) as CalcTab | null;
-      if (saved) return saved;
+      // 'personal' used to live here; it is now its own sidebar page, so ignore a stale saved tab.
+      const saved = localStorage.getItem(TAB_KEY) as CalcTab | 'personal' | null;
+      if (saved && saved !== 'personal') return saved;
     } catch {
       /* ignore */
     }
@@ -48,7 +49,7 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
   const customId = tab.startsWith('custom:') ? tab.slice(7) : null;
   const activeCustom = customId ? calculators.find((c) => c.id === customId) : undefined;
   const resolvedTab: CalcTab =
-    ((tab === 'emi' || tab === 'personal') && isManager) || (customId && !activeCustom)
+    (tab === 'emi' && isManager) || (customId && !activeCustom)
       ? 'total_machines'
       : tab;
 
@@ -80,9 +81,8 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
 
   const tabs: { id: CalcTab; label: string; icon: React.ElementType }[] = [
     ...(isManager ? [] : [{ id: 'emi' as CalcTab, label: 'Machine EMI', icon: FileText }]),
-    // Owner-only; the view itself is gated by a 4-digit PIN.
-    ...(isManager ? [] : [{ id: 'personal' as CalcTab, label: 'Personal', icon: LockKeyhole }]),
     { id: 'total_machines', label: 'Total Machines', icon: Truck },
+    { id: 'logsheet', label: 'Logsheet', icon: ClipboardList },
     ...calculators.map((c) => ({
       id: `custom:${c.id}` as CalcTab,
       label: c.name,
@@ -124,8 +124,8 @@ export const CalculationsView: React.FC<Props> = ({ initialTab }) => {
       </div>
 
       {resolvedTab === 'emi' && <EmiView />}
-      {resolvedTab === 'personal' && <PersonalView />}
       {resolvedTab === 'total_machines' && <TotalMachinesView />}
+      {resolvedTab === 'logsheet' && <LogsheetCalculator />}
       {activeCustom && resolvedTab === `custom:${activeCustom.id}` && (
         <CustomCalculatorView
           key={activeCustom.id}

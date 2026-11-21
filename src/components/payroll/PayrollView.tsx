@@ -36,6 +36,7 @@ import { withPayrollAdjustments } from '../../data/localExtras';
 export const PayrollView: React.FC = () => {
   const {
     currentUser,
+    currentDate,
     companySettings,
     payrollRuns,
     payrollAdjustments,
@@ -44,7 +45,22 @@ export const PayrollView: React.FC = () => {
     markPayrollEntryPaid,
   } = useSkyhook();
 
-  const [selectedMonth, setSelectedMonth] = useState('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.slice(0, 7));
+  // Last 12 months, newest first, plus any month that already has a run.
+  const monthOptions = Array.from(
+    new Set([
+      ...Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(Number(currentDate.slice(0, 4)), Number(currentDate.slice(5, 7)) - 1 - i, 1);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      }),
+      ...payrollRuns.map((r) => r.month),
+    ]),
+  )
+    .sort((a, b) => b.localeCompare(a))
+    .map((value) => ({
+      value,
+      label: new Date(`${value}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' }),
+    }));
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEntryForSlip, setSelectedEntryForSlip] = useState<PayrollEntry | null>(null);
   const [adjustmentEntryCode, setAdjustmentEntryCode] = useState<string | null>(null);
@@ -54,9 +70,8 @@ export const PayrollView: React.FC = () => {
   const [payMode, setPayMode] = useState('NEFT Bank Transfer');
   const [payRef, setPayRef] = useState('');
 
-  const currentRun =
-    payrollRuns.find((r) => r.month === selectedMonth) ||
-    payrollRuns[0];
+  // Only the selected month's run: showing another month's figures under this month's title misleads.
+  const currentRun = payrollRuns.find((r) => r.month === selectedMonth);
   // Server totals stay authoritative; custom lines are layered on for display,
   // salary slips, KPIs and exports.
   const adjustedRun = currentRun ? withPayrollAdjustments(currentRun, payrollAdjustments) : undefined;
@@ -205,9 +220,9 @@ export const PayrollView: React.FC = () => {
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="2026-10">October 2026</SelectItem>
-                <SelectItem value="2026-09">September 2026</SelectItem>
-                <SelectItem value="2026-11">November 2026</SelectItem>
+                {monthOptions.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -503,7 +518,7 @@ export const PayrollView: React.FC = () => {
           entry={selectedEntryForSlip}
           settings={companySettings}
           payrollMonth={selectedMonth}
-          paymentDueDate={currentRun?.paymentDueDate || '2026-11-15'}
+          paymentDueDate={currentRun?.paymentDueDate || ''}
           onClose={() => setSelectedEntryForSlip(null)}
         />
       )}

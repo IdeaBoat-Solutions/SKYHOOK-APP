@@ -84,7 +84,7 @@ export const SettingsView: React.FC = () => {
       setRoles(roleRes.items);
       setPermissionCatalog(permRes.items);
       const manager = roleRes.items.find((r) => r.name === 'manager');
-      if (manager) setManagerPermissions(manager.permissions);
+      if (manager) setManagerPermissions(manager.permissions ?? []);
       setPermissionsDirty(false);
     } catch {
       // The rest of Settings stays usable if the user lacks user:read.
@@ -412,14 +412,15 @@ export const SettingsView: React.FC = () => {
               <label className={labelClass}>Standard Daily Shift Hours</label>
               <input
                 type="number"
-                min="8"
-                max="14"
+                min="1"
+                max="24"
+                step="0.5"
                 value={standardShiftHours}
-                onChange={(e) => setStandardShiftHours(parseInt(e.target.value, 10) || 10)}
+                onChange={(e) => setStandardShiftHours(parseFloat(e.target.value) || 10)}
                 className="form-input"
               />
               <p className="mt-2 text-[11px] leading-relaxed text-ink-500">
-                Default: <strong className="font-semibold text-ink-700">10 Hours per day</strong>. Net hours exceeding this qualify for site-rate overtime.
+                Default: <strong className="font-semibold text-ink-700">10 Hours per day</strong>. Change it any time (half hours allowed); attendance, overtime and the logsheet all follow it. Net hours beyond it qualify for site-rate overtime.
               </p>
             </div>
 
