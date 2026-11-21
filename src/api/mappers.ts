@@ -3,11 +3,41 @@ import type {
   User, CompanySettings, Project, Employee, MachineAsset, AttendanceRecord,
   SalaryAdvance, PayrollRun, PayrollEntry, ProjectExpense, MachineEmiLoan,
   EmiInstallment, MachineWorkingLog, AuditLog, InAppNotification,
-  ServiceRecord, PayrollAdjustment, PersonalRecord,
+  ServiceRecord, PayrollAdjustment, PersonalRecord, MachineType, RcDetails, DocumentRecord,
 } from '../types';
 
 const rupees = (paise: number | null | undefined): number => Math.round((paise ?? 0) / 100);
 const str = (v: unknown): string => (v == null ? '' : String(v));
+
+/** UI label <-> database enum for machine types ('Hydraulic Crane' <-> 'hydraulic_crane'). */
+const MACHINE_TYPE_LABELS: Record<string, MachineType> = {
+  hydraulic_crane: 'Hydraulic Crane', mobile_crane: 'Mobile Crane', crawler_crane: 'Crawler Crane',
+  tower_crane: 'Tower Crane', hydra: 'Hydra', all_terrain_crane: 'All Terrain Crane',
+  rough_terrain_crane: 'Rough Terrain Crane', other: 'Other',
+};
+
+export function machineTypeToApi(label: MachineType | string): string {
+  const hit = Object.entries(MACHINE_TYPE_LABELS).find(([, l]) => l === label);
+  if (hit) return hit[0];
+  return label in MACHINE_TYPE_LABELS ? label : 'other';
+}
+
+export function machineTypeFromApi(value: unknown): MachineType {
+  return MACHINE_TYPE_LABELS[String(value)] ?? (Object.values(MACHINE_TYPE_LABELS).includes(value as MachineType) ? (value as MachineType) : 'Other');
+}
+
+function mapRcDetails(v: unknown): RcDetails | undefined {
+  const obj = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return null; } })() : v;
+  return obj && typeof obj === 'object' && Object.keys(obj).length ? (obj as RcDetails) : undefined;
+}
+
+export function mapDocument(r: any): DocumentRecord {
+  return {
+    id: r.id, type: r.doc_type ?? '', name: r.name ?? '', fileUrl: r.object_key ?? '',
+    uploadDate: str(r.uploaded_at).slice(0, 10), expiryDate: r.expiry_date ? str(r.expiry_date).slice(0, 10) : undefined,
+    sizeKb: r.size_kb ?? undefined,
+  };
+}
 
 export function mapUser(r: any): User {
   // /users returns a roles array; /auth/me returns roles too. Owner wins.
@@ -80,7 +110,7 @@ export function mapEmployee(r: any): Employee {
 
 export function mapMachine(r: any): MachineAsset {
   return {
-    id: r.id, assetId: r.asset_code ?? r.id, machineType: r.machine_type, make: r.make, model: r.model,
+    id: r.id, assetId: r.asset_code ?? r.id, machineType: machineTypeFromApi(r.machine_type), make: r.make, model: r.model,
     registrationNumber: r.registration_number, serialNumber: r.serial_number ?? '',
     tonnageCapacity: r.tonnage_capacity ?? 0, purchaseDate: str(r.purchase_date),
     purchaseCost: rupees(r.purchase_cost_paise), currentProjectId: r.current_project_id ?? undefined,
@@ -100,6 +130,7 @@ export function mapMachine(r: any): MachineAsset {
     fitnessCertificateNumber: r.fitness_certificate_number ?? undefined,
     lastFitnessDate: str(r.last_fitness_date), nextFitnessDueDate: str(r.next_fitness_due_date),
     fitnessIntervalDays: r.fitness_interval_days ?? undefined, fitnessReminderLeadDays: r.fitness_reminder_lead_days ?? 15,
+    rcDetails: mapRcDetails(r.rc_details),
     serviceHistory: r.serviceHistory ?? [], documents: r.documents ?? [],
   };
 }

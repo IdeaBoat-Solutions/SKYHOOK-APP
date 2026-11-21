@@ -344,6 +344,39 @@ export interface ServiceRecord {
   completedBy: string;
 }
 
+/**
+ * Registration Certificate (RC / Form 23A) details, read from a scanned RC
+ * by OCR or typed by hand. Stored as one JSON object on the machine.
+ */
+export interface RcDetails {
+  chassisNumber?: string;
+  engineNumber?: string;
+  registrationDate?: string; // ISO yyyy-mm-dd
+  registrationValidUpto?: string; // ISO yyyy-mm-dd
+  ownerName?: string;
+  ownerSerial?: number;
+  ownership?: string; // FIRM / INDIVIDUAL ...
+  ownerAddress?: string;
+  vehicleClass?: string;
+  makerName?: string;
+  bodyType?: string;
+  colour?: string;
+  fuel?: string;
+  emissionNorms?: string;
+  manufactureMonthYear?: string; // mm-yyyy as printed
+  cylinders?: number;
+  seatingCapacity?: number;
+  unladenWeightKg?: number;
+  cubicCapacityCc?: number;
+  horsePower?: number;
+  wheelBaseMm?: number;
+  financier?: string;
+  registrationAuthority?: string;
+  cardIssueDate?: string; // ISO yyyy-mm-dd
+  /** When the details were last filled from a scan (ISO timestamp). */
+  scannedAt?: string;
+}
+
 export interface MachineAsset {
   id: string;
   assetId: string; // CR-001
@@ -392,6 +425,9 @@ export interface MachineAsset {
   nextFitnessDueDate: string;
   fitnessIntervalDays?: number; // e.g. 365 days
   fitnessReminderLeadDays: number;
+
+  /** Registration certificate details (RC book / smart card). */
+  rcDetails?: RcDetails;
 
   serviceHistory: ServiceRecord[];
   documents: DocumentRecord[];

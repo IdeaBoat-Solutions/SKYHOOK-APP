@@ -7,9 +7,23 @@ import { writeAudit } from '../../common/audit.js';
 import { businessDate } from '../../common/date.js';
 import { addDays, addMonths, evaluateReminderStatus, nextServiceDate } from '../../domain/calculations.js';
 
+/** RC (registration certificate) details; unknown keys are stripped. */
+const rcText = z.string().trim().max(300).optional();
+const rcNumber = z.number().nonnegative().optional();
+const rcDetailsSchema = z.object({
+  chassisNumber: rcText, engineNumber: rcText, registrationDate: rcText, registrationValidUpto: rcText,
+  ownerName: rcText, ownership: rcText, ownerAddress: rcText, vehicleClass: rcText, makerName: rcText,
+  bodyType: rcText, colour: rcText, fuel: rcText, emissionNorms: rcText, manufactureMonthYear: rcText,
+  financier: rcText, registrationAuthority: rcText, cardIssueDate: rcText, scannedAt: rcText,
+  ownerSerial: rcNumber, cylinders: rcNumber, seatingCapacity: rcNumber, unladenWeightKg: rcNumber,
+  cubicCapacityCc: rcNumber, horsePower: rcNumber, wheelBaseMm: rcNumber,
+});
+
+const MACHINE_TYPES = ['hydraulic_crane', 'mobile_crane', 'crawler_crane', 'tower_crane', 'hydra', 'all_terrain_crane', 'rough_terrain_crane', 'other'] as const;
+
 const createSchema = z.object({
   assetCode: z.string().optional(),
-  machineType: z.enum(['hydraulic_crane', 'mobile_crane', 'crawler_crane', 'tower_crane', 'hydra', 'all_terrain_crane', 'rough_terrain_crane', 'other']),
+  machineType: z.enum(MACHINE_TYPES),
   make: z.string().min(1),
   model: z.string().min(1),
   registrationNumber: z.string().min(1),
@@ -34,6 +48,7 @@ const createSchema = z.object({
   nextFitnessDueDate: z.string().optional(),
   fitnessIntervalDays: z.number().int().positive().default(730),
   status: z.enum(['available', 'assigned', 'under_maintenance', 'inactive', 'sold']).default('available'),
+  rcDetails: rcDetailsSchema.optional(),
 });
 
 export async function machineRoutes(app: FastifyInstance): Promise<void> {
@@ -80,9 +95,9 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
           last_service_date,next_service_due_date,insurance_provider,insurance_policy_number,
           insurance_expiry_date,insurance_interval_days,puc_number,puc_issue_date,puc_expiry_date,
           puc_interval_days,fitness_certificate_number,last_fitness_date,next_fitness_due_date,
-          fitness_interval_days,status,created_by,service_reminder_lead_hours)
+          fitness_interval_days,status,created_by,service_reminder_lead_hours,rc_details)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10,$11,$12,$13::date,$14::date,$15,$16,$17::date,$18,
-           $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29) RETURNING *`,
+           $19,$20::date,$21::date,$22,$23,$24::date,$25::date,$26,$27,$28,$29,$30::jsonb) RETURNING *`,
         [request.auth.tenantId, code, b.machineType, b.make, b.model, b.registrationNumber, b.serialNumber ?? null,
           b.tonnageCapacity ?? null, b.purchaseDate ?? null, b.purchaseCostPaise ?? null,
           b.serviceFrequencyValue, b.serviceFrequencyUnit, b.lastServiceDate ?? null,
@@ -91,7 +106,8 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
           b.insuranceProvider ?? null, b.insurancePolicyNumber ?? null, b.insuranceExpiryDate ?? null, b.insuranceIntervalDays,
           b.pucNumber ?? null, b.pucIssueDate ?? null, b.pucExpiryDate ?? null, b.pucIntervalDays,
           b.fitnessCertificateNumber ?? null, b.lastFitnessDate ?? null, b.nextFitnessDueDate ?? null,
-          b.fitnessIntervalDays, b.status, request.auth.userId, b.serviceReminderLeadHours],
+          b.fitnessIntervalDays, b.status, request.auth.userId, b.serviceReminderLeadHours,
+          JSON.stringify(b.rcDetails ?? {})],
       );
       await writeAudit(c, request.auth, { action: 'ASSET_CREATED', entity: 'MachineAsset', entityId: r.rows[0].id, reason: `Registered ${b.make} ${b.model}`, requestId: request.id });
       return reply.code(201).send(r.rows[0]);
@@ -106,13 +122,23 @@ export async function machineRoutes(app: FastifyInstance): Promise<void> {
       serviceFrequencyValue: z.number().int().positive().optional(),
       serviceFrequencyUnit: z.enum(['days', 'months', 'hours']).optional(),
       serviceReminderLeadHours: z.number().nonnegative().optional(),
+      // Identity fields, editable so a corrected or newly scanned RC can be saved.
+      machineType: z.enum(MACHINE_TYPES).optional(),
+      make: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+      registrationNumber: z.string().min(1).optional(),
+      serialNumber: z.string().optional().nullable(),
+      tonnageCapacity: z.number().nonnegative().optional(),
+      rcDetails: rcDetailsSchema.optional(),
     }).parse(request.body);
     return withTenant(request.auth.tenantId, async (c) => {
-      const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours' };
-      const entries = Object.entries(b).filter(([, v]) => v !== undefined);
+      const map: Record<string, string> = { status: 'status', currentProjectId: 'current_project_id', assignedOperatorId: 'assigned_operator_id', serviceFrequencyValue: 'service_frequency_value', serviceFrequencyUnit: 'service_frequency_unit', serviceReminderLeadHours: 'service_reminder_lead_hours', machineType: 'machine_type', make: 'make', model: 'model', registrationNumber: 'registration_number', serialNumber: 'serial_number', tonnageCapacity: 'tonnage_capacity', rcDetails: 'rc_details' };
+      const entries = Object.entries(b)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, k === 'rcDetails' ? JSON.stringify(v) : v] as const);
       if (!entries.length) throw Errors.badRequest('No fields to update');
       // Values occupy $4..$n; $3 is the machine id in WHERE.
-      const sets = entries.map(([k], i) => `${map[k]!} = $${i + 4}`).join(', ');
+      const sets = entries.map(([k], i) => `${map[k]!} = $${i + 4}${k === 'rcDetails' ? '::jsonb' : ''}`).join(', ');
       const r = await c.query(`UPDATE machines SET ${sets}, updated_by=$2 WHERE tenant_id=$1 AND id=$3 RETURNING *`,
         [request.auth.tenantId, request.auth.userId, id, ...entries.map(([, v]) => v)]);
       if (!r.rows[0]) throw Errors.notFound('Machine');
