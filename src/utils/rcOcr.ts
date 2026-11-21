@@ -11,7 +11,9 @@
 
 import type { MachineType, RcDetails } from '../types';
 import { STATE_BY_CODE } from './licenceOcr';
-import { documentToImages, preprocess, recognizeImages, type ScanProgress } from './ocrEngine';
+import {
+  documentToImages, isPdf, ocrCrop, preprocess, recognizeImages, type OcrWord, type ScanProgress,
+} from './ocrEngine';
 
 export interface ParsedRc extends RcDetails {
   /** Normalised as GJ-38-S-1889. */
@@ -427,7 +429,6 @@ export function mergeRcPasses(texts: string[]): ParsedRc {
 /* Fields full-page OCR misses: owner serial, fuel, emission stage, wheel base */
 /* -------------------------------------------------------------------------- */
 
-interface OcrWord { text: string; bbox: { x0: number; y0: number; x1: number; y1: number } }
 interface Box { x0: number; y0: number; x1: number; y1: number }
 
 /** Values read by looking at one spot on the card instead of the whole page. */
@@ -514,21 +515,21 @@ const FUEL_PATTERNS: [RegExp, string][] = [
  * from a small crop placed relative to a label found by position, which is far more
  * reliable than reading the whole page. Anything not found is simply left out.
  */
-export async function readCardExtras(images: Blob[]): Promise<CardExtras> {
-  const { createWorker } = await import('tesseract.js');
-  const worker = await createWorker('eng', 1);
+export interface ExtrasPage {
+  /** The prepared page image (same one the main passes read). */
+  prepared: Blob;
+  /** Word boxes from the sparse (PSM 11) pass and the column (PSM 4) pass; already computed, so no re-reading. */
+  words: OcrWord[];
+  columnWords: OcrWord[];
+}
+
+export async function readCardExtras(pages: ExtrasPage[]): Promise<CardExtras> {
   const extras: CardExtras = {};
-  const read = async (blob: Blob, psm: string, whitelist = '') => {
-    await worker.setParameters({ tessedit_pageseg_mode: psm as never, tessedit_char_whitelist: whitelist });
-    return (await worker.recognize(blob)).data.text;
-  };
+  const read = (blob: Blob, psm: string, whitelist = '') => ocrCrop(blob, psm, whitelist);
   try {
-    for (const image of images) {
-      const prepared = await preprocess(image);
-      await worker.setParameters({ tessedit_pageseg_mode: '11' as never, tessedit_char_whitelist: '' });
-      const { data } = await worker.recognize(prepared);
-      const words = ((data as unknown as { words?: OcrWord[] }).words ?? []).filter((w) => w.text.trim());
-      const bitmap = await createImageBitmap(prepared);
+    for (const page of pages) {
+      const words = page.words;
+      const bitmap = await createImageBitmap(page.prepared);
       const hOf = (w: OcrWord) => Math.max(14, w.bbox.y1 - w.bbox.y0);
       try {
         /* ---- owner serial ------------------------------------------------ */
@@ -576,12 +577,8 @@ export async function readCardExtras(images: Blob[]): Promise<CardExtras> {
         /* ---- emission stage numeral before "(CEV)" / "(TREM)" ------------ */
         const isSuffix = (w: OcrWord) => /^\(?(CEV|TREM)\)?$/i.test(w.text.trim());
         let suffix = words.find(isSuffix);
-        if (!suffix && bharat && !extras.emissionStage) {
-          // Sparse mode often skips the small "(CEV)" line; column mode keeps it.
-          await worker.setParameters({ tessedit_pageseg_mode: '4' as never, tessedit_char_whitelist: '' });
-          const columns = (await worker.recognize(prepared)).data as unknown as { words?: OcrWord[] };
-          suffix = (columns.words ?? []).find(isSuffix);
-        }
+        // Sparse mode often skips the small "(CEV)" line; column mode keeps it.
+        if (!suffix && bharat && !extras.emissionStage) suffix = page.columnWords.find(isSuffix);
         if (suffix && !extras.emissionStage) {
           const h = hOf(suffix);
           for (const threshold of [110, 90, 130]) {
@@ -613,7 +610,7 @@ export async function readCardExtras(images: Blob[]): Promise<CardExtras> {
     }
     return extras;
   } finally {
-    await worker.terminate();
+    /* the engines are shared and stay warm for the next scan */
   }
 }
 
@@ -645,14 +642,18 @@ export async function scanRcDocuments(
   }
   if (!images.length) throw new Error('No readable pages in the document');
 
-  const pages = await recognizeImages(images, ['4', '11'], onProgress);
+  // Pages rendered from a PDF are already upright, so skip the (slow) orientation detection.
+  const pages = await recognizeImages(images, ['4', '11'], onProgress, { rotate: files.some((f) => !isPdf(f)) });
   // Pass order matters for tie-breaks: all column-mode text first.
   const columnText = pages.map((p) => p[0]!.text).join('\n');
   const sparseText = pages.map((p) => p[1]!.text).join('\n');
   const parsed = mergeRcPasses([columnText, sparseText]);
   onProgress?.({ status: 'checking details on the card', progress: 1 });
   try {
-    const extras = await readCardExtras(images);
+    const prepared = await Promise.all(images.map((image) => preprocess(image)));
+    const extras = await readCardExtras(
+      pages.map((passes, i) => ({ prepared: prepared[i]!, columnWords: passes[0]!.words, words: passes[1]!.words })),
+    );
     if (parsed.ownerSerial === undefined && extras.ownerSerial !== undefined) parsed.ownerSerial = extras.ownerSerial;
     if (!parsed.fuel && extras.fuel) parsed.fuel = extras.fuel;
     if (extras.wheelBaseMm !== undefined) parsed.wheelBaseMm = extras.wheelBaseMm;

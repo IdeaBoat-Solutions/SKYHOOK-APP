@@ -16,6 +16,7 @@ import {
   mergeParsed,
   scanLicenceImage,
 } from '../../utils/licenceOcr';
+import { warmUp } from '../../utils/ocrEngine';
 
 import { DateInput } from '../common/DateInput';
 const BLOOD_GROUPS = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -213,6 +214,10 @@ export const LicenceScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => 
   const [foundCount, setFoundCount] = useState(0);
   const [manual, setManual] = useState(false);
   const frontInput = useRef<HTMLInputElement>(null);
+  // Start the reading engines now so they are ready by the time a file is chosen.
+  useEffect(() => {
+    warmUp();
+  }, []);
   const backInput = useRef<HTMLInputElement>(null);
 
   const previews = useMemo(

@@ -4,7 +4,7 @@
  * Like the other scanners, the parser is forgiving and a person reviews the result.
  */
 
-import { documentToImages, recognizeImages, type ScanProgress } from './ocrEngine';
+import { documentToImages, isPdf, recognizeImages, type ScanProgress } from './ocrEngine';
 
 export interface ParsedAadhaar {
   /** 12 digits, no spaces. Shown masked; not stored. */
@@ -137,7 +137,7 @@ export async function scanAadhaarDocuments(
   const images: Blob[] = [];
   for (const f of files) images.push(...(await documentToImages(f)));
   if (!images.length) throw new Error('No readable pages in the document');
-  const pages = await recognizeImages(images, ['4', '11'], onProgress);
+  const pages = await recognizeImages(images, ['4', '11'], onProgress, { rotate: files.some((f) => !isPdf(f)) });
 
   // Each side is parsed on its own (front has name/DOB, back has the address), then merged.
   const perSide = pages.map((passes) => mergeAadhaarPasses(passes.map((p) => p.text)));

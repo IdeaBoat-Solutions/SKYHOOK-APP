@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ScanLine,
   X,
@@ -12,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { ParsedAadhaar, maskAadhaar, scanAadhaarDocuments } from '../../utils/aadhaarOcr';
-import { isPdf } from '../../utils/ocrEngine';
+import { isPdf, warmUp } from '../../utils/ocrEngine';
 
 import { DateInput } from '../common/DateInput';
 const MAX_FILES = 3;
@@ -46,6 +46,10 @@ export const AadhaarScanModal: React.FC<Props> = ({ onClose, onApply }) => {
   const [dob, setDob] = useState('');
   const [address, setAddress] = useState('');
   const input = useRef<HTMLInputElement>(null);
+  // Start the reading engines now so they are ready by the time a file is chosen.
+  useEffect(() => {
+    warmUp();
+  }, []);
 
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;

@@ -6,7 +6,7 @@
  * returns is meant to be reviewed and corrected by a person before saving.
  */
 
-import { preprocess, type ScanProgress } from './ocrEngine';
+import { recognizeImages, type ScanProgress } from './ocrEngine';
 
 export type { ScanProgress };
 
@@ -263,17 +263,7 @@ export async function scanLicenceImage(
   file: File,
   onProgress?: (p: ScanProgress) => void,
 ): Promise<ScanResult> {
-  const { createWorker } = await import('tesseract.js');
-  const worker = await createWorker('eng', 1, {
-    logger: (m: { status: string; progress: number }) => onProgress?.({ status: m.status, progress: m.progress }),
-  });
-  try {
-    const image = await preprocess(file);
-    // PSM 3 (fully automatic) reads the card layout best in testing.
-    await worker.setParameters({ tessedit_pageseg_mode: '3' as never });
-    const { data } = await worker.recognize(image, { rotateAuto: true });
-    return { text: data.text, confidence: data.confidence, parsed: parseDrivingLicence(data.text) };
-  } finally {
-    await worker.terminate();
-  }
+  // PSM 3 (fully automatic) reads the card layout best in testing. Shares the warm engine pool.
+  const [[pass]] = await recognizeImages([file], ['3'], onProgress, { rotate: true });
+  return { text: pass!.text, confidence: pass!.confidence, parsed: parseDrivingLicence(pass!.text) };
 }
