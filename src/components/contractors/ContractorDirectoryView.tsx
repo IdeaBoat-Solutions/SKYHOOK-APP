@@ -16,6 +16,7 @@ import { useSkyhook } from '../../data/apiStore';
 import { ContractorAvailability, ContractorRecord, ContractorSkill } from '../../types';
 import { formatINR } from '../../utils/calculations';
 import { contactActions } from '../../utils/contact';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const SKILLS: Array<[ContractorSkill, string]> = [
   ['crane_operator', 'Crane Operator'],
@@ -384,9 +385,14 @@ export const ContractorDirectoryView: React.FC = () => {
                   </div>
                   <div>
                     <label className="form-label">Skill / trade</label>
-                    <select value={form.skill} onChange={(e) => setForm({ ...form, skill: e.target.value as ContractorSkill })} className="form-input">
-                      {SKILLS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                    <Select value={form.skill} onValueChange={(v) => setForm({ ...form, skill: v as ContractorSkill })}>
+                      <SelectTrigger className="form-input" aria-label="Skill / trade">
+                        <SelectValue placeholder="Select a skill" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SKILLS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="form-label">Agency / contractor name</label>
@@ -402,11 +408,16 @@ export const ContractorDirectoryView: React.FC = () => {
                   </div>
                   <div>
                     <label className="form-label">Availability</label>
-                    <select value={form.availability} onChange={(e) => setForm({ ...form, availability: e.target.value as ContractorAvailability })} className="form-input">
-                      <option value="available">Available</option>
-                      <option value="busy">Busy</option>
-                      <option value="unknown">Unknown</option>
-                    </select>
+                    <Select value={form.availability} onValueChange={(v) => setForm({ ...form, availability: v as ContractorAvailability })}>
+                      <SelectTrigger className="form-input" aria-label="Availability">
+                        <SelectValue placeholder="Select availability" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="available">Available</SelectItem>
+                        <SelectItem value="busy">Busy</SelectItem>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div>

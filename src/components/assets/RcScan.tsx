@@ -16,6 +16,7 @@ import type { MachineType, RcDetails } from '../../types';
 import { ParsedRc, scanRcDocuments } from '../../utils/rcOcr';
 import { isPdf, warmUp } from '../../utils/ocrEngine';
 import { DateInput } from '../common/DateInput';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const MACHINE_TYPES: MachineType[] = [
   'Hydraulic Crane', 'Mobile Crane', 'Crawler Crane', 'Tower Crane', 'Hydra',
@@ -515,11 +516,16 @@ export const RcScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => {
                 </div>
                 <div>
                   <label className="form-label">Crane type</label>
-                  <select className="form-input" value={review.machineType}
-                    onChange={(e) => setReview({ ...review, machineType: e.target.value as MachineType | '' })}>
-                    <option value="">Keep current</option>
-                    {MACHINE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <Select value={review.machineType}
+                    onValueChange={(v) => setReview({ ...review, machineType: v as MachineType | '' })}>
+                    <SelectTrigger className="form-input" aria-label="Crane type">
+                      <SelectValue placeholder="Keep current" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Keep current</SelectItem>
+                      {MACHINE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

@@ -12,6 +12,7 @@ import {
   LockKeyhole,
   ReceiptIndianRupee,
   Truck,
+  Wallet,
   BellRing,
   FileSpreadsheet,
   Settings,
@@ -92,7 +93,7 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
     items: [
       { id: 'machine_working', label: 'Machine Working (Crane)', icon: Cpu },
       { id: 'assets', label: 'Asset Master (Cranes)', icon: Truck, badge: 'asset' },
-      { id: 'expenses', label: 'Project Expenses', icon: FileSpreadsheet },
+      { id: 'expenses', label: 'Project Expenses', icon: Wallet },
     ],
   },
   {
@@ -207,22 +208,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         type="button"
         onClick={() => handleNavClick(item.id)}
         aria-current={isActive ? 'page' : undefined}
-        className={`group relative flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition-colors lg:py-2 ${
+        className={`group relative flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors duration-150 ${
           isActive
-            ? 'bg-white/10 text-white ring-1 ring-inset ring-white/[0.06]'
-            : 'text-ink-400 hover:bg-white/5 hover:text-white'
+            ? 'bg-white/[0.13] text-white ring-1 ring-inset ring-white/[0.08]'
+            : 'text-white/70 hover:bg-white/[0.06] hover:text-white'
         }`}
       >
         {isActive && (
           <span
-            className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-white"
+            className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.35)]"
             aria-hidden="true"
           />
         )}
         <span className="flex min-w-0 items-center gap-3">
           <Icon
             className={`h-[18px] w-[18px] shrink-0 transition-colors ${
-              isActive ? 'text-white' : 'text-ink-500 group-hover:text-ink-300'
+              isActive ? 'text-white' : 'text-white/45 group-hover:text-white/85'
             }`}
           />
           <span className="truncate">{item.label}</span>
@@ -269,19 +270,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="-m-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             aria-label="Skyhook ERP, go to dashboard"
           >
-            {/* The logo already carries the SKYHOOK name, so it is shown as a
-                wordmark tile rather than a square icon with the name repeated. */}
-            <div className="flex h-[4.25rem] w-[6.75rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-white/20">
+            {/* The mark always sits in a square tile, here and on the auth pages. */}
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 ring-1 ring-white/20">
               <BrandLogo
                 src={companySettings.logoUrl}
-                className="h-full w-full scale-[1.18]"
+                className="h-full w-full scale-[1.08]"
               />
             </div>
             <div className="min-w-0 flex-1">
-              <span className="inline-flex items-center rounded bg-white/10 px-1.5 py-[3px] text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-ink-300 ring-1 ring-inset ring-white/10">
+              <span className="inline-flex items-center rounded bg-white/10 px-1.5 py-[3px] text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-white/75 ring-1 ring-inset ring-white/10">
                 ERP
               </span>
-              <p className="mt-1.5 line-clamp-3 whitespace-normal break-words text-[11px] leading-tight text-ink-300">
+              <p className="mt-1.5 line-clamp-3 whitespace-normal break-words text-[11px] leading-tight text-white/60">
                 {companySettings.tagline || 'Elevating Crane Operations.'}
               </p>
             </div>
@@ -289,12 +289,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation */}
-        <nav className="sidebar-nav flex-1 overflow-y-auto overscroll-contain px-2 pb-4 pt-2" aria-label="Main navigation">
+        <nav className="sidebar-nav flex-1 overflow-y-auto overscroll-contain px-2.5 pb-4 pt-3" aria-label="Main navigation">
           {NAV_SECTIONS.map((section) => {
             const items = section.items.filter((item) => !(isManager && item.ownerOnly));
             if (items.length === 0) return null;
+            const sectionId = `nav-${section.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
             return (
-              <div className="mb-2 last:mb-0" key={section.label}>
+              <div className="mb-3 last:mb-0" key={section.label} role="group" aria-labelledby={sectionId}>
+                <p
+                  id={sectionId}
+                  className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35"
+                >
+                  {section.label}
+                </p>
                 <div className="space-y-0.5">{items.map(renderNavItem)}</div>
               </div>
             );
@@ -302,7 +309,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Footer: one consolidated alert summary, the role switch and user */}
-        <div className="border-t border-white/[0.06] px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {totalRemindersCount > 0 && (
             <button
               type="button"
@@ -328,12 +335,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-xs font-bold text-ink-200 ring-1 ring-inset ring-white/10">
+              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white ring-1 ring-inset ring-white/15">
                 {currentUser.name.charAt(0)}
               </div>
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-white">{currentUser.name}</p>
-                <p className="truncate text-[10px] capitalize text-ink-500">
+                <p className="truncate text-[10px] capitalize text-white/55">
                   {currentUser.role === 'owner' ? 'Super Admin' : 'Site Manager'}
                 </p>
               </div>
@@ -343,7 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={logout}
                 title="Sign Out / Return to Login"
-                className="icon-btn hover:bg-white/10 hover:text-red-300"
+                className="icon-btn text-white/70 hover:bg-white/10 hover:text-red-300"
               >
                 <LogOut className="h-4 w-4" />
               </button>

@@ -1,6 +1,10 @@
 /** Typed HTTP client for the Skyhook backend. Token lives in localStorage only. */
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://127.0.0.1:3001';
+// `||` (not `??`): an empty VITE_API_URL would otherwise make requests relative
+// to the SPA origin, which answers POSTs with a non-JSON 404 ("HTTP 404" at login).
+const CONFIGURED_BASE = (import.meta.env.VITE_API_URL as string | undefined) || 'http://127.0.0.1:3001';
+// Normalise a trailing slash so paths like `/auth/token` never become `//auth/token`.
+const BASE = CONFIGURED_BASE.replace(/\/+$/, '');
 const TOKEN_KEY = 'skyhook_token';
 
 export function getToken(): string | null {

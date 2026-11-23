@@ -24,6 +24,7 @@ import {
 } from '../../utils/calculations';
 import { AttendanceRecord, AttendanceStatus } from '../../types';
 import { DateInput } from '../common/DateInput';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -778,19 +779,19 @@ export const AttendanceView: React.FC = () => {
 
               <div className="flex items-center gap-1.5 flex-1 min-w-[10rem]">
                 <Filter className="w-4 h-4 text-zinc-400 shrink-0" />
-                <select
-                  value={selectedProject}
-                  onChange={(e) => setSelectedProject(e.target.value)}
-                  aria-label="Filter by project"
-                  className="form-input min-w-0"
-                >
-                  <option value="all">All Projects</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                <Select value={selectedProject} onValueChange={setSelectedProject}>
+                  <SelectTrigger aria-label="Filter by project" className="form-input min-w-0">
+                    <SelectValue placeholder="All Projects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -1158,18 +1159,18 @@ export const AttendanceView: React.FC = () => {
               <label className="text-xs font-bold text-slate-700 shrink-0" htmlFor="att-month">
                 Select Month:
               </label>
-              <select
-                id="att-month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="form-input min-w-0"
-              >
-                {monthOptions.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger id="att-month" className="form-input min-w-0">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
               <span className="flex items-center gap-1 font-bold text-emerald-700">
@@ -1368,10 +1369,10 @@ export const AttendanceView: React.FC = () => {
               )}
               <div>
                 <label className="form-label">Crane operator</label>
-                <select
+                <Select
                   value={otOperatorId}
-                  onChange={(e) => {
-                    const newId = e.target.value;
+                  required
+                  onValueChange={(newId) => {
                     setOtOperatorId(newId);
                     const op = findOperator(newId);
                     if (op?.currentProjectId) {
@@ -1380,15 +1381,18 @@ export const AttendanceView: React.FC = () => {
                       if (p) setOtRate(p.overtimeRate);
                     }
                   }}
-                  required
-                  className="form-input font-bold"
                 >
-                  {activeOperators.map((op) => (
-                    <option key={op.id} value={op.id}>
-                      {op.fullName} ({op.employeeId}) • ₹{op.dailyRate}/day
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="form-input font-bold" aria-label="Crane operator">
+                    <SelectValue placeholder="Select an operator" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeOperators.map((op) => (
+                      <SelectItem key={op.id} value={op.id}>
+                        {op.fullName} ({op.employeeId}) • ₹{op.dailyRate}/day
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="form-grid">
@@ -1431,23 +1435,26 @@ export const AttendanceView: React.FC = () => {
               <div className="form-grid">
                 <div>
                   <label className="form-label">Project site</label>
-                  <select
+                  <Select
                     value={otProjectId}
-                    onChange={(e) => {
-                      const pId = e.target.value;
+                    required
+                    onValueChange={(pId) => {
                       setOtProjectId(pId);
                       const prj = projects.find((p) => p.id === pId);
                       if (prj) setOtRate(prj.overtimeRate);
                     }}
-                    required
-                    className="form-input font-bold"
                   >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="form-input font-bold" aria-label="Project site">
+                      <SelectValue placeholder="Select a project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="form-label">Hourly overtime rate (₹)</label>
@@ -1530,52 +1537,68 @@ export const AttendanceView: React.FC = () => {
               <div className="form-grid">
                 <div>
                   <label className="form-label">Operator</label>
-                  <select value={operatorId} onChange={(e) => pickOperator(e.target.value)} className="form-input">
-                    {activeOperators.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.fullName} ({e.employeeId})
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={operatorId} onValueChange={pickOperator}>
+                    <SelectTrigger className="form-input" aria-label="Operator">
+                      <SelectValue placeholder="Select an operator" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeOperators.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.fullName} ({e.employeeId})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="form-label">Project site</label>
-                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="form-input">
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} (OT: ₹{p.overtimeRate}/h)
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={projectId} onValueChange={setProjectId}>
+                    <SelectTrigger className="form-input" aria-label="Project site">
+                      <SelectValue placeholder="Select a project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} (OT: ₹{p.overtimeRate}/h)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               <div className="form-grid">
                 <div>
                   <label className="form-label">Machine / crane</label>
-                  <select value={machineId} onChange={(e) => setMachineId(e.target.value)} className="form-input">
-                    <option value="">No machine</option>
-                    {machines.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.assetId} - {m.model} ({m.tonnageCapacity}T)
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={machineId} onValueChange={setMachineId}>
+                    <SelectTrigger className="form-input" aria-label="Machine / crane">
+                      <SelectValue placeholder="No machine" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No machine</SelectItem>
+                      {machines.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.assetId} - {m.model} ({m.tonnageCapacity}T)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="form-label">Attendance status</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as AttendanceStatus)}
-                    className="form-input font-bold"
-                  >
-                    <option value="present">Present (Standard Shift)</option>
-                    <option value="half_day">Half Day (under {shiftHours / 2}h)</option>
-                    <option value="absent">Absent</option>
-                    <option value="weekly_off">Weekly Off</option>
-                    <option value="paid_leave">Paid Leave</option>
-                    <option value="holiday">Official Holiday</option>
-                  </select>
+                  <Select value={status} onValueChange={(v) => setStatus(v as AttendanceStatus)}>
+                    <SelectTrigger className="form-input font-bold" aria-label="Attendance status">
+                      <SelectValue placeholder="Select a status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="present">Present (Standard Shift)</SelectItem>
+                      <SelectItem value="half_day">Half Day (under {shiftHours / 2}h)</SelectItem>
+                      <SelectItem value="absent">Absent</SelectItem>
+                      <SelectItem value="weekly_off">Weekly Off</SelectItem>
+                      <SelectItem value="paid_leave">Paid Leave</SelectItem>
+                      <SelectItem value="holiday">Official Holiday</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

@@ -1,0 +1,15 @@
+- Big logo on the login page(imrove the login page design)
+- Fix monthly salary as per the day 
+- Shift hours can be changes
+- Scaning - double side 
+- Addhar fetch
+- License from D.O.B. (fetch)
+- date / Issuse to Expire
+- Asset and operational both prmitive 
+- Machine working error 
+- OCR for artifacts 
+
+
+-------------------------------------------------------
+- text color and uiux wise do check it out
+- All option that we have at the side bar bring it to the dashboard for the highglight

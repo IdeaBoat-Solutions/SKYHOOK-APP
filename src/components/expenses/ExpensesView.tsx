@@ -6,6 +6,7 @@ import { exportProjectExpenses } from '../../utils/excelAndPdf';
 
 import { DateInput } from '../common/DateInput';
 import { PeriodFilter, inPeriod, defaultPeriod, type PeriodState } from '../common/PeriodFilter';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type PayMode = 'cash' | 'company_card' | 'bank_transfer' | 'upi' | 'cheque';
 
@@ -244,34 +245,34 @@ export const ExpensesView: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full sm:w-auto">
           <div className="flex items-center gap-1.5">
             <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-            <select
-              value={filterProject}
-              onChange={(e) => setFilterProject(e.target.value)}
-              aria-label="Filter by project"
-              className="form-input min-w-0"
-            >
-              <option value="all">All Projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <Select value={filterProject} onValueChange={setFilterProject}>
+              <SelectTrigger aria-label="Filter by project" className="form-input min-w-0">
+                <SelectValue placeholder="All Projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            aria-label="Filter by category"
-            className="form-input min-w-0"
-          >
-            <option value="all">All Categories</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger aria-label="Filter by category" className="form-input min-w-0">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="search-box w-full sm:w-72">
@@ -402,13 +403,18 @@ export const ExpensesView: React.FC = () => {
               <div className="form-grid">
                 <div>
                   <label className="form-label">Project Site:</label>
-                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="form-input font-semibold">
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={projectId} onValueChange={setProjectId}>
+                    <SelectTrigger className="form-input font-semibold" aria-label="Project site">
+                      <SelectValue placeholder="Select a project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
@@ -420,13 +426,18 @@ export const ExpensesView: React.FC = () => {
               <div className="form-grid">
                 <div>
                   <label className="form-label">Expense Category:</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="form-input font-bold">
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger className="form-input font-bold" aria-label="Expense category">
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
@@ -447,17 +458,18 @@ export const ExpensesView: React.FC = () => {
               <div className="form-grid">
                 <div>
                   <label className="form-label">Payment Mode:</label>
-                  <select
-                    value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value as PayMode)}
-                    className="form-input"
-                  >
-                    {PAYMENT_MODES.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PayMode)}>
+                    <SelectTrigger className="form-input" aria-label="Payment mode">
+                      <SelectValue placeholder="Select a mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_MODES.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>

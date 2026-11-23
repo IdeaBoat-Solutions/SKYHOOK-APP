@@ -18,6 +18,7 @@ import { ScanUploader } from '../common/ScanUploader';
 import { warmUp } from '../../utils/ocrEngine';
 
 import { DateInput } from '../common/DateInput';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 const BLOOD_GROUPS = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const COMMON_CLASSES = VEHICLE_CLASS_CODES.filter((c) => !['MC 50CC', 'ROADROLLER', 'ADPVEH', 'TRCTR'].includes(c));
 
@@ -53,29 +54,37 @@ export const LicenceDetailsFields: React.FC<FieldsProps> = ({ value, onChange })
         </div>
         <div>
           <label className="form-label">Blood group:</label>
-          <select
-            className="form-input"
+          <Select
             value={value.bloodGroup ?? ''}
-            onChange={(e) => onChange({ bloodGroup: e.target.value })}
+            onValueChange={(v) => onChange({ bloodGroup: v })}
           >
-            {BLOOD_GROUPS.map((g) => (
-              <option key={g} value={g}>{g || 'Not set'}</option>
-            ))}
-          </select>
+            <SelectTrigger className="form-input" aria-label="Blood group">
+              <SelectValue placeholder="Not set" />
+            </SelectTrigger>
+            <SelectContent>
+              {BLOOD_GROUPS.map((g) => (
+                <SelectItem key={g} value={g}>{g || 'Not set'}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="form-label">Organ donor:</label>
-          <select
-            className="form-input"
+          <Select
             value={value.organDonor === undefined ? '' : value.organDonor ? 'Y' : 'N'}
-            onChange={(e) =>
-              onChange({ organDonor: e.target.value === '' ? undefined : e.target.value === 'Y' })
+            onValueChange={(v) =>
+              onChange({ organDonor: v === '' ? undefined : v === 'Y' })
             }
           >
-            <option value="">Not set</option>
-            <option value="Y">Yes</option>
-            <option value="N">No</option>
-          </select>
+            <SelectTrigger className="form-input" aria-label="Organ donor">
+              <SelectValue placeholder="Not set" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Not set</SelectItem>
+              <SelectItem value="Y">Yes</SelectItem>
+              <SelectItem value="N">No</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

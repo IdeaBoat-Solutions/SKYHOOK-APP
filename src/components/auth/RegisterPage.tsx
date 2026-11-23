@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { AlertCircle, ArrowRight, Building2, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { AlertCircle, Building2, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { useSkyhook } from '../../data/apiStore';
 import { navigate } from '../../lib/nav';
-import { BrandLogo } from '../common/BrandLogo';
+import { BrandLockup } from '../common/BrandLockup';
 
 type Field = 'companyName' | 'name' | 'email' | 'phone' | 'password' | 'confirm';
 type Errors = Partial<Record<Field, string>>;
@@ -82,17 +82,11 @@ export const RegisterPage: React.FC = () => {
   });
 
   return (
-    <div className="app-shell">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-          <a href="/" className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80" aria-label="Skyhook home">
-            <div className="flex h-12 w-[4.75rem] items-center justify-center overflow-hidden rounded-lg border border-line bg-surface p-0.5">
-              <BrandLogo className="h-full w-full scale-[1.18]" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-semibold tracking-tight text-ink-900">SKYHOOK</span>
-              <span className="badge badge-brand uppercase">ERP System</span>
-            </div>
+    <div className="auth-page app-shell">
+      <header className="auth-nav">
+        <div className="auth-nav-inner">
+          <a href="/" className="auth-brand" aria-label="Skyhook home">
+            <BrandLockup />
           </a>
           <button type="button" className="btn btn-secondary" onClick={() => navigate('/login')}>
             Sign in
@@ -100,10 +94,10 @@ export const RegisterPage: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">
-        <div className="grid w-full max-w-4xl grid-cols-1 items-start gap-8 lg:grid-cols-12">
+      <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
+        <div className="grid w-full max-w-4xl grid-cols-1 items-start gap-6 lg:grid-cols-12">
           <div className="space-y-5 lg:col-span-5 lg:pt-6">
-            <span className="eyebrow">
+            <span className="auth-eyebrow">
               <Building2 className="h-3.5 w-3.5" />
               New company workspace
             </span>
@@ -127,7 +121,7 @@ export const RegisterPage: React.FC = () => {
                 <h2 className="text-lg font-semibold tracking-tight text-ink-900">Create your account</h2>
                 <p className="mt-0.5 text-xs text-ink-500">All fields except phone are required</p>
               </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-brand-50 text-brand-600">
                 <UserPlus className="h-5 w-5" />
               </div>
             </div>
@@ -206,10 +200,7 @@ export const RegisterPage: React.FC = () => {
                     <span>Creating workspace…</span>
                   </>
                 ) : (
-                  <>
-                    <span>Create account</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </>
+                  <span>Create account</span>
                 )}
               </button>
 
@@ -228,12 +219,8 @@ export const RegisterPage: React.FC = () => {
         </div>
       </main>
 
-      <footer className="border-t border-line bg-surface px-6 py-3 text-center text-[11px] text-ink-500">
-        <a href="/" className="font-semibold text-ink-700 underline decoration-line-strong underline-offset-2 hover:text-brand-700">
-          Back to site
-        </a>
-        <span className="mx-2 text-line-strong">&middot;</span>
-        SKYHOOK ERP &middot; Crane business management
+      <footer className="auth-footer">
+        <a href="/">Back to site</a>
       </footer>
     </div>
   );

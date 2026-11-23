@@ -1,0 +1,228 @@
+/* Stageshow illustration on the sign-in card's right pane.
+   Every rule belongs to .cranelift (the Stage wrapper); the look is scoped to
+   this one demo so it cannot restyle anything else on the auth page. */
+
+.cranelift .ss-stage {
+  background: transparent;
+  overflow: hidden;
+}
+
+/* The crane itself is the hero: no card, no header, no status text. It keeps
+   a top-left gutter and runs off the right and bottom of the pane; the page is
+   the ground, so there is no plate behind it. */
+.cranelift .cl-scene {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.cranelift .cl-scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(35, 126, 173, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(35, 126, 173, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 82%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 82%);
+  pointer-events: none;
+}
+
+/* The drawing is shown at half size and centred in the pane. The nudge puts
+   the jib's midpoint on the art's centre line, so the left and right margins
+   are equal. Type inside the art is sized up so it still reads on screen. */
+.cranelift .cl-art {
+  position: absolute;
+  inset: 0;
+  transform: translate(-41px, -68px) scale(0.5);
+  transform-origin: 50% 50%;
+}
+
+.cranelift .ss-stage[data-layout='compact'] .cl-art {
+  transform: translate(-35px, -59px) scale(0.5);
+}
+
+/* ---- Fixed steelwork ---- */
+
+.cranelift .cl-steel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+}
+
+.cranelift .cl-ground {
+  fill: none;
+  stroke: #d6e0e8;
+  stroke-width: 1.5;
+}
+
+.cranelift .cl-member {
+  fill: none;
+  stroke: var(--ss-accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cranelift .cl-brace {
+  fill: none;
+  stroke: #9dc3d9;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.cranelift .cl-tie {
+  fill: none;
+  stroke: #9dc3d9;
+  stroke-width: 1.4;
+}
+
+.cranelift .cl-cab {
+  fill: #e4f0f7;
+  stroke: var(--ss-accent);
+  stroke-width: 2;
+}
+
+.cranelift .cl-weight {
+  fill: #cfe1ee;
+  stroke: var(--ss-accent);
+  stroke-width: 2;
+}
+
+.cranelift .cl-pad {
+  fill: #f2f6f9;
+  stroke: #b9cfdd;
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+}
+
+.cranelift .cl-pad--dst {
+  fill: #e9f5ef;
+  stroke: #8cc3a4;
+}
+
+.cranelift .cl-route {
+  fill: none;
+  stroke: #bcd3e2;
+  stroke-width: 1.4;
+  stroke-dasharray: 4 5;
+  stroke-linecap: round;
+}
+
+.cranelift .cl-pad-label {
+  position: absolute;
+  width: 176px;
+  text-align: center;
+  font-size: 22px;
+  line-height: 28px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* ---- Moving assembly: the crane's work, one continuous motion per beat ---- */
+
+.cranelift .cl-trolley {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  height: 22px;
+  border-radius: 5px;
+  border: 1.5px solid var(--ss-accent);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(28, 100, 138, 0.18);
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.45, 0, 0.1, 1);
+  will-change: transform;
+}
+
+.cranelift .cl-rope {
+  position: absolute;
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ss-accent);
+  transition-property: left, height;
+  transition-timing-function: cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+.cranelift .cl-rig {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  overflow: visible;
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.45, 0, 0.1, 1);
+  will-change: transform;
+}
+
+.cranelift .cl-block {
+  fill: #fff;
+  stroke: var(--ss-accent);
+  stroke-width: 2;
+}
+
+.cranelift .cl-hook,
+.cranelift .cl-sling {
+  fill: none;
+  stroke: var(--ss-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.cranelift .cl-sling {
+  stroke-width: 1.5;
+}
+
+.cranelift .cl-crate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  border: 1.5px solid #8bb6d1;
+  background:
+    linear-gradient(to right, transparent 46%, rgba(35, 126, 173, 0.18) 46%, rgba(35, 126, 173, 0.18) 54%, transparent 54%),
+    linear-gradient(to bottom, transparent 44%, rgba(35, 126, 173, 0.18) 44%, rgba(35, 126, 173, 0.18) 56%, transparent 56%),
+    #dbeaf4;
+  box-shadow: 0 3px 8px -4px rgba(28, 100, 138, 0.4);
+  opacity: 0;
+  transition-property: transform, opacity;
+  transition-timing-function: cubic-bezier(0.45, 0, 0.1, 1);
+  will-change: transform;
+}
+
+.cranelift .cl-crate[data-on] {
+  opacity: 1;
+}
+
+.cranelift .cl-crate--dest {
+  transition-property: opacity;
+  transition-duration: 300ms;
+}
+
+.cranelift .cl-weight {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  color: #1c648a;
+  white-space: nowrap;
+}
+
+/* ---- Compact: a closer, redrawn shot for the ~358px tablet column ---- */
+
+.cranelift .ss-stage[data-layout='compact'] .cl-pad-label {
+  font-size: 20px;
+  width: 148px;
+}
+
+.cranelift .ss-stage[data-layout='compact'] .cl-weight {
+  font-size: 16px;
+}

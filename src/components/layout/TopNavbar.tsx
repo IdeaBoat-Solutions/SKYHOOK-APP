@@ -215,7 +215,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   };
 
   return (
-    <header className="topbar-accent sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur-md">
       <div className="flex min-h-14 items-center justify-between gap-1 px-2 pt-[env(safe-area-inset-top)] sm:gap-2">
         {/* Left: page context */}
         <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
