@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   SKYHOOK ERP — DESIGN SYSTEM (shadcn Nova inspired)
+   SKYHOOK ERP - DESIGN SYSTEM (shadcn Nova inspired)
    Neutral zinc surfaces, logo-blue primary, flat borders, no shadows.
    ========================================================================== */
 
@@ -44,7 +44,7 @@
   /* The one accent: signal amber, drawn from crane/hazard markings.
      Neutrals do the structure; amber is spent only on the action, the active
      state and the brand moment. Every surface in the product reads from this
-     ramp — no second hue. */
+     ramp - no second hue. */
   --color-accent-50: #fffbf2;
   --color-accent-100: #fdf1d9;
   --color-accent-200: #fae0ac;
@@ -56,7 +56,7 @@
   --color-accent-800: #724713;
   --color-accent-900: #4f320e;
 
-  /* Semantic aliases — use these, not the raw step, in components. */
+  /* Semantic aliases - use these, not the raw step, in components. */
   --color-accent: var(--color-accent-600);
   --color-accent-soft: var(--color-accent-100);
   --color-accent-text: var(--color-accent-700);
@@ -147,7 +147,7 @@
   }
 }
 
-/* Global element normalization — scoped to the app root so it wins over
+/* Global element normalization - scoped to the app root so it wins over
    the atomic utilities used throughout the legacy views. */
 @layer utilities {
   #root button {
@@ -1000,9 +1000,9 @@
 }
 
 /* ==========================================================================
-   AUTH SCREENS — calm, brand-tinted sign-in surface.
+   AUTH SCREENS - calm, brand-tinted sign-in surface.
    Scoped to .auth-page so the rest of the app keeps its existing chrome.
-   The mark sits in a rounded tile with a stacked wordmark beside it — no
+   The mark sits in a rounded tile with a stacked wordmark beside it - no
    "ERP" label rides along with the brand.
    ========================================================================== */
 @layer components {
@@ -1177,7 +1177,7 @@
   }
 
   /* The illustration sits in its own pane and lets the page's tinted ground
-     show through — no plate behind the product shot. Hidden on phones; the
+     show through - no plate behind the product shot. Hidden on phones; the
      compact stage design serves the narrow desktop widths. */
   .auth-split-media {
     display: none;

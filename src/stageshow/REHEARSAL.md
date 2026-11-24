@@ -1,10 +1,10 @@
-# Rehearsal — CraneLiftShowcase (crane only)
+# Rehearsal - CraneLiftShowcase (crane only)
 
 **Gold:** `bento` (the only complete gold example in this skill install).
 Kept its one-Stage-per-picture and root-scoped CSS pattern; the scene itself was
 built for this brief.
 
-**Brief answered:** put only the crane graphic in the login pane — no header,
+**Brief answered:** put only the crane graphic in the login pane - no header,
 no title, no status pill, no card chrome. The result is the crane and its
 technical grid: a tower crane rigs a 12.4 t load at Harbour Rd, hoists it,
 travels the jib and sets it down at Yard B. The two site labels and the weight
@@ -12,21 +12,21 @@ on the load are part of the crane drawing and stay.
 
 **Medium/place:** A short loop beside the sign-in form. The scene is the hero:
 it keeps a top-left gutter and runs off the right and bottom of the media pane.
-The page is the ground — no plate, no panel, no shadow. The pane is hidden
+The page is the ground - no plate, no panel, no shadow. The pane is hidden
 below 768px, so `compact` serves the 768–900px range; both designs fill the
 pane's height so there is no empty band under the shot.
 
 **Look:** Light, cool greys, standard fidelity, accent `#237ead`
 (`--color-brand-600`). One stroke family for the technical schematic; no
 mascot, no invented logo, no UI text. The crane was pulled up and widened after
-review — the first pass left too much air above the jib and around the sides.
+review - the first pass left too much air above the jib and around the sides.
 It now fills the pane with a small, even gutter. The drawing was then scaled
 to half size at the user's request: the crane art sits centred in the same
 pane (`.cl-art { transform: scale(0.5) }`), with its labels sized up in the
 design so they still read on screen. The login card was then shortened again:
 the media pane is 22.5rem (`--auth-split-media` min-height in `index.css`),
 the two Stage design heights are 372 / 392, and the art is translated to centre
-in the *visible* crop — measured margins are equal left/right and top/bottom
+in the *visible* crop - measured margins are equal left/right and top/bottom
 within 1px at 1280px and 780px. The scene keeps its taller internal height so
 the crane's base is never clipped by the shorter stage. The login card is
 768px wide with an even 1fr / 1fr split, so the form and media panes are the
@@ -63,7 +63,7 @@ fresh eye in review.md still stand)`.
   `--at hoist --every 50 --slow 3` shows the load gliding up frame by frame and
   the load swap fading; the gate still passes. Intentional sampling artifact.
 - The status roll and its film lines (`jump: ss-roll__item`, `lopsided:
-  ss-badge`) no longer apply — the status pill was removed with the header.
+  ss-badge`) no longer apply - the status pill was removed with the header.
 
 ## Assumptions
 - "Only this" means the crane illustration from the reference image; the

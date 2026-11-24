@@ -208,7 +208,7 @@ export const ContractorDirectoryView: React.FC = () => {
           <div className="stat-value text-sm">
             {contractors.length
               ? `${formatINR(Math.min(...contractors.map((c) => c.dailyRate)))} – ${formatINR(Math.max(...contractors.map((c) => c.dailyRate)))}`
-              : '—'}
+              : '-'}
           </div>
           <span className="stat-hint">Per day, as recorded</span>
         </div>
@@ -310,8 +310,8 @@ export const ContractorDirectoryView: React.FC = () => {
                   </td>
                   <td className="text-xs text-ink-700">{c.mobile}</td>
                   <td>
-                    <div className="text-xs text-ink-700">{c.agencyName || '—'}</div>
-                    <div className="text-[11px] text-ink-500">{c.city || '—'}</div>
+                    <div className="text-xs text-ink-700">{c.agencyName || '-'}</div>
+                    <div className="text-[11px] text-ink-500">{c.city || '-'}</div>
                   </td>
                   <td className="text-xs font-semibold text-ink-800">{formatINR(c.dailyRate)}</td>
                   <td><span className={`badge ${availabilityTone(c.availability)}`}>{c.availability}</span></td>
@@ -357,7 +357,7 @@ export const ContractorDirectoryView: React.FC = () => {
                 </span>
                 <div>
                   <h3 className="modal-title">{editing ? 'Edit contractor' : 'Add contractor / freelancer'}</h3>
-                  <p className="text-xs text-ink-500">External contact — not added to your workforce.</p>
+                  <p className="text-xs text-ink-500">External contact - not added to your workforce.</p>
                 </div>
               </div>
               <button type="button" onClick={() => setShowModal(false)} className="icon-btn" aria-label="Close">

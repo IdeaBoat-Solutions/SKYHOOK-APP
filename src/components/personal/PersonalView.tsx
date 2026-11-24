@@ -460,7 +460,7 @@ export const PersonalView: React.FC = () => {
         <div>
           <h2 className="page-title">Personal Vault</h2>
           <p className="page-subtitle">
-            Private family finances — loans, insurance and anything else you add. Only visible to the Owner.
+            Private family finances - loans, insurance and anything else you add. Only visible to the Owner.
           </p>
         </div>
         <button
@@ -482,7 +482,7 @@ export const PersonalView: React.FC = () => {
       <div className="notice notice--success flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 shrink-0 text-success-700" />
         <span className="text-xs font-semibold text-success-800">
-          Verified — vault unlocked for {currentUser.name}
+          Verified - vault unlocked for {currentUser.name}
         </span>
       </div>
 
@@ -589,7 +589,7 @@ export const PersonalView: React.FC = () => {
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-ink-900">{record.title}</div>
                     <div className="mt-0.5 text-xs text-ink-600">
-                      {record.provider || '—'}{record.referenceNumber ? ` · ${record.referenceNumber}` : ''}
+                      {record.provider || '-'}{record.referenceNumber ? ` · ${record.referenceNumber}` : ''}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
@@ -639,12 +639,12 @@ export const PersonalView: React.FC = () => {
                       {record.notes && <div className="text-[11px] text-ink-500">{record.notes}</div>}
                     </td>
                     <td className="px-3.5 py-3 text-xs">
-                      <div className="font-semibold text-ink-800">{record.provider || '—'}</div>
+                      <div className="font-semibold text-ink-800">{record.provider || '-'}</div>
                       <div className="text-[11px] text-ink-500">{record.referenceNumber || 'No reference'}</div>
                     </td>
                     <td className="px-3.5 py-3 text-xs font-bold text-ink-900">{formatINR(record.amount)}</td>
                     <td className="px-3.5 py-3 text-xs font-semibold text-brand-700">
-                      {record.periodicAmount ? `${formatINR(record.periodicAmount)}/mo` : '—'}
+                      {record.periodicAmount ? `${formatINR(record.periodicAmount)}/mo` : '-'}
                     </td>
                     <td className="px-3.5 py-3 text-[11px] text-ink-600">
                       <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Start: {formatDateDDMMYYYY(record.startDate)}</span>

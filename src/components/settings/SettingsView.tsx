@@ -139,7 +139,7 @@ export const SettingsView: React.FC = () => {
     return acc;
   }, {});
 
-  // Shared field styles — aligned with the Business Overview controls.
+  // Shared field styles - aligned with the Business Overview controls.
   const inputClass = 'form-input';
   const labelClass =
     'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-500';
@@ -664,7 +664,7 @@ export const SettingsView: React.FC = () => {
             </div>
           )}
 
-          {/* Access matrix — read from and written back to the backend. */}
+          {/* Access matrix - read from and written back to the backend. */}
           {isOwner && (
             <div className="mb-4 rounded-lg border border-line bg-surface-muted p-3.5">
               <div className="mb-3">
@@ -797,7 +797,7 @@ export const SettingsView: React.FC = () => {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3.5 py-3.5 pr-3 text-ink-600">{u.phone || '—'}</td>
+                            <td className="px-3.5 py-3.5 pr-3 text-ink-600">{u.phone || '-'}</td>
                             <td className="px-3.5 py-3.5 pr-3">
                               {isOwner ? (
                                 <Select

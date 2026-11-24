@@ -332,7 +332,7 @@ export function calculateNextServiceDate(
   frequencyValue: number,
   frequencyUnit: 'days' | 'months' | 'hours'
 ): string {
-  // Hours-based servicing has no calendar due date — the due point is an
+  // Hours-based servicing has no calendar due date - the due point is an
   // operating-hour reading, handled by evaluateServiceHours() below.
   if (frequencyUnit === 'hours') return '';
   if (isNaN(new Date(lastServiceDateStr).getTime())) return lastServiceDateStr;

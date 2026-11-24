@@ -272,8 +272,8 @@ export const TotalMachinesView: React.FC = () => {
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                   <div><dt className="text-ink-500">Capacity</dt><dd className="font-semibold text-ink-900">{m.tonnageCapacity} T</dd></div>
                   <div><dt className="text-ink-500">Cost</dt><dd className="font-semibold text-ink-900"><Currency value={m.purchaseCost || 0} size="xs" /></dd></div>
-                  <div><dt className="text-ink-500">Purchased</dt><dd className="font-semibold text-ink-900">{m.purchaseDate ? `${formatDateDDMMYYYY(m.purchaseDate)} (${ageInYears(m.purchaseDate).toFixed(1)} yrs)` : '—'}</dd></div>
-                  <div><dt className="text-ink-500">Deployment</dt><dd className="truncate font-semibold text-ink-900">{projectName(m.currentProjectId) ?? '—'}</dd></div>
+                  <div><dt className="text-ink-500">Purchased</dt><dd className="font-semibold text-ink-900">{m.purchaseDate ? `${formatDateDDMMYYYY(m.purchaseDate)} (${ageInYears(m.purchaseDate).toFixed(1)} yrs)` : '-'}</dd></div>
+                  <div><dt className="text-ink-500">Deployment</dt><dd className="truncate font-semibold text-ink-900">{projectName(m.currentProjectId) ?? '-'}</dd></div>
                   {isOwner && outstandingByAsset[m.assetId] ? (
                     <div className="col-span-2"><dt className="text-ink-500">EMI outstanding</dt><dd className="font-semibold text-ink-900"><Currency value={outstandingByAsset[m.assetId]} size="xs" /></dd></div>
                   ) : null}
@@ -306,8 +306,8 @@ export const TotalMachinesView: React.FC = () => {
                       {m.make} {m.model}
                     </td>
                     <td className="text-right">{m.tonnageCapacity} T</td>
-                    <td>{m.purchaseDate ? formatDateDDMMYYYY(m.purchaseDate) : '—'}</td>
-                    <td className="text-right">{m.purchaseDate ? `${ageInYears(m.purchaseDate).toFixed(1)} yrs` : '—'}</td>
+                    <td>{m.purchaseDate ? formatDateDDMMYYYY(m.purchaseDate) : '-'}</td>
+                    <td className="text-right">{m.purchaseDate ? `${ageInYears(m.purchaseDate).toFixed(1)} yrs` : '-'}</td>
                     <td className="text-right">
                       <Currency value={m.purchaseCost || 0} size="xs" />
                     </td>
@@ -316,11 +316,11 @@ export const TotalMachinesView: React.FC = () => {
                         {outstandingByAsset[m.assetId] ? (
                           <Currency value={outstandingByAsset[m.assetId]} size="xs" />
                         ) : (
-                          <span className="text-ink-400">—</span>
+                          <span className="text-ink-400">-</span>
                         )}
                       </td>
                     )}
-                    <td className="max-w-[10rem] truncate">{projectName(m.currentProjectId) ?? '—'}</td>
+                    <td className="max-w-[10rem] truncate">{projectName(m.currentProjectId) ?? '-'}</td>
                     <td>
                       <span className={`badge ${STATUS_META[m.status]?.badge ?? 'badge-neutral'}`}>
                         {STATUS_META[m.status]?.label ?? m.status}

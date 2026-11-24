@@ -174,7 +174,7 @@ export const LogsheetCalculator: React.FC = () => {
         </div>
         <div className="stat-card">
           <span className="stat-label">Amount</span>
-          <div className="stat-value">{rate ? formatINR(amount) : '—'}</div>
+          <div className="stat-value">{rate ? formatINR(amount) : '-'}</div>
           <span className="stat-hint">{rate ? `${totalHours} hrs × ${formatINR(rate)}/hr` : 'Enter an hourly rate to see the amount'}</span>
         </div>
       </div>

@@ -1,6 +1,6 @@
 /**
  * API-backed implementation of the Skyhook store.
- * Drop-in replacement for ./store.tsx — same context interface, server as source of truth.
+ * Drop-in replacement for ./store.tsx - same context interface, server as source of truth.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -90,7 +90,7 @@ interface SkyhookStoreContextType {
   updateEmployee: (id: string, e: Partial<Employee>) => Promise<void>;
   deactivateEmployee: (id: string) => Promise<void>;
   renewOperatorLicense: (operatorId: string, newCraneExpiry?: string, newTransportExpiry?: string) => Promise<void>;
-  /** External/freelancer contacts for backup staffing — not workforce employees. */
+  /** External/freelancer contacts for backup staffing - not workforce employees. */
   contractors: ContractorRecord[];
   addContractor: (c: Omit<ContractorRecord, 'id' | 'contractorCode' | 'createdAt'>) => Promise<ContractorRecord>;
   updateContractor: (id: string, patch: Partial<ContractorRecord>) => Promise<void>;
@@ -286,7 +286,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocument[]>([]);
 
   const loadAll = useCallback(async () => {
-    // Identity comes from the token via /auth/me — never from a client-side list.
+    // Identity comes from the token via /auth/me - never from a client-side list.
     const me = await api.get<any>('/auth/me');
     setCurrentUser(mapUser(me));
 
@@ -328,7 +328,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setEmiLoans(loans.items.map(mapEmiLoan));
     setAttendance(att.items.map(mapAttendance));
     setAdvances(adv.items.map(mapAdvance));
-    // The list endpoint returns runs without their entries — fetch each detail
+    // The list endpoint returns runs without their entries - fetch each detail
     // so payroll rows (and custom pay/deductions) are actually visible.
     setPayrollRuns(await Promise.all(runs.items.map(async (r) => {
       try {
@@ -594,7 +594,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // An explicit empty value means "unassign" (it used to be ignored, so a machine could never leave a site).
       if ('currentProjectId' in m) payload.currentProjectId = m.currentProjectId || null;
       if ('assignedOperatorId' in m) payload.assignedOperatorId = m.assignedOperatorId || null;
-      // Service interval — including 'hours' — is now persisted server-side.
+      // Service interval - including 'hours' - is now persisted server-side.
       if (m.serviceFrequencyUnit) payload.serviceFrequencyUnit = m.serviceFrequencyUnit;
       if (m.serviceFrequencyValue !== undefined) payload.serviceFrequencyValue = m.serviceFrequencyValue;
       if (m.serviceReminderLeadHours !== undefined) payload.serviceReminderLeadHours = m.serviceReminderLeadHours;
@@ -784,7 +784,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
         operatorId: t.operatorId, date: params.date, projectId: t.projectId,
         machineId: asUuid(existing?.machineId) ?? t.machineId,
         startTime,
-        // Overtime is encoded in the end time — the server is the only authority on OT hours.
+        // Overtime is encoded in the end time - the server is the only authority on OT hours.
         endTime: withExtraHours(startTime, base + overtime + breakMin / 60),
         unpaidBreakMinutes: breakMin,
         status,

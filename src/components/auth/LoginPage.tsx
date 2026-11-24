@@ -7,7 +7,7 @@ import { CraneLiftShowcase } from '../../stageshow/CraneLiftShowcase';
 
 /**
  * Credentials-only sign in. The server verifies the email + password against
- * the database and decides the user, tenant and role — the client holds no
+ * the database and decides the user, tenant and role - the client holds no
  * user list and no passwords.
  */
 export const LoginPage: React.FC = () => {

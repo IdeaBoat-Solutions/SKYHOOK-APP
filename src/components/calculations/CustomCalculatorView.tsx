@@ -55,7 +55,7 @@ export const CustomCalculatorView: React.FC<Props> = ({ calc, onChange, onEdit, 
     [calc],
   );
 
-  // Percentages are averaged — summing margins means nothing.
+  // Percentages are averaged - summing margins means nothing.
   const totals = calc.outputs.map((o) => {
     const sum = entryResults.reduce((s, r) => s + (r.results[o.id] ?? 0), 0);
     const isAvg = o.unit === 'percent';

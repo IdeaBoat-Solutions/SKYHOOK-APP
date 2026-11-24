@@ -62,7 +62,7 @@ export function saveCustomPersonalCategories(categories: PersonalCategory[]): vo
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
   } catch {
-    /* storage unavailable — categories last for this session only */
+    /* storage unavailable - categories last for this session only */
   }
 }
 

@@ -34,7 +34,7 @@ interface LandingViewProps {
   onRegister?: () => void;
 }
 
-/** Public landing page — static, token-matched, no motion. Product explained in one screen. */
+/** Public landing page - static, token-matched, no motion. Product explained in one screen. */
 export const LandingView: React.FC<LandingViewProps> = ({ onEnter, onRegister }) => {
   const [dark, setDark] = useState(() => {
     if (typeof window === 'undefined') return false;
