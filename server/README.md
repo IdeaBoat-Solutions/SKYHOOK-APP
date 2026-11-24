@@ -8,7 +8,7 @@ provider when configured — see [`../docs/11-SUPABASE-SETUP.md`](../docs/11-SUP
 
 | Area | Status |
 | --- | --- |
-| Schema, enums, RLS (FORCE), triggers, views | ✅ `db/migrations/0001_init.sql` |
+| Schema, enums, RLS (FORCE), triggers, views | ✅ `supabase/migrations/0001_init.sql` |
 | Tenant-scoped transactions (`SET LOCAL app.tenant_id`) | ✅ |
 | JWT verification (Supabase JWKS / OIDC JWKS / dev HS256) + RBAC | ✅ |
 | Password auth: Supabase Auth (when configured) or scrypt locally | ✅ |
@@ -35,7 +35,7 @@ or run PostgreSQL yourself and use the scripts:
 
 ```powershell
 npm install
-npm run migrate      # applies db/migrations/*.sql
+npm run migrate      # applies supabase/migrations/*.sql
 npm run seed         # tenant 'skyhook', owner@skyhook.in / skyhook2026
 npm run reset        # dev-only: undo a locked payroll run before re-running smoke
 npm run dev          # http://127.0.0.1:3001
@@ -52,8 +52,8 @@ Without it they are skipped and 16 tests run.
 ### Supabase provider (DB + Auth + Storage)
 
 Leave the Supabase variables in `.env` blank for the local dev stack. To use Supabase instead,
-create a project, run the SQL in `supabase/roles.sql` (optional), `db/migrations/0001_init.sql` and
-`db/migrations/0002_supabase.sql`, then set `DATABASE_URL`, `DATABASE_URL_DIRECT`, `SUPABASE_URL`,
+create a project, run the SQL in `supabase/roles.sql` (optional), `supabase/migrations/0001_init.sql` and
+`supabase/migrations/0002_supabase.sql`, then set `DATABASE_URL`, `DATABASE_URL_DIRECT`, `SUPABASE_URL`,
 `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The API then verifies Supabase access tokens,
 stores passwords in Supabase Auth and uploads files to the `skyhook-documents` bucket. Full steps:
 **[docs/11-SUPABASE-SETUP.md](../docs/11-SUPABASE-SETUP.md)**.

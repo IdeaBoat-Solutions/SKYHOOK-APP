@@ -4,8 +4,8 @@
 --
 -- Bundles, in dependency order:
 --   1. supabase/roles.sql                    - dedicated non-BYPASSRLS app role
---   2. server/db/migrations/0001_init.sql    - full domain schema, RLS, views, triggers
---   3. server/db/migrations/0002_supabase.sql- auth_user_id, Storage bucket + policy
+--   2. supabase/migrations/0001_init.sql    - full domain schema, RLS, views, triggers
+--   3. supabase/migrations/0002_supabase.sql- auth_user_id, Storage bucket + policy
 --
 -- BEFORE RUNNING:
 --   * Replace CHANGE_ME_TO_A_STRONG_PASSWORD in section 1 with a strong password.
@@ -46,7 +46,7 @@ END $$;
 -- Schema grants are applied after the schema/tables are created (section 2).
 
 -- ###########################################################################
--- 2/3 - Domain schema (from server/db/migrations/0001_init.sql)
+-- 2/3 - Domain schema (from supabase/migrations/0001_init.sql)
 -- ###########################################################################
 -- Skyhook ERP — Phase 1 schema
 -- Derived from docs/07-DATABASE-DESIGN.md. Forward-only, idempotent on enums where possible.

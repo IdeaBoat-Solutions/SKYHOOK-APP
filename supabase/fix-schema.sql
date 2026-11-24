@@ -1,7 +1,7 @@
 -- Recovery for: ERROR 3F000: schema "skyhook" does not exist
 -- Run this in the Supabase SQL Editor first, then apply the migrations in order:
---   1) server/db/migrations/0001_init.sql   (creates the schema and every table)
---   2) server/db/migrations/0002_supabase.sql
+--   1) supabase/migrations/0001_init.sql   (creates the schema and every table)
+--   2) supabase/migrations/0002_supabase.sql
 -- This file alone only creates the schema — it does NOT create the tables.
 
 CREATE SCHEMA IF NOT EXISTS skyhook;
