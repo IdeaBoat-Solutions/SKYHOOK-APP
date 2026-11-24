@@ -48,24 +48,32 @@ function mapJsonObject(v: unknown): Record<string, any> {
   return {};
 }
 
-/** API rows are snake_case with paise; the UI works in camelCase rupees. */
+/**
+ * The Edge Function returns camelCase; the local Fastify backend returns
+ * snake_case with paise. Accept both so the view works against either gateway.
+ */
 export function mapExtractedDocument(r: any): ExtractedDocument {
+  const paise = r.amountPaise ?? r.amount_paise;
   return {
     id: r.id,
-    docType: r.doc_type,
+    docType: r.docType ?? r.doc_type,
     title: str(r.title),
-    sourceFile: str(r.source_file),
-    naturalKey: str(r.natural_key),
-    entityName: str(r.entity_name),
-    vehicleNumber: r.vehicle_number ?? undefined,
-    issueDate: r.issue_date ? str(r.issue_date).slice(0, 10) : undefined,
-    expiryDate: r.expiry_date ? str(r.expiry_date).slice(0, 10) : undefined,
-    amount: r.amount_paise == null ? undefined : rupees(r.amount_paise),
-    amountLabel: r.amount_label ?? undefined,
+    sourceFile: str(r.sourceFile ?? r.source_file),
+    naturalKey: str(r.naturalKey ?? r.natural_key),
+    entityName: str(r.entityName ?? r.entity_name),
+    vehicleNumber: r.vehicleNumber ?? r.vehicle_number ?? undefined,
+    issueDate: r.issueDate ?? r.issue_date
+      ? str(r.issueDate ?? r.issue_date).slice(0, 10)
+      : undefined,
+    expiryDate: r.expiryDate ?? r.expiry_date
+      ? str(r.expiryDate ?? r.expiry_date).slice(0, 10)
+      : undefined,
+    amount: paise == null ? undefined : (r.amount != null ? Number(r.amount) : rupees(paise)),
+    amountLabel: r.amountLabel ?? r.amount_label ?? undefined,
     details: mapJsonObject(r.details),
-    scannedAt: r.scanned_at ?? undefined,
-    createdAt: r.created_at ?? undefined,
-    updatedAt: r.updated_at ?? undefined,
+    scannedAt: r.scannedAt ?? r.scanned_at ?? undefined,
+    createdAt: r.createdAt ?? r.created_at ?? undefined,
+    updatedAt: r.updatedAt ?? r.updated_at ?? undefined,
   };
 }
 
