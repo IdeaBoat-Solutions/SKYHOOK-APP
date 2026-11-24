@@ -4,7 +4,7 @@ import type {
   SalaryAdvance, PayrollRun, PayrollEntry, ProjectExpense, MachineEmiLoan,
   EmiInstallment, MachineWorkingLog, AuditLog, InAppNotification,
   ServiceRecord, PayrollAdjustment, PersonalRecord, MachineType, RcDetails, DocumentRecord,
-  ContractorRecord,
+  ContractorRecord, ExtractedDocument,
 } from '../types';
 
 const rupees = (paise: number | null | undefined): number => Math.round((paise ?? 0) / 100);
@@ -37,6 +37,35 @@ export function mapDocument(r: any): DocumentRecord {
     id: r.id, type: r.doc_type ?? '', name: r.name ?? '', fileUrl: r.object_key ?? '',
     uploadDate: str(r.uploaded_at).slice(0, 10), expiryDate: r.expiry_date ? str(r.expiry_date).slice(0, 10) : undefined,
     sizeKb: r.size_kb ?? undefined,
+  };
+}
+
+function mapJsonObject(v: unknown): Record<string, any> {
+  if (v && typeof v === 'object') return v as Record<string, any>;
+  if (typeof v === 'string') {
+    try { return JSON.parse(v) as Record<string, any>; } catch { return {}; }
+  }
+  return {};
+}
+
+/** API rows are snake_case with paise; the UI works in camelCase rupees. */
+export function mapExtractedDocument(r: any): ExtractedDocument {
+  return {
+    id: r.id,
+    docType: r.doc_type,
+    title: str(r.title),
+    sourceFile: str(r.source_file),
+    naturalKey: str(r.natural_key),
+    entityName: str(r.entity_name),
+    vehicleNumber: r.vehicle_number ?? undefined,
+    issueDate: r.issue_date ? str(r.issue_date).slice(0, 10) : undefined,
+    expiryDate: r.expiry_date ? str(r.expiry_date).slice(0, 10) : undefined,
+    amount: r.amount_paise == null ? undefined : rupees(r.amount_paise),
+    amountLabel: r.amount_label ?? undefined,
+    details: mapJsonObject(r.details),
+    scannedAt: r.scanned_at ?? undefined,
+    createdAt: r.created_at ?? undefined,
+    updatedAt: r.updated_at ?? undefined,
   };
 }
 
