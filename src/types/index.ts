@@ -61,6 +61,35 @@ export interface DocumentRecord {
   sizeKb?: number;
 }
 
+/** The four kinds of scanned document seeded from public/ocr into Supabase. */
+export type ExtractedDocumentType =
+  | 'loan_sanction'
+  | 'fitness_certificate'
+  | 'insurance_quote'
+  | 'tax_receipt';
+
+/** A structured document extracted from a scanned PDF and stored in Supabase. */
+export interface ExtractedDocument {
+  id: string;
+  docType: ExtractedDocumentType;
+  title: string;
+  sourceFile: string;
+  /** Application / certificate / quote / receipt number. */
+  naturalKey: string;
+  entityName: string;
+  vehicleNumber?: string;
+  issueDate?: string;
+  expiryDate?: string;
+  /** Headline amount in rupees (the mapper converts from paise). */
+  amount?: number;
+  amountLabel?: string;
+  /** Full extracted payload, including nested objects and arrays. */
+  details: Record<string, any>;
+  scannedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 /** Extra driving-licence details, from an OCR scan or typed by hand. */
 export interface LicenceExtras {
   /** Son / Daughter / Wife of. */

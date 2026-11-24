@@ -42,6 +42,7 @@ export type NavTab =
   | 'personal'
   | 'reminders'
   | 'reports'
+  | 'documents'
   | 'settings';
 
 interface SidebarProps {
@@ -93,6 +94,7 @@ const NAV_SECTIONS: { label: string; items: NavDef[] }[] = [
     items: [
       { id: 'machine_working', label: 'Machine Working (Crane)', icon: Cpu },
       { id: 'assets', label: 'Asset Master (Cranes)', icon: Truck, badge: 'asset' },
+      { id: 'documents', label: 'Scanned Documents', icon: FileText },
       { id: 'expenses', label: 'Project Expenses', icon: Wallet },
     ],
   },

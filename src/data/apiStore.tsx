@@ -7,14 +7,14 @@ import type {
   CompanySettings, User, UserRole, Employee, Project, AttendanceRecord, AttendanceStatus,
   SalaryAdvance, PayrollRun, ProjectExpense, MachineAsset, MachineEmiLoan, MachineWorkingLog,
   AuditLog, ReminderAlertItem, InAppNotification, PayrollAdjustment, PersonalRecord, DocumentRecord,
-  ContractorRecord,
+  ContractorRecord, ExtractedDocument,
 } from '../types';
 import { api, getToken, setToken, ApiFailure } from '../api/client';
 import {
   mapUser, mapCompany, mapProject, mapEmployee, mapMachine, mapAttendance, mapAdvance,
   mapPayrollRun, mapExpense, mapEmiLoan, mapWorkingLog, mapAudit, mapNotification,
   mapServiceRecord, mapPayrollAdjustment, mapPersonalRecord, rupeesToPaise,
-  mapDocument, machineTypeToApi, mapContractor,
+  mapDocument, machineTypeToApi, mapContractor, mapExtractedDocument,
 } from '../api/mappers';
 import { evaluateReminderStatus, evaluateServiceHours, sumOperatingHours, formatServiceInterval } from '../utils/calculations';
 import {
@@ -102,6 +102,8 @@ interface SkyhookStoreContextType {
   listMachineDocuments: (machineId: string) => Promise<DocumentRecord[]>;
   /** Download a stored document by its object key. */
   downloadDocument: (objectKey: string) => Promise<Blob>;
+  /** Structured data extracted from the scanned PDFs, loaded from Supabase. */
+  extractedDocuments: ExtractedDocument[];
   updateMachine: (id: string, m: Partial<MachineAsset>) => Promise<void>;
   recordServiceCompleted: (machineId: string, serviceDate: string, cost: number, notes?: string, provider?: string, operatingHours?: number) => Promise<void>;
   updateMachineServiceConfig: (machineId: string, patch: {
@@ -281,13 +283,14 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [payrollAdjustments, setPayrollAdjustments] = useState<Record<string, PayrollAdjustmentSet>>({});
   const [personalRecords, setPersonalRecords] = useState<PersonalRecord[]>([]);
   const [personalPinSet, setPersonalPinSet] = useState(() => Boolean(getPinHash()));
+  const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocument[]>([]);
 
   const loadAll = useCallback(async () => {
     // Identity comes from the token via /auth/me — never from a client-side list.
     const me = await api.get<any>('/auth/me');
     setCurrentUser(mapUser(me));
 
-    const [company, users, prj, emp, contractorsRaw, mach, loans, att, adv, runs, exp, logs, aud, notif, adj, personal] = await Promise.all([
+    const [company, users, prj, emp, contractorsRaw, mach, loans, att, adv, runs, exp, logs, aud, notif, adj, personal, extracted] = await Promise.all([
       safeGet<any>('/company', null),
       // Staff directory for Settings; needs user:read, so managers get an empty list.
       safeGet<{ items: any[] }>('/users', { items: [] }),
@@ -305,6 +308,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
       softGet<{ items: any[] }>('/notifications', { items: [] }),
       softGet<{ items: any[] }>('/payroll-adjustments', { items: [] }),
       softGet<{ items: any[] }>('/personal-records', { items: [] }),
+      softGet<{ items: any[] }>('/extracted-documents', { items: [] }),
     ]);
     if (company) setCompanySettings(mapCompany(company));
     setAvailableUsers(users.items.map(mapUser));
@@ -339,6 +343,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setNotifications(notif.items.map(mapNotification));
     setPayrollAdjustments(groupAdjustments(adj.items));
     setPersonalRecords(personal.items.map(mapPersonalRecord));
+    setExtractedDocuments(extracted.items.map(mapExtractedDocument));
   }, []);
 
   useEffect(() => {
@@ -390,7 +395,7 @@ export const SkyhookProvider: React.FC<{ children: React.ReactNode }> = ({ child
     currentUser, isAuthenticated, availableUsers, companySettings,
     projects, employees, contractors, machines, emiLoans, attendance, advances, payrollRuns,
     expenses, machineWorkingLogs, auditLogs, notifications,
-    payrollAdjustments, personalRecords, personalPinSet,
+    payrollAdjustments, personalRecords, personalPinSet, extractedDocuments,
     currentDate: todayISO(),
 
     login: async (email, password) => {

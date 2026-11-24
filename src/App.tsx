@@ -22,6 +22,7 @@ import { CalculationsView, CalcTab } from './components/calculations/Calculation
 import { PersonalView } from './components/personal/PersonalView';
 import { RemindersView } from './components/reminders/RemindersView';
 import { ReportsView } from './components/reports/ReportsView';
+import { ExtractedDocumentsView } from './components/documents/ExtractedDocumentsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { ReminderAlertItem } from './types';
 
@@ -137,6 +138,8 @@ function MainAppShell() {
           {currentTab === 'reminders' && <RemindersView />}
 
           {currentTab === 'reports' && <ReportsView />}
+
+          {currentTab === 'documents' && <ExtractedDocumentsView />}
 
           {currentTab === 'settings' && <SettingsView />}
 

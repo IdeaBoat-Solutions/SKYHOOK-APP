@@ -25,6 +25,7 @@ import { advancesRoutes } from './advances.ts';
 import { remindersRoutes } from './reminders.ts';
 import { reportsRoutes } from './reports.ts';
 import { filesRoutes } from './files.ts';
+import { extractedDocumentsRoutes } from './extracted-documents.ts';
 import { extrasRoutes } from './extras.ts';
 
 const routes: Route[] = [
@@ -44,6 +45,7 @@ const routes: Route[] = [
   ...remindersRoutes,
   ...reportsRoutes,
   ...filesRoutes,
+  ...extractedDocumentsRoutes,
   ...extrasRoutes,
 ];
 

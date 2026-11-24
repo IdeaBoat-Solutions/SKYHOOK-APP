@@ -89,6 +89,10 @@ const TAB_TITLES: Record<NavTab, { title: string; subtitle: string }> = {
     title: 'Reports & Export Centre',
     subtitle: 'Download consolidated Excel spreadsheets and official PDF documents across all modules.',
   },
+  documents: {
+    title: 'Scanned Documents',
+    subtitle: 'Loan sanction, fitness, insurance quote and tax receipt data extracted from scanned PDFs in Supabase.',
+  },
   settings: {
     title: 'Company & System Settings',
     subtitle: 'Configure company profile, official logo, payroll cutoff rules and reminder lead times.',
