@@ -38,7 +38,7 @@ const MONEY_KEY = /(amount|premium|idv|cost|emi|interest|principal|balance|insta
 const PERCENT_KEY = /(pct|ratePercent)/i;
 
 function renderScalar(name: string, value: unknown): React.ReactNode {
-  if (value == null || value === '') return <span className="text-ink-400">—</span>;
+  if (value == null || value === '') return <span className="text-ink-400">-</span>;
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') {
     const n = Number(value);
@@ -60,7 +60,7 @@ function renderScalar(name: string, value: unknown): React.ReactNode {
 
 type Field = { label: string; value: unknown };
 
-/** Label on the left, value on the right — no narrow multi-column cells. */
+/** Label on the left, value on the right - no narrow multi-column cells. */
 const FieldRows: React.FC<{ fields: Field[]; compact?: boolean; nested?: boolean }> = ({
   fields,
   compact = false,
@@ -112,7 +112,7 @@ const DataTable: React.FC<{ rows: Record<string, unknown>[]; order?: string[] }>
 /** Recursively renders nested values while keeping labels aligned. */
 const DetailValue: React.FC<{ name: string; value: unknown; depth?: number }> = ({ name, value, depth = 0 }) => {
   if (Array.isArray(value)) {
-    if (!value.length) return <span className="text-ink-400">—</span>;
+    if (!value.length) return <span className="text-ink-400">-</span>;
     if (value[0] !== null && typeof value[0] === 'object') {
       return <DataTable rows={value as Record<string, unknown>[]} />;
     }
@@ -466,11 +466,11 @@ export const ExtractedDocumentsView: React.FC = () => {
                       </td>
                       <td className="px-3.5 py-3 font-mono text-xs text-ink-600">{doc.naturalKey}</td>
                       <td className="px-3.5 py-3">
-                        <div className="font-medium text-ink-800">{doc.entityName || '—'}</div>
+                        <div className="font-medium text-ink-800">{doc.entityName || '-'}</div>
                         {doc.vehicleNumber && <div className="text-xs text-ink-500">{doc.vehicleNumber}</div>}
                       </td>
                       <td className="px-3.5 py-3 text-ink-600">
-                        {doc.issueDate ? formatDateDDMMYYYY(doc.issueDate) : '—'}
+                        {doc.issueDate ? formatDateDDMMYYYY(doc.issueDate) : '-'}
                         {doc.expiryDate && <div className="text-xs text-ink-400">Exp. {formatDateDDMMYYYY(doc.expiryDate)}</div>}
                       </td>
                       <td className="px-3.5 py-3 text-right">
@@ -479,7 +479,7 @@ export const ExtractedDocumentsView: React.FC = () => {
                             <div className="font-semibold text-ink-900">{money(doc.amount)}</div>
                             {doc.amountLabel && <div className="text-[11px] text-ink-400">{doc.amountLabel}</div>}
                           </>
-                        ) : <span className="text-ink-400">—</span>}
+                        ) : <span className="text-ink-400">-</span>}
                       </td>
                       <td className="px-3.5 py-3 text-center">
                         <button type="button" className="btn btn-secondary" onClick={() => setSelectedId(doc.id)}>
@@ -522,7 +522,7 @@ export const ExtractedDocumentsView: React.FC = () => {
                 ].map(([label, value]) => (
                   <div key={label} className="min-w-0">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-ink-400">{label}</div>
-                    <div className="mt-1 break-words text-sm font-semibold text-ink-800">{value || '—'}</div>
+                    <div className="mt-1 break-words text-sm font-semibold text-ink-800">{value || '-'}</div>
                   </div>
                 ))}
               </div>

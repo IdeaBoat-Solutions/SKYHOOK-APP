@@ -72,7 +72,7 @@ export const OperatorDirectoryView: React.FC = () => {
         <div className="min-w-0">
           <h2 className="page-title">Operator Directory</h2>
           <p className="page-subtitle">
-            Searchable contact book for every crane operator — licences, deployment and pay at a glance.
+            Searchable contact book for every crane operator - licences, deployment and pay at a glance.
           </p>
         </div>
         <span className="badge badge-neutral self-start">
@@ -160,7 +160,7 @@ export const OperatorDirectoryView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="min-w-0">
                     <span className="stat-label block">Licence</span>
-                    <span className="block break-all font-semibold text-ink-800">{op.licenseNumber || '—'}</span>
+                    <span className="block break-all font-semibold text-ink-800">{op.licenseNumber || '-'}</span>
                     <span className={`flex items-center gap-1 text-[11px] ${hasAlert ? 'text-danger-700' : 'text-ink-500'}`}>
                       {hasAlert ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3 text-success-600" />}
                       {op.craneLicenseExpiry ? `Exp. ${formatDateDDMMYYYY(op.craneLicenseExpiry)}` : 'Expiry not recorded'}
@@ -256,7 +256,7 @@ export const OperatorDirectoryView: React.FC = () => {
                       )}
                     </td>
                     <td className="px-3.5 py-3 text-xs">
-                      <span className="font-semibold text-ink-800">{op.licenseNumber || '—'}</span>
+                      <span className="font-semibold text-ink-800">{op.licenseNumber || '-'}</span>
                       <span className={`mt-0.5 flex items-center gap-1 text-[11px] ${hasAlert ? 'text-danger-700' : 'text-ink-500'}`}>
                         {hasAlert ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3 text-success-600" />}
                         {op.craneLicenseExpiry ? `Exp. ${formatDateDDMMYYYY(op.craneLicenseExpiry)}` : 'Expiry not recorded'}

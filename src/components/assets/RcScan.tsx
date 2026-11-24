@@ -492,7 +492,7 @@ export const RcScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => {
                     {foundCount === 0
                       ? 'Nothing could be read. Try a sharper scan, or type the details below.'
                       : `${foundCount} fields read from the RC. ${
-                          lowConfidence ? 'The scan was hard to read — ' : ''
+                          lowConfidence ? 'The scan was hard to read - ' : ''
                         }Check them against the card, especially the chassis and engine numbers (O/0, S/5 and J/U are easy to confuse).`}
                   </span>
                 </div>
@@ -544,7 +544,7 @@ export const RcScanModal: React.FC<ModalProps> = ({ onClose, onApply }) => {
         <div className="modal-footer flex-wrap">
           <span className="mr-auto flex items-center gap-1.5 text-[11px] text-ink-500">
             <ShieldCheck className="h-3.5 w-3.5 text-success-600" />
-            Read on this device — never sent to an OCR service
+            Read on this device - never sent to an OCR service
           </span>
           {phase === 'review' ? (
             <>

@@ -14,7 +14,7 @@ export function phoneDigits(raw: string): string {
   return digits;
 }
 
-/** WhatsApp deep link — opens a chat with the number when WhatsApp is installed. */
+/** WhatsApp deep link - opens a chat with the number when WhatsApp is installed. */
 export function whatsappLink(raw: string): string {
   const digits = phoneDigits(raw);
   return digits ? `https://wa.me/${digits}` : '';
@@ -26,7 +26,7 @@ export function callLink(raw: string): string {
   return digits ? `tel:+${digits}` : '';
 }
 
-/** Contact actions for a number — used by both registered operators and contractors. */
+/** Contact actions for a number - used by both registered operators and contractors. */
 export function contactActions(mobile: string) {
   return {
     call: callLink(mobile),

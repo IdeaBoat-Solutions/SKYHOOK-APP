@@ -695,7 +695,7 @@ export const MachineWorkingView: React.FC = () => {
               {/* Calculation Preview */}
               <div className="notice notice--warning justify-between">
                 <span>Total Hours:</span>
-                <strong className="text-base">{durationPreview ? `${durationPreview.netWorkingHours} Hours` : '—'}</strong>
+                <strong className="text-base">{durationPreview ? `${durationPreview.netWorkingHours} Hours` : '-'}</strong>
               </div>
               {durationPreview && startTime > endTime && (
                 <p className="text-[11px] text-ink-500">The end time is earlier than the start, so this is counted as an overnight session ending the next day.</p>

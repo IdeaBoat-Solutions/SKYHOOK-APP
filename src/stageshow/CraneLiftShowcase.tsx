@@ -6,7 +6,7 @@ import './crane-lift.css'
  * Stageshow illustration for the empty right pane of the sign-in card.
  *
  * Just the crane: a tower crane rigs a load at Harbour Rd, hoists it, travels
- * the jib and sets it down at Yard B — weight moved from one place to another,
+ * the jib and sets it down at Yard B - weight moved from one place to another,
  * which is what the business does. No dashboard chrome, no header, no status
  * text. The picture is corner-bled off the right and bottom of the pane.
  */
@@ -24,7 +24,7 @@ type Scene = {
 }
 
 // Opening and closing frames are the same: a rigged load waiting at the
-// source. The poster is the result — the load delivered at Yard B.
+// source. The poster is the result - the load delivered at Yard B.
 const initial: Scene = { t: 0, h: 1, load: 'hook', dur: 0 }
 const poster: Scene = { t: 1, h: 1, load: 'dest', dur: 0 }
 

@@ -146,7 +146,7 @@ export interface Employee extends LicenceExtras {
   documents: DocumentRecord[];
 }
 
-/** External/freelancer contacts kept for backup staffing — not workforce employees. */
+/** External/freelancer contacts kept for backup staffing - not workforce employees. */
 export type ContractorSkill =
   | 'crane_operator' | 'rigger' | 'bankman' | 'electrician' | 'fitter' | 'driver' | 'other';
 export type ContractorAvailability = 'available' | 'busy' | 'unknown';

@@ -84,7 +84,7 @@ export function withPayrollAdjustments(
 
 const PIN_KEY = 'personal_pin_hash';
 
-/** Small non-cryptographic digest — this lock protects the local browser view,
+/** Small non-cryptographic digest - this lock protects the local browser view,
  *  it is not a substitute for the account password or server-side RBAC. */
 export function hashPin(pin: string): string {
   let hash = 5381;
@@ -117,7 +117,7 @@ export function verifyPin(pin: string): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Machine servicing + owner records — still local until their API cutover.    */
+/* Machine servicing + owner records - still local until their API cutover.    */
 /* -------------------------------------------------------------------------- */
 
 function read<T>(key: string, fallback: T): T {
@@ -133,7 +133,7 @@ function write<T>(key: string, value: T): void {
   try {
     localStorage.setItem(PREFIX + key, JSON.stringify(value));
   } catch {
-    /* storage unavailable — keep running with in-memory values */
+    /* storage unavailable - keep running with in-memory values */
   }
 }
 

@@ -20,7 +20,7 @@ import { EmiCalculatorModal } from './EmiCalculatorModal';
 
 type StatusFilter = 'all' | EmiStatus;
 
-/** Shared visual language for every EMI status — red is reserved for overdue only. */
+/** Shared visual language for every EMI status - red is reserved for overdue only. */
 const statusStyles: Record<EmiStatus, { label: string; badge: string; row: string }> = {
   paid: {
     label: 'Paid',
@@ -90,7 +90,7 @@ export const EmiView: React.FC = () => {
     machines.find((m) => m.id === loan.assetId)?.assetId ||
     'Machine';
   const modeLabel = (m?: string) =>
-    !m ? '—' : m.includes('_') || m === m.toLowerCase() ? m.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : m;
+    !m ? '-' : m.includes('_') || m === m.toLowerCase() ? m.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : m;
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentError, setPaymentError] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
@@ -610,11 +610,11 @@ export const EmiView: React.FC = () => {
                                     {formatDateDDMMYYYY(inst.paymentDate)}
                                   </span>
                                   <span className="mt-0.5 block text-[10px] text-ink-400">
-                                    {inst.paymentReference || '—'}
+                                    {inst.paymentReference || '-'}
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-ink-400">—</span>
+                                <span className="text-ink-400">-</span>
                               )}
                             </td>
                             <td className="px-3 py-3 text-center">
@@ -725,7 +725,7 @@ export const EmiView: React.FC = () => {
                       </td>
                       <td className="px-3.5 py-3 text-ink-600">{inst.paymentMode ? modeLabel(inst.paymentMode) : 'Recorded at loan setup'}</td>
                       <td className="px-3.5 py-3 font-mono text-[11px] text-ink-500">
-                        {inst.paymentReference || '—'}
+                        {inst.paymentReference || '-'}
                       </td>
                       <td className="px-3.5 py-3 text-right font-bold text-success-700">
                         <Currency value={inst.amountPaid} size="xs" />

@@ -94,7 +94,7 @@ const DetailItem: React.FC<{
     <span className="stat-label block">{label}</span>
     <span className="mt-1 flex items-start gap-1.5 text-xs font-semibold text-ink-800">
       {Icon && <Icon className="mt-px h-3.5 w-3.5 shrink-0 text-ink-400" />}
-      <span className="min-w-0 break-words">{value || "—"}</span>
+      <span className="min-w-0 break-words">{value || "-"}</span>
     </span>
   </div>
 );
@@ -155,7 +155,7 @@ export const AssetsView: React.FC = () => {
   const [status, setStatus] = useState<AssetStatus>("assigned");
   const [currentProject, setCurrentProject] = useState("");
 
-  // Service details — intervals may be calendar months or crane operating hours
+  // Service details - intervals may be calendar months or crane operating hours
   const [lastServiceDate, setLastServiceDate] = useState(currentDate);
   const [serviceFreqValue, setServiceFreqValue] = useState(500);
   const [serviceFreqUnit, setServiceFreqUnit] = useState<"days" | "months" | "hours">("hours");
@@ -987,7 +987,7 @@ export const AssetsView: React.FC = () => {
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-3">
                       <DetailItem
                         label="Serial number"
-                        value={m.serialNumber || "—"}
+                        value={m.serialNumber || "-"}
                         icon={FileText}
                       />
                       <DetailItem
@@ -1243,7 +1243,7 @@ export const AssetsView: React.FC = () => {
                       <p className="mt-0.5 text-[11px] text-ink-500">
                         {rcFiles.length
                           ? `${rcFiles.map((f) => f.name).join(", ")} will be saved with this asset.`
-                          : "Upload the RC as a PDF or photos — registration no., chassis, engine, make, model and more are read automatically."}
+                          : "Upload the RC as a PDF or photos - registration no., chassis, engine, make, model and more are read automatically."}
                       </p>
                     </div>
                   </div>

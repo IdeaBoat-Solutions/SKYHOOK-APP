@@ -57,6 +57,6 @@ export function saveCustomCalculators(calculators: CustomCalculator[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(calculators));
   } catch {
-    /* storage unavailable — keep running with in-memory values */
+    /* storage unavailable - keep running with in-memory values */
   }
 }

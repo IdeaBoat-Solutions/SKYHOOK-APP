@@ -145,7 +145,7 @@ export function evaluateFormula(src: string, scope: Record<string, number>): num
   return Number.isFinite(result) ? result : 0;
 }
 
-/** Validate without values — every variable resolves to 1. */
+/** Validate without values - every variable resolves to 1. */
 export function checkFormula(src: string, keys: string[]): string | null {
   try {
     evaluateFormula(src, Object.fromEntries(keys.map((k) => [k, 1])));

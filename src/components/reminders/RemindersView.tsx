@@ -387,7 +387,7 @@ export const RemindersView: React.FC = () => {
         </div>
       </div>
 
-      {/* Status overview — derived entirely from the existing alert arrays */}
+      {/* Status overview - derived entirely from the existing alert arrays */}
       <div className="kpi-grid">
         {renderSummaryCard('Critical / Overdue', overdueCount, 'Immediate action required', CircleAlert, {
           chip: 'tone-danger',
@@ -411,7 +411,7 @@ export const RemindersView: React.FC = () => {
         })}
       </div>
 
-      {/* Category monitoring intro — mirrors the dashboard red-alert section */}
+      {/* Category monitoring intro - mirrors the dashboard red-alert section */}
       <div className="card card-pad">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>

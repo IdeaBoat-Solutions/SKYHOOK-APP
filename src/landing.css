@@ -1,4 +1,4 @@
-/* Skyhook landing page — uses the ERP design tokens only.
+/* Skyhook landing page - uses the ERP design tokens only.
    One font family, no shadows, no animations, no extra palette. */
 
 .visually-hidden:where(:not(:focus-within, :active)) {
@@ -38,7 +38,7 @@
 }
 
 /* The hero is the logo-blue stage. The navbar floats above it as its own light
-   object — a pill, not a bar — so it reads as a product control, not a band. */
+   object - a pill, not a bar - so it reads as a product control, not a band. */
 .landing-hero {
   background: var(--color-logo-500);
   color: #ffffff;

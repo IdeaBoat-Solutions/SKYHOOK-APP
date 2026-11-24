@@ -553,7 +553,7 @@ export const PayrollView: React.FC = () => {
                         + <Currency value={entry.customPay.reduce((s, a) => s + a.amount, 0)} />
                       </span>
                     ) : (
-                      <span className="text-ink-400">—</span>
+                      <span className="text-ink-400">-</span>
                     )}
                   </td>
                   <td className="px-3.5 py-3 text-danger-700 font-bold">
@@ -562,7 +562,7 @@ export const PayrollView: React.FC = () => {
                         − <Currency value={entry.customDeductions.reduce((s, a) => s + a.amount, 0)} />
                       </span>
                     ) : (
-                      <span className="text-ink-400">—</span>
+                      <span className="text-ink-400">-</span>
                     )}
                   </td>
                   <td className="px-3.5 py-3 text-warning-700 font-bold">
